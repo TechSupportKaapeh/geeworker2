@@ -604,6 +604,37 @@ público"**, y se cerró con dos tests.
 
 ---
 
+### H.7 — El primer deploy falló, y encontró un bug real (2026-09-07)
+
+**El build pasó** —la imagen se construyó en Railway sin tocar el
+`--only-binary`— pero el contenedor entró en **bucle de reinicios**:
+
+```
+RuntimeError: Faltan EE_SERVICE_ACCOUNT_EMAIL o EE_SERVICE_ACCOUNT_KEY_JSON
+ERROR in uvicorn.error: Application startup failed. Exiting.
+```
+
+La causa inmediata eran las variables de GEE sin setear. **La causa real era
+una inconsistencia en `app.py`:** `init_db()` estaba dentro de un `try` —con un
+comentario explicando que no es fatal— y `init_ee()` estaba **fuera**. Así que
+una credencial faltante tumbaba el proceso, Railway reiniciaba, y el ciclo se
+repetía: los logs de varios procesos entrelazados y `/health` sin responder
+nunca.
+
+**Es exactamente la patología que `DECISIONS #21` describe** para los chequeos
+de salud —*"un deploy mal configurado entraría en un bucle de reinicios sin
+llegar nunca a mostrar el motivo"*— y el criterio de `DECISIONS #16`: un secreto
+faltante degrada una funcionalidad, no tumba el servicio.
+
+Y sostenerlo cuesta poco, porque **los handlers llaman a `init_ee()` por su
+cuenta, una vez por step**: la del arranque era un precalentamiento, no un
+requisito. Sin credenciales, cada invocación falla por separado y la reintenta
+Inngest.
+
+Arreglado, reproducido en local antes y después, y fijado por un test.
+
+---
+
 ### H.6 — La secuencia de despliegue, en orden
 
 **El repo remoto ya existe** (`Kaapeh-Mexico/terra-api`) y `origin/main` está

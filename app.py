@@ -43,14 +43,35 @@ app = FastAPI(
 
 @app.on_event("startup")
 def _startup():
-    init_ee()
-    try:
-        # Crea `sentinel2_dates`, que es tabla del worker y EF Core no administra.
-        # No es fatal: si la DB no responde al arrancar, los handlers fallan de a
-        # uno y los reintenta Inngest, en vez de tumbar el proceso entero.
-        init_db()
-    except Exception as e:
-        logger.error("No se pudo inicializar la DB al arrancar: %s", e)
+    """Precalienta las dependencias. **Ningún fallo acá tumba el arranque.**
+
+    `init_db` ya se trataba así; `init_ee` no, y eso produjo exactamente la
+    patología que `DECISIONS #21` describe para los chequeos de salud: en el
+    primer deploy a Railway faltaban las variables de GEE, `init_ee` levantó,
+    uvicorn abortó, Railway reinició, y el ciclo se repitió — con los logs de
+    varios procesos entrelazados y `/health` sin llegar a responder nunca.
+
+    **Un deploy mal configurado tiene que poder arrancar para poder
+    diagnosticarse.** Es el mismo criterio que `DECISIONS #16` tomó en Geocore:
+    un secreto faltante degrada una funcionalidad, no tumba el servicio.
+
+    Y acá cuesta todavía menos: los handlers llaman a `init_ee()` por su cuenta
+    —una vez por step— así que esta llamada es un precalentamiento, no un
+    requisito. Sin credenciales, cada invocación falla por separado y la
+    reintenta Inngest, que es el comportamiento correcto.
+    """
+    for nombre, arranca in (("Google Earth Engine", init_ee),
+                            # Crea `sentinel2_dates`, que es tabla del worker y
+                            # EF Core no administra.
+                            ("la base geodata", init_db)):
+        try:
+            arranca()
+        except Exception as e:  # noqa: BLE001 - un precalentamiento atrapa todo a proposito
+            logger.error(
+                "No se pudo inicializar %s al arrancar: %s. El worker sigue "
+                "levantando; las funciones que dependan de esto van a fallar "
+                "de a una y las va a reintentar Inngest.", nombre, e,
+            )
 
 
 @app.get("/health")
