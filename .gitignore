@@ -1,0 +1,10 @@
+.venv
+.env
+__pycache__*
+outputs/
+
+# Andamiaje local, no forma parte del servicio (PLAN.md F.6)
+scratch/
+test.tif
+test_file.txt
+*.tif

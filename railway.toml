@@ -1,0 +1,27 @@
+# Config de despliegue del worker en Railway.
+#
+# Railway construye con el Dockerfile del repo —no con nixpacks— porque el
+# contrato de `DECISIONS #22` vive ahi: base `python:3.13` y
+# `pip install --only-binary=:all:`, o sea que un pin sin wheel falla el build
+# en vez de ponerse a compilar GDAL. Nixpacks elegiria el interprete por su
+# cuenta y ese contrato se perderia.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# `/health` es **liveness**: responde 200 aunque falten MinIO, la DB y GEE.
+# Es a proposito, y es la misma decision que `DECISIONS #21` tomo para el
+# tileserver: si el healthcheck dependiera del storage, un parpadeo de MinIO
+# haria que Railway reinicie un worker sano — y el reinicio no arregla nada de
+# lo que fallo. El diagnostico de "puede hacer su trabajo" son los logs de
+# arranque, que nombran la variable que falta.
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+
+# El worker consume eventos de Inngest, que reintenta por su cuenta. Reiniciar
+# ante un fallo es correcto; hacerlo sin techo, no: un contenedor que no puede
+# arrancar —una variable mal puesta— entraria en un bucle sin dejar ver el log.
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10

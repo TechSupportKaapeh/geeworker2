@@ -1,0 +1,51 @@
+# Pines fijados el 2026-08-30 contra Python 3.13 (ver DECISIONS #22).
+# Todo instala como wheel: `pip install --only-binary=:all: -r requirements.txt`
+# tiene que pasar sin compilar nada. Si un pin nuevo obliga a compilar, es el
+# pin el que está mal, no el entorno.
+
+# --- Servidor ---
+# El worker se dispara por eventos de Inngest; su única superficie HTTP es
+# /health y /api/inngest. FastAPI está acá por el endpoint de Inngest.
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.5
+python-multipart==0.0.32
+
+# --- Google Earth Engine ---
+earthengine-api==1.7.41
+google-auth==2.57.0
+
+# --- Cliente HTTP y geometría ---
+requests==2.34.2
+shapely==2.1.2
+python-dotenv==1.2.3
+
+# --- Persistencia ---
+# minio: subida de COGs al bucket terra-assets.
+# psycopg2-binary: escrituras a la base geodata (layers, measurements,
+# processing_jobs). El worker no expone lecturas: eso lo sirve Geocore.
+minio==7.2.20
+psycopg2-binary==2.9.12
+
+# --- Orquestación ---
+inngest==0.4.16
+
+# --- Rásters ---
+# rasterio subió de 1.3.10 a 1.4.3 y rio-cogeo de 5.3.6 a 5.4.2 porque 1.3.x
+# no publica wheels para cp313 y el pin viejo forzaba compilar contra GDAL en
+# Windows. No había paridad con producción que romper: el worker no está
+# desplegado y no hay Dockerfile todavía. Este pin es el contrato que ese
+# Dockerfile tiene que respetar. Ver DECISIONS #22.
+rasterio==1.4.3
+rio-cogeo==5.4.2
+
+# --- Tests y herramientas ---
+# Se movieron a requirements-dev.txt el 2026-09-02 (PLAN.md F.15): pytest,
+# httpx, ruff y pip-audit no las necesita el servicio corriendo. La compuerta
+# VERIFY de WORKFLOW.md sigue siendo `pytest` verde — no hay compilador que
+# agarre un error de nombres, así que el peso recae entero en los tests.
+#
+#     pip install --only-binary=:all: -r requirements.txt -r requirements-dev.txt
+
+# python-jose se fue con auth.py en FASE D: el worker ya no valida JWT.
+# La autenticación de los eventos es INNGEST_SIGNING_KEY (PLAN.md F.1).

@@ -1,0 +1,42 @@
+# Lo que NO va a la imagen. Importa por tres razones: el tamaño, el tiempo de
+# build, y sobre todo **que no se filtre nada**.
+
+# 🔴 Secretos. `.env` tiene las credenciales de MinIO, la contraseña de la DB y
+# la service account de GEE. En Railway todo eso son variables de entorno; un
+# `.env` dentro de la imagen es una copia que viaja al registry.
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+
+# Entorno local y caché
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.devcontainer/
+
+# Historial y metadatos
+.git/
+.gitignore
+.dockerignore
+
+# Herramientas y pruebas: no las necesita el servicio corriendo (F.15)
+requirements-dev.txt
+tests/
+
+# Material de trabajo, ya ignorado por git
+scratch/
+outputs/
+*.tif
+test_file.txt
+
+# Documentación: 20 archivos que nadie lee desde dentro del contenedor
+docs/
+*.md
+
+# Compose local — la imagen se construye para Railway
+docker-compose.yml
+Dockerfile

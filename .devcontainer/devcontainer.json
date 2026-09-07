@@ -1,0 +1,22 @@
+{
+  "name": "GeeWorker Dev Container",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "geeworker",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [8000, 8001, 9000, 9001, 8288, 5432],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.extraPaths": [
+          "/workspace"
+        ]
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  },
+  "remoteUser": "root"
+}

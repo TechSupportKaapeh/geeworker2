@@ -1,0 +1,8 @@
+{
+  "liveServer.settings.ignoreFiles": [
+    "**/outputs/**",
+    "**/.git/**",
+    "**/*.db",
+    "**/*.log"
+  ]
+}

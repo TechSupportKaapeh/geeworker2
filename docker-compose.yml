@@ -1,0 +1,108 @@
+version: "3.8"
+
+services:
+  geeworker:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    container_name: geeworker_app
+    volumes:
+      - .:/workspace
+    # Port exposed only for Inngest webhook endpoint (internal service logic)
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_BUCKET=terra-assets
+      - INNGEST_DEV=1
+      - INNGEST_BASE_URL=http://inngest:8288
+      - INNGEST_EVENT_KEY=dev-local-key
+    depends_on:
+      postgres-timescaledb:
+        condition: service_started
+      minio:
+        condition: service_started
+      inngest:
+        condition: service_started
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+  # Vive en su propio repo (terra-tileserver), clonado como hermano de este.
+  # Para desarrollo se buildea desde ahi; en Railway se despliega solo.
+  tileserver-titiler:
+    build:
+      context: ../tileserver-titiler
+    container_name: geeworker_titiler
+    volumes:
+      # Hot reload en dev. El WORKDIR de la imagen es /app, no /workspace.
+      - ../tileserver-titiler:/app
+    ports:
+      - "8001:8001"
+    env_file:
+      # Su propio .env: lleva MAP_TOKEN_SECRET y credenciales de SOLO LECTURA,
+      # distintas de las del worker (que escribe).
+      - ../tileserver-titiler/.env
+    environment:
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_BUCKET=terra-assets
+      - PORT=8001
+    # El Dockerfile es de produccion (sin --reload). Se agrega solo acá.
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    depends_on:
+      minio:
+        condition: service_started
+
+  postgres-timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: geeworker_timescaledb
+    environment:
+      - POSTGRES_DB=terra
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d terra"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: geeworker_minio
+    ports:
+      - "9000:9000"  # API de MinIO
+      - "9001:9001"  # Consola web de MinIO
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  inngest:
+    image: inngest/inngest:latest
+    container_name: geeworker_inngest
+    ports:
+      - "8288:8288"
+    environment:
+      - INNGEST_EVENT_KEY=dev-local-key
+    volumes:
+      - inngest_data:/var/lib/inngest
+    command: inngest dev --host 0.0.0.0
+
+volumes:
+  timescale_data:
+    driver: local
+  minio_data:
+    driver: local
+  inngest_data:
+    driver: local

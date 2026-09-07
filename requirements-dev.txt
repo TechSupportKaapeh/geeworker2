@@ -1,0 +1,37 @@
+# Herramientas de desarrollo y de las compuertas del WORKFLOW. No van a la
+# imagen del servicio.
+#
+# Misma regla que requirements.txt (DECISIONS #22): todo instala como wheel.
+# `pip install --only-binary=:all: -r requirements-dev.txt` tiene que pasar sin
+# compilar nada.
+#
+# Creado el 2026-09-02 (PLAN.md F.15). Antes no existia, y la auditoria de ese
+# dia instalo ruff y pip-audit a mano: el .venv dejo de coincidir con
+# requirements.txt, que es exactamente lo que DECISIONS #22 queria evitar. Una
+# herramienta sin pin tampoco es reproducible — dos maquinas con versiones
+# distintas de ruff dan listas de hallazgos distintas.
+
+# --- Compuerta VERIFY: `pytest` verde ---
+# Estaba en requirements.txt, donde tenia sentido cuando era la unica
+# herramienta de desarrollo del repo. Se mueve aca porque no la necesita el
+# servicio corriendo, y el Dockerfile que todavia no existe no deberia
+# llevarsela. httpx no se importa en ningun lado del codigo: la pide el
+# TestClient de FastAPI.
+pytest==9.1.1
+httpx==0.28.1
+
+# --- Etapa AUDIT ---
+# ruff: linter y ordenador de imports. En 0.16 el conjunto de reglas por
+# defecto es amplio (incluye bugbear, RUF, TRY, PL...), asi que la version
+# importa: subir ruff puede aparecer como "hallazgos nuevos" sin que nadie haya
+# tocado el codigo.
+#
+# El repo no tiene archivo de configuracion de ruff, asi que las reglas activas
+# son las que trae la version pinneada. Consecuencia practica, aprendida a la
+# mala: un `# noqa: XXX` de una regla que NO esta activa lo marca ruff como
+# RUF100 (unused noqa). Antes de silenciar algo, comprobar que la regla corra.
+ruff==0.16.6
+
+# pip-audit: CVEs conocidos de las dependencias (OWASP A06). Se corre sobre
+# requirements.txt, no sobre este archivo.
+pip-audit==2.10.1
