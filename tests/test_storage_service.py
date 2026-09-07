@@ -394,3 +394,38 @@ def test_el_default_de_tls_ignora_mayusculas_y_espacios():
     from config import tls_por_defecto
 
     assert tls_por_defecto("  LOCALHOST:9000  ") is False
+
+
+# --- 7. Importar `config` no toca el sistema de archivos ------------------
+
+
+def test_importar_config_no_crea_carpetas(tmp_path):
+    """`config` se importa **antes** de que `setup_logging()` corra.
+
+    Antes tenia `os.makedirs(BASE_OUTPUT_DIR)` a nivel de modulo, y reventó en el
+    primer deploy a Railway: con `BASE_OUTPUT_DIR=../outputs` heredado del `.env`
+    local, el contenedor intentaba crear `/outputs` —fuera de `/app`— como
+    usuario no-root, y el fallo salia como un traceback crudo, sin contexto y sin
+    el nombre de la variable.
+
+    Es la tercera vez que el mismo patron —I/O al importar— tumba algo en este
+    repo: el singleton de `storage_service` (F.13), el `init_ee()` fuera del try
+    en `app.py`, y esto. **Un import no deberia poder matar el proceso.**
+
+    No se perdio nada: `utils_pkg.io.ensure_outputs_dir()` ya crea la carpeta, y
+    la llaman los tres sitios que escriben ahi.
+    """
+    destino = tmp_path / "no-deberia-existir"
+    codigo = (
+        "import os, sys\n"
+        f"os.environ['BASE_OUTPUT_DIR'] = r'{destino}'\n"
+        "import config\n"
+        f"assert not os.path.exists(r'{destino}'), 'el import creo la carpeta'\n"
+        "print('sin efectos en disco')\n"
+    )
+    resultado = subprocess.run(
+        [sys.executable, "-c", codigo],
+        cwd=str(RAIZ), capture_output=True, text=True, timeout=120, check=False,
+    )
+    assert resultado.returncode == 0, resultado.stderr
+    assert "sin efectos en disco" in resultado.stdout

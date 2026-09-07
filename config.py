@@ -4,9 +4,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Output directory
+# Carpeta de trabajo para los GeoTIFF temporales de `export_heatmap`.
+#
+# **No se crea aca.** Antes esta linea era `os.makedirs(BASE_OUTPUT_DIR)` a nivel
+# de modulo, y eso es I/O al importar: la tercera vez que aparece el mismo patron
+# en este repo, despues del singleton de `storage_service` (F.13) y del
+# `init_ee()` fuera del try en `app.py`.
+#
+# Revento en el primer deploy a Railway. Con `BASE_OUTPUT_DIR=../outputs`
+# heredado del `.env` local, el contenedor intentaba crear `/outputs` —fuera de
+# `/app`— como usuario no-root:
+#
+#     PermissionError: [Errno 13] Permission denied: '../outputs'
+#
+# Y lo peor no es el error sino **donde ocurre**: `config` se importa antes que
+# `setup_logging()`, asi que el fallo sale como un traceback crudo, sin contexto
+# y sin el nombre de la variable. Un `import` no deberia poder matar el proceso.
+#
+# No se pierde nada al sacarlo: `utils_pkg.io.ensure_outputs_dir()` ya crea la
+# carpeta, y la llaman los tres sitios que escriben ahi. Era codigo duplicado que
+# ademas era el unico de los dos que podia tumbar el arranque.
 BASE_OUTPUT_DIR = os.getenv("BASE_OUTPUT_DIR", "./outputs")
-os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
 # Database configuration (GeeWorker's own PostgreSQL/TimescaleDB)
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -72,9 +90,10 @@ def tls_por_defecto(endpoint: str) -> bool:
     distintos: uno adivina bien, el otro atrapa la contradiccion.
     """
     host = (endpoint or "").split(":")[0].strip().lower()
-    if host in _HOSTS_SIN_TLS or host.endswith(".railway.internal"):
-        return False
-    return True
+    sirve_en_texto_plano = (
+        host in _HOSTS_SIN_TLS or host.endswith(".railway.internal")
+    )
+    return not sirve_en_texto_plano
 
 
 # TLS contra MinIO. El dominio publico de Railway va **sin puerto y con TLS**; el

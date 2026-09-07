@@ -633,6 +633,31 @@ Inngest.
 
 Arreglado, reproducido en local antes y después, y fijado por un test.
 
+**El segundo arranque falló por lo mismo, un nivel más abajo:**
+
+```
+PermissionError: [Errno 13] Permission denied: '../outputs'
+```
+
+`config.py` hacía `os.makedirs(BASE_OUTPUT_DIR)` **a nivel de módulo**. Con
+`BASE_OUTPUT_DIR=../outputs` heredado del `.env` local, el contenedor intentaba
+crear `/outputs` —fuera de `/app`— como usuario no-root.
+
+Y lo grave no es el error sino **dónde ocurre**: `config` se importa antes de
+`setup_logging()`, así que el fallo sale como un traceback crudo, sin contexto y
+sin nombrar la variable. **Un `import` no debería poder matar el proceso.**
+
+Es la **tercera vez** que el mismo patrón —I/O al importar— tumba algo acá: el
+singleton de `storage_service` (F.13), el `init_ee()` fuera del `try`, y esto.
+
+No se perdió nada al sacarlo: `utils_pkg.io.ensure_outputs_dir()` **ya** crea la
+carpeta y la llaman los tres sitios que escriben ahí. Era código duplicado, y de
+los dos el único que podía tumbar el arranque.
+
+⚠️ **Y en Railway hay que sacar `BASE_OUTPUT_DIR`**: el default `./outputs` con
+`WORKDIR=/app` da `/app/outputs`, que el Dockerfile crea y le da al usuario
+`worker`. El valor `../outputs` es del entorno local y no aplica al contenedor.
+
 ---
 
 ### H.6 — La secuencia de despliegue, en orden
