@@ -49,6 +49,23 @@ diccionario desde `config` y `os.environ` y manda las lineas al logger.
 
 import os
 
+# El dibujo se guarda como lista de lineas, no como un bloque con saltos: cada
+# linea sale en su propio registro de log (ver `registrar_arranque`), asi que
+# nunca hay un salto que el formateador JSON tenga que escapar.
+#
+# La primera linea llevaba dos espacios menos cuando se paso; se restauraron
+# para que la G quede alineada con la barra de la linea de abajo.
+ARTE = (
+    '  ___  ____  ____  _  _   __  ____  __ _  ____  ____ ',
+    ' / __)(  __)(  __)/ )( \\ /  \\(  _ \\(  / )(  __)(  _ \\',
+    '( (_ \\ ) _)  ) _) \\ /\\ /(  O ))   / )  (  ) _)  )   /',
+    ' \\___/(____)(____)(_/\\_) \\__/(__\\_)(__\\_)(____)(__\\_)',
+    ' ____  _  _  _     __   __    _  _  __               ',
+    '(  _ \\( \\/ )(_)   / _\\ (  )  / )( \\(  )              ',
+    ' ) _ ( )  /  _   /    \\/ (_/\\\\ \\/ / )(               ',
+    '(____/(__/  (_)  \\_/\\_/\\____/ \\__/ (__)              ',
+)
+
 # Valor de desarrollo de `INNGEST_EVENT_KEY`. Que la variable exista no alcanza:
 # `resolve_client_config` compara contra este string y, si coincide, no se lo
 # pasa al cliente. Ver `services/inngest_client.py`.
@@ -186,7 +203,7 @@ def reporte_de_arranque(entorno, es_produccion):
     criterio para lo mismo es exactamente el bug que `config.ENVIRONMENT`
     elimino.
     """
-    lineas = []
+    lineas = list(ARTE)
     modo = "PRODUCCION" if es_produccion else "DESARROLLO"
     crudo = entorno.get("ENVIRONMENT")
 

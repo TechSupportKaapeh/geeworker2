@@ -25,6 +25,7 @@ setup_logging()
 
 from config import IS_PRODUCTION
 from utils_pkg.arranque import registrar_arranque
+from utils_pkg.conexiones import registrar_conexiones
 
 import logging
 
@@ -82,6 +83,20 @@ def _startup():
                 "levantando; las funciones que dependan de esto van a fallar "
                 "de a una y las va a reintentar Inngest.", nombre, e,
             )
+
+    # Y recién ahora, si las conexiones se hicieron de verdad.
+    #
+    # Va **después** de los precalentamientos porque no los reemplaza: `init_db`
+    # crea `sentinel2_dates` y `init_ee` deja las credenciales listas. Corriendo
+    # después, el chequeo de `geodata` puede además confirmar que esa tabla
+    # quedó creada.
+    #
+    # Y hace falta porque el bucle de arriba **no puede distinguir** una
+    # dependencia que anda de una que no: `init_db()` atrapa su propia excepción
+    # y la loguea, así que este `try` nunca la ve y el precalentamiento termina
+    # sin quejarse aunque la base esté caída. Un arranque que no dice nada
+    # cuando algo está roto es peor que uno que falla.
+    registrar_conexiones(logger)
 
 
 @app.get("/health")
