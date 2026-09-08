@@ -71,10 +71,11 @@ def resolve_client_config(*, is_production, base_url, event_key, signing_key):
             problemas.append(
                 # Solo ASCII en los mensajes de log: los lee una consola de
                 # Railway, y un em-dash sale como '?' en una terminal cp1252.
-                "falta INNGEST_SIGNING_KEY. En modo cloud el SDK rechaza toda "
-                "peticion sin firma valida, asi que /api/inngest va a fallar en "
-                "cada invocacion. Falla cerrado, que es lo correcto, pero el "
-                "motivo solo se entiende leyendo este log"
+                "falta INNGEST_SIGNING_KEY. En modo cloud el SDK ni siquiera "
+                "monta /api/inngest: CommHandler.__init__ levanta "
+                "SigningKeyMissingError. app.py lo atrapa para que el worker "
+                "quede arriba y se pueda diagnosticar, pero la ruta no existe y "
+                "todo POST se va con 404"
             )
         if event_key and event_key != DEV_EVENT_KEY:
             kwargs["event_key"] = event_key
@@ -105,10 +106,17 @@ _kwargs, _problemas = resolve_client_config(
 for _problema in _problemas:
     # Se loguea y se sigue, no se levanta. Mismo criterio que `DECISIONS #16`:
     # el proceso tiene que poder arrancar y responder /health para que se pueda
-    # diagnosticar. La diferencia con `StorageService` —que si levanta— es que
-    # aca el fallo cerrado ya lo garantiza el SDK: en modo cloud sin firma
-    # valida rechaza la peticion. No hay ventana insegura que cerrar, solo un
-    # diagnostico que dar.
+    # diagnosticar.
+    #
+    # **Correccion del 2026-09-08.** Aca decia que no hacia falta levantar
+    # porque "el fallo cerrado ya lo garantiza el SDK: en modo cloud sin firma
+    # valida rechaza la peticion". Era falso, y costo un deploy: el SDK no
+    # rechaza peticiones, se niega a construirse
+    # (`comm_lib/handler.py:62`), y como `serve()` se llama a nivel de modulo
+    # eso mata el proceso durante el import. El razonamiento de no levantar
+    # seguia siendo el correcto; lo que estaba mal era suponer que la
+    # dependencia se comportaba igual. Quien garantiza el arranque ahora es el
+    # try/except de `app.py`, no una suposicion sobre el SDK.
     logger.error("Configuracion de Inngest: %s", _problema)
 
 inngest_client = inngest.Inngest(**_kwargs)
