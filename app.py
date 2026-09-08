@@ -23,6 +23,9 @@ from utils_pkg.logging_config import setup_logging
 
 setup_logging()
 
+from config import IS_PRODUCTION
+from utils_pkg.arranque import registrar_arranque
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -60,6 +63,13 @@ def _startup():
     requisito. Sin credenciales, cada invocación falla por separado y la
     reintenta Inngest, que es el comportamiento correcto.
     """
+    # El reporte va **antes** de los precalentamientos, no después. Si `init_ee`
+    # o `init_db` fallan, lo primero que uno quiere leer es qué variables tenía
+    # el proceso, y eso solo sirve si ya está impreso arriba del error. Es la
+    # lección de los tres deploys que se cayeron por configuración: el proceso
+    # sabía qué le faltaba y lo dijo tarde o no lo dijo.
+    registrar_arranque(logger, IS_PRODUCTION)
+
     for nombre, arranca in (("Google Earth Engine", init_ee),
                             # Crea `sentinel2_dates`, que es tabla del worker y
                             # EF Core no administra.
