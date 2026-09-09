@@ -59,8 +59,10 @@ termina, `/health` no responde.
 """
 
 import logging
+import os
 import socket
 import ssl
+import tempfile
 import time
 from urllib.parse import urlsplit
 
@@ -268,6 +270,55 @@ def verificar_gee(init_ee, round_trip):
                      _ms(inicio), "credenciales y round-trip")
 
 
+def verificar_outputs(base_output_dir):
+    """Crea la carpeta de trabajo y escribe un archivo de prueba.
+
+    **Por que existe.** Con `BASE_OUTPUT_DIR=../outputs` heredado del `.env`
+    local, el worker fallo en produccion con:
+
+        [Errno 13] Permission denied: '../outputs'
+
+    Y fallo **por job**, en el intento 1 de 4 de cada invocacion, no al
+    arrancar. El reporte de configuracion tenia el dato delante y no lo vio:
+    imprimia `BASE_OUTPUT_DIR definida ../outputs`, que no parece nada. Lo que
+    delata el problema es la ruta **resuelta**: desde `/app`, `../outputs` es
+    `/outputs`, fuera del arbol que el Dockerfile le dio al usuario `worker`.
+
+    Por eso este chequeo informa siempre la ruta absoluta. Una ruta relativa se
+    lee inofensiva; la absoluta muestra de inmediato si esta donde tiene que
+    estar.
+
+    Es el mismo caso que la contrasena: la variable estaba puesta y no servia.
+    Un reporte de configuracion dice que hay; solo escribir dice si funciona.
+    """
+    inicio = time.monotonic()
+    resuelta = os.path.abspath(base_output_dir or "")
+    prueba = "escritura real"
+    try:
+        os.makedirs(resuelta, exist_ok=True)
+    except OSError as e:
+        return Resultado(
+            "outputs", FALLA,
+            "no se puede crear %s (de BASE_OUTPUT_DIR=%s): %s"
+            % (resuelta, base_output_dir, e),
+            _ms(inicio), prueba)
+
+    # Crear la carpeta no alcanza: puede existir y no ser escribible.
+    try:
+        with tempfile.NamedTemporaryFile(dir=resuelta, prefix=".chequeo-",
+                                         suffix=".tmp", delete=True):
+            pass
+    except OSError as e:
+        return Resultado(
+            "outputs", FALLA,
+            "%s existe pero no se puede escribir: %s" % (resuelta, e),
+            _ms(inicio), prueba)
+
+    return Resultado("outputs", OK,
+                     "%s (de BASE_OUTPUT_DIR=%s)" % (resuelta, base_output_dir),
+                     _ms(inicio), prueba)
+
+
 def verificar_inngest(es_produccion, base_url, hay_signing_key):
     """En produccion, alcance del API de eventos. En desarrollo, del dev server.
 
@@ -329,12 +380,17 @@ def verificar_conexiones():
 
     try:
         from config import (
+            BASE_OUTPUT_DIR,
             INNGEST_BASE_URL,
             INNGEST_SIGNING_KEY,
             IS_PRODUCTION,
             MINIO_ENDPOINT,
             MINIO_SECURE,
         )
+        # Primero el disco: es el chequeo mas barato y el unico que no depende
+        # de la red, asi que si falla el resto del reporte se lee con la
+        # sospecha correcta encima.
+        resultados.append(verificar_outputs(BASE_OUTPUT_DIR))
         resultados.append(verificar_minio(MINIO_ENDPOINT, MINIO_SECURE))
     except Exception as e:  # noqa: BLE001
         resultados.append(Resultado("minio", FALLA, "no se pudo chequear: %s" % e))

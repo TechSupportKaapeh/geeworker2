@@ -315,3 +315,62 @@ def test_a_una_linea_no_pierde_informacion_util():
     r = Resultado("x", FALLA, "primera linea\nsegunda linea distinta")
     assert "primera linea" in r.detalle
     assert "segunda linea distinta" in r.detalle
+
+
+# --------------------------------------------------------------------------
+# outputs: la carpeta de trabajo
+# --------------------------------------------------------------------------
+
+def test_outputs_informa_la_ruta_resuelta_no_la_relativa(tmp_path):
+    # Esto es todo el punto del chequeo. `BASE_OUTPUT_DIR=../outputs` se lee
+    # inofensivo; resuelto muestra que apunta fuera de /app, que es lo que
+    # rompio en produccion con un Permission denied por cada job.
+    from utils_pkg.conexiones import verificar_outputs
+    destino = tmp_path / "salida"
+    r = verificar_outputs(str(destino))
+    assert r.estado == OK
+    assert str(destino) in r.detalle
+    assert "BASE_OUTPUT_DIR=" in r.detalle
+
+
+def test_outputs_crea_la_carpeta_si_no_existe(tmp_path):
+    from utils_pkg.conexiones import verificar_outputs
+    destino = tmp_path / "no" / "existe" / "todavia"
+    assert not destino.exists()
+    assert verificar_outputs(str(destino)).estado == OK
+    assert destino.is_dir()
+
+
+def test_outputs_sin_permiso_para_crear_es_falla(monkeypatch):
+    # El caso real de produccion: /outputs fuera del arbol del usuario worker.
+    from utils_pkg import conexiones
+
+    def denegado(*_a, **_k):
+        raise PermissionError(13, "Permission denied")
+    monkeypatch.setattr(conexiones.os, "makedirs", denegado)
+
+    r = conexiones.verificar_outputs("../outputs")
+    assert r.estado == FALLA
+    assert "no se puede crear" in r.detalle
+    # Tiene que nombrar la variable, para que se sepa donde ir a arreglarlo.
+    assert "BASE_OUTPUT_DIR=../outputs" in r.detalle
+
+
+def test_outputs_que_existe_pero_no_es_escribible_es_falla(monkeypatch, tmp_path):
+    # Crear la carpeta no alcanza: puede existir y estar montada de solo
+    # lectura, o pertenecer a otro usuario.
+    from utils_pkg import conexiones
+
+    def sin_escritura(*_a, **_k):
+        raise PermissionError(13, "Permission denied")
+    monkeypatch.setattr(conexiones.tempfile, "NamedTemporaryFile", sin_escritura)
+
+    r = conexiones.verificar_outputs(str(tmp_path))
+    assert r.estado == FALLA
+    assert "no se puede escribir" in r.detalle
+
+
+def test_outputs_no_deja_basura(tmp_path):
+    from utils_pkg.conexiones import verificar_outputs
+    verificar_outputs(str(tmp_path))
+    assert list(tmp_path.iterdir()) == []
