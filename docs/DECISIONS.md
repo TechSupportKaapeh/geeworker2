@@ -1027,10 +1027,22 @@ mes, y este código se borra (FASE M.6).
 
 ---
 
-## 31. El histórico es mensual y el compuesto lo arma GEE (2026-09-12) — propuesta
+## 31. El histórico es mensual y el compuesto lo arma GEE (2026-09-12)
 
-> **Estado: propuesta, a confirmar.** Reemplaza `#19` y `#20`. Diseño completo:
-> [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md).
+> **✅ Decidida por el usuario el 2026-09-12**: eligió la opción B, "GEE arma una
+> foto limpia por mes", contra la A, "una foto por pasada que se junta al mirar".
+> Reemplaza `#19` y la parte de MosaicJSON de `#20`. Diseño completo:
+> [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md). Backlog:
+> [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md).
+>
+> **Receta v1, también decidida:**
+> - índices NDVI (vegetación), EVI (vegetación densa), NDRE (clorofila) y NDMI
+>   (humedad);
+> - mediana, media, mín, máx, p10, p90 y desvío;
+> - cobertura mínima de 0,3;
+> - 24 meses de historia.
+>
+> Más índices después, una entrada de registro cada uno (M.9.3).
 
 **Decisión:** por cada entidad y cada mes calendario, GEE arma el compuesto:
 - cada pasada se enmascara por nubes y sombras;
@@ -1070,9 +1082,10 @@ rinde:
 
 ---
 
-## 32. La capa de satélite es un pipeline: receta, registros, etapas y un solo borde (2026-09-12) — propuesta
+## 32. La capa de satélite es un pipeline: receta, registros, etapas y un solo borde (2026-09-12)
 
-> **Estado: propuesta, a confirmar.** Diseño, ejemplos y estructura de carpetas:
+> **Estado: aceptada como base del plan.** El usuario pidió armar los sprints
+> sobre este diseño. Diseño, ejemplos y estructura de carpetas:
 > [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md) §3 a §5.
 
 **Decisión:** el código que habla con GEE se organiza en cuatro piezas:
@@ -1105,3 +1118,43 @@ orquesta, reintenta y limita la concurrencia, y la bitácora va encima (`#29`).
 - Solo el núcleo puro (receta, periodos y registros) se prueba con unit tests.
   Las etapas se verifican contra GEE real con un script (`WORKFLOW` §6: "probar
   contra lo real").
+- **Las fórmulas de los índices se escriben como texto**, sobre bandas con nombre
+  y en reflectancia 0–1. GEE las evalúa con `Image.expression`, y los tests con
+  un evaluador de Python contra valores de referencia. Así una fórmula se prueba
+  sin GEE.
+
+---
+
+## 33. Se reescribe la capa de satélite, no el servicio (2026-09-12) — propuesta, recomendada
+
+> **Estado: propuesta y recomendada**, a confirmar al empezar M.1. El usuario
+> preguntó "¿reescribimos el worker desde el inicio, o al lado del viejo?".
+
+**Decisión:** el código de GEE se escribe **de cero**, en un paquete nuevo
+(`pipeline/`), dentro del mismo servicio y del mismo repo. Los handlers se pasan
+de a uno al pipeline nuevo, y lo viejo se borra al final (M.6). Es el patrón
+*strangler fig*: lo nuevo crece alrededor de lo viejo hasta reemplazarlo.
+
+**Lo que se conserva, porque es lo que está bien y costó más:**
+
+| Pieza | Por qué no se toca |
+|---|---|
+| El cliente de Inngest y la verificación de firma | `#25`, verificado contra Inngest real |
+| El storage: región, permisos, TLS, falla cerrada | `#21` y `#24`, verificado contra el MinIO real con `check_write_path.py` |
+| Steps con referencias durables | `#26`: el reintento envenenado ya se pagó una vez |
+| La bitácora (`avance_job.py`) | `#29`, verificada en la primera corrida real |
+| Las escrituras idempotentes, el arranque y el logging | `#27` y F.18 |
+| El Dockerfile, el `.venv` pinneado y los 203 tests | `#22` |
+
+**Por qué no reescribir todo:**
+1. La plomería es la parte con más arreglos probados contra la realidad. Reescribirla
+   es volver a pagar esos bugs.
+2. Un reemplazo de una sola vez, sin CI y sin staging, es la jugada más riesgosa
+   posible: todo o nada.
+3. **La parte sucia sí se escribe de cero**, no se parchea. `pipeline/` es código
+   nuevo con el diseño limpio. Se obtiene lo bueno de reescribir sin el riesgo.
+
+**Por qué no al lado indefinidamente:** convivir es un estado de transición, no
+un destino. M.6 tiene criterio de salida: el worker termina con **menos** líneas
+que al empezar. Si después los handlers todavía molestan, rehacerlos es barato,
+porque quedan finos.

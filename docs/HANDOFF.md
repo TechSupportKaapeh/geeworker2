@@ -12,8 +12,11 @@
 > - La capa de satélite se rehace como un pipeline: receta, registros de índices y
 >   estadísticas, etapas y un solo borde con GEE.
 >
-> Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md). Plan: `PLAN.md`
-> FASE M. `DECISIONS #31` y `#32` están **propuestas** y reemplazan a #19 y #20.
+> Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md). **Tablero:
+> [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md).**
+> - `DECISIONS #31`: ✅ decidida (opción B), reemplaza a #19 y #20.
+> - `#32`: aceptada.
+> - `#33`: recomendada. Se reescribe la capa de satélite, no el servicio.
 >
 > **La primera corrida real falló** con `CardinalityViolation` en el mes 1 de la
 > serie: dos imágenes del mismo día en un lote. Está arreglado (`DECISIONS #30`).

@@ -102,3 +102,23 @@ Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md). Plan:
   que se cree lo prueba.
 - **No se empezó el pipeline**: es un diseño a confirmar.
 - **CI sigue sin existir**: es M.0, y está antes que el resto a propósito.
+
+## Al cierre: decidido y planificado
+
+- **`#31` decidida:** el usuario eligió la opción B, "GEE arma una foto limpia por
+  mes", contra la A, "una foto por pasada que se junta al mirar".
+- **Receta v1:** NDVI (vegetación), EVI (vegetación densa), NDRE (clorofila) y NDMI
+  (humedad), cobertura mínima de 0,3 y 24 meses. "Y otras" llegan después, una
+  entrada de registro cada una (M.9.3).
+- **`#33` recomendada.** El usuario preguntó si reescribir el worker desde cero o
+  al lado del viejo. La respuesta: se reescribe **de cero la capa de satélite**
+  (`pipeline/`), dentro del mismo servicio. Se conserva la plomería probada contra
+  la realidad (#21 a #29), y lo viejo se borra en M.6.
+- **Un bug más, al revisar las fórmulas: EVI y SAVI dan valores equivocados hoy.**
+  Usan la reflectancia ×10000 de S2 SR, y sus constantes (`+1`, `L=0,5`) quedan
+  despreciables. En el pipeline, la fuente divide por 10.000
+  (`ARQUITECTURA_PIPELINE.md` §8).
+- **El backlog por sprints:** [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). Son 10
+  sprints, de M.0 a M.9, unas 16 sesiones. Cada tarea tiene tamaño, criterio de
+  aceptación y estado, con las tareas del equipo (👥) y las compuertas (🚦)
+  marcadas.

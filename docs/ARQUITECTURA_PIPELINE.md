@@ -1,9 +1,12 @@
 # Arquitectura del pipeline satelital
 
-> **Propuesta del 2026-09-12.** Decisiones: `DECISIONS #31` (el histórico es
-> mensual y el compuesto lo arma GEE) y `#32` (esta arquitectura), las dos a
-> confirmar. Del lado de Geocore: `DECISIONS #22` (métrica del rancho) y `#23`
-> (el cierre de mes). Plan de trabajo: [`PLAN.md`](PLAN.md) FASE M.
+> **2026-09-12.** Decisiones:
+> - `DECISIONS #31`: el histórico es mensual y el compuesto lo arma GEE (✅ decidida);
+> - `#32`: esta arquitectura (aceptada como base del plan);
+> - `#33`: se reescribe la capa de satélite, no el servicio.
+>
+> Del lado de Geocore: `DECISIONS #22` (métrica del rancho) y `#23` (el cierre de
+> mes). Backlog por sprints: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md).
 
 ## 1. Qué tiene que resolver
 
@@ -175,17 +178,24 @@ Geocore la devuelve tal cual, y el front la muestra cuando la conoce.
 ### …un índice
 
 ```python
-# pipeline/indices.py
+# pipeline/indices.py — las fórmulas son texto: GEE las evalúa con Image.expression,
+# y los tests con un evaluador de Python contra valores de referencia.
+BANDAS = {"BLUE": "B2", "RED": "B4", "RE1": "B5", "NIR": "B8", "SWIR1": "B11"}  # reflectancia 0–1
+
 INDICES = registro(
-    Indice("ndvi", dif_normalizada("B8", "B4"),  rango=(-1, 1), descripcion="Vigor de la vegetación"),
-    Indice("ndre", dif_normalizada("B8", "B5"),  rango=(-1, 1), descripcion="Clorofila; no se satura en cultivos densos"),
-    Indice("ndmi", dif_normalizada("B8", "B11"), rango=(-1, 1), descripcion="Agua en la hoja"),
+    Indice("ndvi", "(NIR - RED) / (NIR + RED)",                          rango=(-1, 1), tema="vegetación"),
+    Indice("evi",  "2.5 * (NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1)",  rango=(-1, 1), tema="vegetación densa"),
+    Indice("ndre", "(NIR - RE1) / (NIR + RE1)",                          rango=(-1, 1), tema="clorofila"),
+    Indice("ndmi", "(NIR - SWIR1) / (NIR + SWIR1)",                      rango=(-1, 1), tema="humedad"),
 )
 ```
 
-Una entrada y un test. El compuesto, las estadísticas, el mapa y la escala de
-color lo toman del registro. B5 y B11 son bandas de 20 m que se remuestrean a
-10 m: es lo habitual, pero conviene saberlo.
+Una entrada y un test: la misma fórmula, evaluada en Python contra un valor de
+referencia. El compuesto, las estadísticas, el mapa y la escala de color la toman
+del registro.
+
+B5 y B11 son bandas de 20 m que se remuestrean a 10 m. Es lo habitual, pero
+conviene saberlo.
 
 ### …un análisis sobre la serie
 
@@ -272,7 +282,13 @@ Hay que validarlos con datos en M.2, lado a lado con lo de hoy.
    - Si más adelante se usan reflectancias sueltas, se implementa bien y se valida.
 5. **Una sola escala, 10 m**, para el compuesto, el mapa y las estadísticas. La
    serie de hoy reduce a 60 m.
-6. **Una sola fórmula por índice.**
+6. **Una sola fórmula por índice, sobre reflectancia 0–1.** Hoy **EVI y SAVI dan
+   valores equivocados**. S2 SR guarda la reflectancia multiplicada por 10.000, y
+   las constantes de esas fórmulas (el `+ 1` de EVI y el `L = 0,5` de SAVI) están
+   pensadas para reflectancia de 0 a 1. Con bandas de miles quedan despreciables:
+   el SAVI de hoy es, en la práctica, 1,5 × NDVI. Las diferencias normalizadas no
+   lo sufren, porque el cociente cancela la escala. En el pipeline, la fuente
+   divide por 10.000 antes de cualquier fórmula.
 7. La máscara s2cloudless con sombras (`max_prob=45` y 50 m de dilatación) se
    queda igual, pero sus parámetros pasan a la receta.
 
@@ -302,14 +318,16 @@ tenants (`api-frontend.html`), así que antes hay que confirmar que nadie los us
 
 ## 10. Riesgos y lo que falta decidir
 
-- **Confirmar `#31`.** Reemplaza `#19` y `#20`. Lo que se pierde es poder elegir
-  una ventana arbitraria sin volver a GEE.
-- **La receta v1.** Propuesta:
-  - índices NDVI, NDRE y NDMI: cuestan casi lo mismo que uno, porque salen de la
-    misma colección;
+- ✅ **`#31` confirmada** (opción B). Lo que se pierde es poder elegir una ventana
+  arbitraria sin volver a GEE.
+- ✅ **La receta v1, decidida:**
+  - índices NDVI, EVI, NDRE y NDMI: cuestan casi lo mismo que uno, porque salen de
+    la misma colección;
   - mapa solo de NDVI;
   - cobertura mínima de 0,3;
   - 24 meses de historia.
+- **La forma de la key con el tenant adentro**, antes de escribir el primer COG
+  mensual (M.4.1): es lo que permite cerrar A01 sin mover objetos después.
 - **El mes en curso.** ¿Se muestra como provisorio? En la v1, no: aparece cuando
   cierra.
 - **La cuota de GEE.** En M.2 se mide cuánto tarda el mes de una parcela y el COG

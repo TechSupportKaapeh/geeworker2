@@ -36,6 +36,11 @@ y [`SESSION_2026-08-26_primer_tile_real.md`](SESSION_2026-08-26_primer_tile_real
 > Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md). Lo de Geocore:
 > sus `DECISIONS #22` y `#23`.
 >
+> **El backlog detallado, tarea por tarea, con criterios de aceptación y estado,
+> está en [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md).** La tabla de abajo es el
+> resumen. Desde el 2026-09-12 hay además un sprint de seguridad (M.8), y el futuro
+> pasa a M.9.
+>
 > **Cada incremento pasa por las seis etapas de [`WORKFLOW.md`](WORKFLOW.md)**
 > (PLAN → BUILD → EXPLAIN → AUDIT → DOC → VERIFY), y no se empieza uno sin cerrar
 > el anterior. **El código nuevo se escribe al lado del viejo**, los handlers se
@@ -52,7 +57,8 @@ y [`SESSION_2026-08-26_primer_tile_real.md`](SESSION_2026-08-26_primer_tile_real
 | **M.5** | El cierre de mes: reconciliador en Geocore y handlers `*.mes.requested` con límite de concurrencia. Reproceso de las parcelas que ya existen | Geocore, worker | el mes se procesa solo; reiniciar Geocore no lo pierde ni lo duplica |
 | **M.6** | Borrar lo viejo (`ARQUITECTURA` §9) y decidir los handlers a demanda | worker, Geocore | ruff sin hallazgos nuevos; el worker con menos líneas que al empezar |
 | **M.7** | Panel: la serie mensual (mediana con banda p10–p90 y cobertura), el mapa del rancho por mes y el editor de geometría | panel | build y prueba en `vite dev` |
-| **M.8** | Futuro: el cultivo en la parcela y las métricas por cultivo; analítica de series (anomalía, tendencia); Sentinel-1 para los meses de lluvia | todos | — |
+| **M.8** | Seguridad: token de mapa con tenant (A01), tests de la API, rate limiting, registro de auditoría | Geocore, tileserver | un token de otro tenant da 403 |
+| **M.9** | Futuro: el cultivo en la parcela y las métricas por cultivo; analítica de series (anomalía, tendencia); más índices; Sentinel-1 para los meses de lluvia | todos | — |
 
 **Qué pasa con las fases de abajo:**
 - **C.1 a C.6** (por pasada y MosaicJSON) caducan si se confirma `#31`.
