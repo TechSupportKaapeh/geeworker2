@@ -5,6 +5,21 @@
 >
 > Qué sigue en orden de ejecución: [`PLAN.md`](PLAN.md) · Decisiones ya tomadas:
 > [`DECISIONS.md`](DECISIONS.md) · Estado del repo: [`HANDOFF.md`](HANDOFF.md)
+>
+> **Actualización del 2026-09-12: el pipeline mensual cierra buena parte de este
+> documento.** Ver [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md). Si se
+> confirma `DECISIONS #31`:
+> - **Caducan** A-1, A-2 y C-1: no hay MosaicJSON.
+> - **Se resuelven** A-4 (`sentinel2_dates` se borra), B-3 (mensual), B-5 (el mes
+>   UTC coincide con el local en México) y D-1 (la receta queda en cada fila).
+> - **B-1 se cierra por construcción:** el número y el mapa salen de la misma imagen.
+> - **A-6 y G.2 están decididas:** la métrica del rancho es el promedio ponderado
+>   por área de las parcelas, y la calcula Geocore (`DECISIONS #22` de Geocore).
+>   `rancho_measurements` no hace falta.
+> - **B-4 era peor de lo que dice:** el "rescate al 90 %" **no hace nada**, porque
+>   `get_sentinel2_collection` recibe `cloud_pct` y no lo usa.
+>
+> Las entradas de abajo quedan como registro de cómo se llegó.
 
 Una pregunta sale de acá cuando se decide, y entra a `DECISIONS.md` con su
 número. Lo que se decide y no se registra vuelve a discutirse en tres semanas.

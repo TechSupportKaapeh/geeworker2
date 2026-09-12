@@ -2,9 +2,21 @@
 
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
-> Última revisión: **2026-09-12**. Crónica:
-> [`SESSION_2026-09-12_la_bitacora_del_worker.md`](SESSION_2026-09-12_la_bitacora_del_worker.md).
+> Última revisión: **2026-09-12**, dos sesiones. Crónicas:
+> [`SESSION_2026-09-12_la_bitacora_del_worker.md`](SESSION_2026-09-12_la_bitacora_del_worker.md)
+> y [`SESSION_2026-09-12_primera_corrida_y_el_pipeline_mensual.md`](SESSION_2026-09-12_primera_corrida_y_el_pipeline_mensual.md).
 > Para retomar: `geocore/docs/PROXIMA_SESION.md`.
+>
+> **🎯 Hacia dónde va (2026-09-12, tarde).**
+> - El histórico pasa a ser **mensual**, con el compuesto armado en GEE.
+> - La capa de satélite se rehace como un pipeline: receta, registros de índices y
+>   estadísticas, etapas y un solo borde con GEE.
+>
+> Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md). Plan: `PLAN.md`
+> FASE M. `DECISIONS #31` y `#32` están **propuestas** y reemplazan a #19 y #20.
+>
+> **La primera corrida real falló** con `CardinalityViolation` en el mes 1 de la
+> serie: dos imágenes del mismo día en un lote. Está arreglado (`DECISIONS #30`).
 >
 > **Novedades del 2026-09-12:** cada job escribe su bitácora
 > (`processing_job_events`, `DECISIONS #29`) y su `progress`. El histórico de una
@@ -63,7 +75,8 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Despliegue del worker | 🟡 `Dockerfile` escrito el 2026-09-07, **sin construir** (FASE H) |
 | TLS contra MinIO | ✅ 2026-09-07 — el default se deduce del host; lo desconocido asume TLS (`W-2`) |
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
-| **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — probada con un step falso que imita al SDK; falta la migración en prod y una corrida real (`DECISIONS #29`) |
+| **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
+| **Pipeline mensual** | 🟡 2026-09-12 — diseñado ([`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md)), sin empezar. `PLAN.md` FASE M |
 | Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **201 tests con `pytest tests`**. La raíz también junta los scripts de `scratch/`, que piden GEE |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 
@@ -210,9 +223,19 @@ Supabase lo ofrece ya convertido en la pestaña `.NET` del diálogo de conexión
 - **`compute_timeseries` (a demanda) conserva el tope de 30 imágenes**, ordenadas
   de la más vieja: un rango largo pierde el final. `process_parcela` ya no lo
   sufre porque va mes por mes.
-- **No está verificado qué vale `ctx.attempt` en el request que recibe un
-  `StepError`.** Ya no decide `failed` (`es_definitivo`), pero sí el `attempt` de
-  la línea `fin` de la bitácora.
+- ✅ **Verificado en la primera corrida real: `ctx.attempt` vale 0 en el request
+  que recibe un `StepError`.** La línea `fin` queda con `attempt` 1 aunque el step
+  haya fallado cuatro veces. El panel ya no la usa para separar intentos.
+- **La capa de satélite tiene deuda que el pipeline mensual reemplaza** en vez de
+  arreglar:
+  - fórmulas duplicadas;
+  - `cloud_pct` que no se usa;
+  - una SCS+C incompleta;
+  - stats y export a CSV con el rango vacío;
+  - `try/except` que no pueden disparar.
+
+  Detalle en la sesión del 2026-09-12 (tarde) §2, y en `ARQUITECTURA_PIPELINE.md`
+  §8 y §9.
 
 **Cerrado el 2026-08-30** — se deja el registro porque explica qué mirar si algo
 de esto reaparece:
@@ -350,12 +373,11 @@ Además de las de `PREGUNTAS_ABIERTAS`, dos que salieron de mirar el flujo real:
   `coordinates` que ya trae `ParcelaDto`. Las métricas por parcela son números
   de un `reduceRegion`. **Conclusión: no hacen falta COG por parcela** — el
   diseño barato no es recortar el rancho, es no producir los N ráster.
-- **La contención de las parcelas dentro del rancho la valida Geocore** — dicho
-  por el equipo el 2026-09-04, **no verificado en el código de Geocore desde
-  este repo**. Importa porque la UX pinta el ráster del rancho y superpone los
-  polígonos: si una parcela se saliera del polígono del rancho, tendría un
-  agujero en el mapa sin que nada falle. Vale confirmarlo antes de construir la
-  vista.
+- ✅ **La contención de las parcelas dentro del rancho.** El 2026-09-12 se
+  verificó que Geocore **no** la validaba, aunque se había dicho que sí. Desde ese
+  día la valida al crear, al editar la geometría y en el import de KML, con una
+  tolerancia del 1 % de la superficie (Geocore `DECISIONS #21`). Las parcelas
+  creadas antes no se revisaron.
 - 🔴 **A-6 — esa UX necesita métricas de rancho, y no hay dónde guardarlas.**
   `measurements` es `PK (parcela_id, indice, fecha)`, sin `rancho_id`, y
   `process_rancho` **no escribe ninguna medición**. Hay que elegir entre pedir

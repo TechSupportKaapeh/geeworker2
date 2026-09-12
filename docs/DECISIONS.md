@@ -234,6 +234,9 @@ Detalles que importan de esa implementación:
 
 ## 19. Se guarda por pasada, no por composite (2026-08-21)
 
+> ⚠️ **2026-09-12: propuesta para reemplazarla por `#31`**, el histórico mensual
+> con el compuesto armado en GEE. Sigue vigente hasta que se confirme.
+
 **Decisión:** el worker descarga y guarda **un COG por pasada de satélite** (con
 las correcciones ya aplicadas en GEE). Los composites mensual, semanal o de
 cualquier otra ventana **no se guardan**: se derivan al momento de servir.
@@ -286,6 +289,9 @@ crudo sino el mismo índice antes de convertirse a COG, nunca se registró en
 ---
 
 ## 20. Composites con MosaicJSON, y campos con forma de STAC (2026-08-21)
+
+> ⚠️ **2026-09-12: la parte de MosaicJSON caduca si se confirma `#31`.** La
+> convención STAC para los campos de `layers` sigue en pie.
 
 **Decisión:** los composites se arman con **MosaicJSON** y los compone
 `rio-tiler` al servir el tile, con selección de píxel por mediana. No se escribe
@@ -997,3 +1003,105 @@ El `except Exception` del wrapper nunca los vio.
   bitácora se pausa 10 minutos en vez de loguear el mismo error cada vez.
 - Los ids de step nuevos (`-1…-8`, `-1…-12`) hacen que un run en vuelo durante
   un deploy rehaga esas etapas. Es idempotente.
+
+---
+
+## 30. Una medición por día: las imágenes del mismo día se promedian (2026-09-12)
+
+**Decisión:** `get_sentinel2_time_series` devuelve un punto por día. Si dos
+imágenes comparten fecha, se promedian (`una_por_dia`). Además
+`insert_measurements` nunca manda dos filas con la misma PK en un lote: si llegan,
+queda la última y se loguea.
+
+**Por qué:** la primera corrida real del histórico falló en el mes 1 de la serie
+con `CardinalityViolation`. Una parcela en el borde de dos tiles MGRS recibe dos
+imágenes de la misma pasada, con la misma fecha, y Postgres rechaza un
+`INSERT … ON CONFLICT DO UPDATE` que toque dos veces la misma fila. De a una fila,
+la segunda pisaba a la primera en silencio. En lote (E.7), el lote entero se cae.
+
+**Costo aceptado:** es un promedio simple, que no pondera por cuánta superficie
+cubre cada tile.
+
+**Transitoria:** con `#31` el compuesto mensual ya junta todas las pasadas del
+mes, y este código se borra (FASE M.6).
+
+---
+
+## 31. El histórico es mensual y el compuesto lo arma GEE (2026-09-12) — propuesta
+
+> **Estado: propuesta, a confirmar.** Reemplaza `#19` y `#20`. Diseño completo:
+> [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md).
+
+**Decisión:** por cada entidad y cada mes calendario, GEE arma el compuesto:
+- cada pasada se enmascara por nubes y sombras;
+- a cada una se le calcula el índice;
+- se toma la mediana por píxel.
+
+Del compuesto salen las estadísticas de la parcela (números, sin descarga) y el
+COG del rancho (una descarga por mes). No se guardan pasadas sueltas ni se usa
+MosaicJSON.
+
+**Por qué.** La necesidad la definió el usuario el 2026-09-12:
+- 2 años de historia al dar de alta;
+- ventana **mensual** con mediana, para reducir nulos por nubes;
+- datos nuevos todos los meses;
+- series para análisis estadístico y un mapa por mes.
+
+`#19` guardaba cada pasada para poder elegir **cualquier** ventana sin volver a
+GEE. Con la ventana fija en un mes, esa libertad cuesta mucho más de lo que
+rinde:
+
+| | Por pasada + MosaicJSON (#19/#20) | Compuesto mensual |
+|---|---|---|
+| Descargas por rancho, 2 años | ~146, muchas casi vacías por nubes | 24 |
+| Mapa de un mes | TiTiler abre 3 a 6 COG por tile | un COG ya compuesto |
+| ¿El número coincide con el mapa? | no del todo (B-1: el orden de las operaciones cambia el resultado) | sí: salen de la misma imagen |
+| Piezas extra | MosaicJSON, con A-1, A-2 y C-1 abiertas | ninguna |
+
+**Consecuencias:**
+- Cambiar a otra cadencia, como la semanal, obliga a volver a GEE. Es
+  reprocesable, porque GEE es la fuente de verdad.
+- `measurements` pasa a una fila por parcela, índice y mes. Las filas por pasada
+  de hoy son de prueba y se borran.
+- Caducan A-1, A-2, C-1 y FASE C.1–C.6. B-1 queda cerrada por construcción y B-3
+  decidida.
+- El tope de `getDownloadURL` (~48 MB) alcanza para ranchos de hasta unas
+  120.000 ha a 10 m.
+
+---
+
+## 32. La capa de satélite es un pipeline: receta, registros, etapas y un solo borde (2026-09-12) — propuesta
+
+> **Estado: propuesta, a confirmar.** Diseño, ejemplos y estructura de carpetas:
+> [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md) §3 a §5.
+
+**Decisión:** el código que habla con GEE se organiza en cuatro piezas:
+1. **Etapas** que arman expresiones: fuente, nubes, compuesto y reducción.
+2. **Registros** de índices y de estadísticas: datos, no `if/elif`.
+3. Una **receta versionada** con todos los parámetros que cambian un número.
+4. **Un solo borde**, `pipeline/ejecucion.py`, que es el único lugar que llama a
+   `getInfo()` y a `getDownloadURL()`.
+
+Los handlers de Inngest solo ordenan los steps.
+
+**Por qué:**
+- Hoy cada fórmula está escrita dos veces, y distinta.
+- Hay `try/except` alrededor de expresiones de GEE que nunca pueden fallar ahí,
+  porque GEE es perezoso y el error aparece en `getInfo()`.
+- Hay parámetros que se reciben y no se usan (`cloud_pct`).
+- Los handlers mezclan la orquestación con el cálculo.
+
+Sumar un índice o una estadística toca hoy tres o cuatro archivos. Con los
+registros es una entrada.
+
+**Descartado:** un framework de pipelines (Kedro, Dagster, Airflow). Inngest ya
+orquesta, reintenta y limita la concurrencia, y la bitácora va encima (`#29`).
+
+**Consecuencias:**
+- Las estadísticas se guardan en `jsonb`: agregar una no pide migración. Así lo
+  pidió el usuario ("que sean modificables").
+- Cada fila registra su receta (D-1). Un test fija la receta vigente para que
+  nadie la cambie sin subir la versión.
+- Solo el núcleo puro (receta, periodos y registros) se prueba con unit tests.
+  Las etapas se verifican contra GEE real con un script (`WORKFLOW` §6: "probar
+  contra lo real").

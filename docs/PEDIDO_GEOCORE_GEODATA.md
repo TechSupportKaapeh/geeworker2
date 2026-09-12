@@ -3,6 +3,13 @@
 > Redactado el **2026-09-07** desde el repo del worker (`geework 2.0`).
 > Es el `PLAN.md` **G.1** del worker, escrito para que lo ejecute quien trabaja
 > Geocore. Contexto de producto: [`PLAN.md`](PLAN.md) FASE G.
+>
+> ⚠️ **2026-09-12: reemplazado por [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md)
+> §6 (FASE M.3).** Qué queda de este pedido:
+> - El **punto 1 caduca**: la métrica del rancho se deriva de las parcelas.
+> - Los **puntos 3 y 4** se absorben: estadísticas en `jsonb`, cobertura y receta.
+> - El **punto 0** sigue valiendo, y ya se desplegó el 2026-09-11.
+> - El **2b** (lista de ids) sigue valiendo.
 
 ## Por qué esto lo tiene que hacer Geocore
 

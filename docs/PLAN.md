@@ -1,6 +1,6 @@
 # PLAN.md — Qué sigue, en orden
 
-> Documento para **retomar en frío**. Última actualización: **2026-09-07**.
+> Documento para **retomar en frío**. Última actualización: **2026-09-12**.
 > Estado del repo: [`HANDOFF.md`](HANDOFF.md) · Cómo funciona:
 > [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md) · Conceptos:
 > [`GUIA_COG_STAC_MOSAICJSON.md`](GUIA_COG_STAC_MOSAICJSON.md)
@@ -12,8 +12,9 @@
 Si venís de cero, leé en este orden y te alcanza:
 
 1. `HANDOFF.md` §1 y §2 — qué es esto y qué está roto
-2. `DECISIONS.md` #19 y #20 — hacia dónde va la arquitectura
-3. Este archivo, desde la fase que corresponda
+2. [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md) — hacia dónde va
+   (`DECISIONS #31` y `#32`, que reemplazan a #19 y #20)
+3. Este archivo, desde la **FASE M**
 
 Lo que falta decidir, cada cosa como tarea:
 [`PREGUNTAS_ABIERTAS.md`](PREGUNTAS_ABIERTAS.md). Cómo se trabaja cada
@@ -30,11 +31,44 @@ y [`SESSION_2026-08-26_primer_tile_real.md`](SESSION_2026-08-26_primer_tile_real
 
 ---
 
+## FASE M — El pipeline mensual 🎯 lo que sigue (2026-09-12)
+
+> Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md). Lo de Geocore:
+> sus `DECISIONS #22` y `#23`.
+>
+> **Cada incremento pasa por las seis etapas de [`WORKFLOW.md`](WORKFLOW.md)**
+> (PLAN → BUILD → EXPLAIN → AUDIT → DOC → VERIFY), y no se empieza uno sin cerrar
+> el anterior. **El código nuevo se escribe al lado del viejo**, los handlers se
+> pasan de a uno, y lo viejo se borra al final (M.6). Nunca hay un momento con las
+> dos mitades rotas.
+
+| | Qué | Repo | Termina cuando |
+|---|---|---|---|
+| **M.0** | Red de seguridad: CI con tests, lint y auditoría de dependencias; `main` protegida; Railway espera el check | worker, Geocore, panel | un PR con un test rojo no se puede mergear |
+| **M.1** | Núcleo sin GEE: `receta`, `periodos` y los registros de índices y estadísticas, con tests | worker | tests verdes; cambiar un parámetro sin subir la versión rompe un test |
+| **M.2** | Etapas y borde: fuente, nubes, compuesto, reducción y `ejecucion.py`. Además `scripts/check_pipeline_real.py` contra GEE real: 3 parcelas × 3 meses, lado a lado con lo de hoy | worker | números y tiempos por mes anotados en la sesión |
+| **M.3** | Migración en Geocore (`ARQUITECTURA` §6). `GET /api/measurements` devuelve estadísticas y cobertura. Endpoint de la métrica de rancho ponderada | Geocore | `dotnet test`; la migración la aplica el equipo |
+| **M.4** | Las altas sobre el pipeline: `process_parcela` (24 meses) y `process_rancho` (24 COG). Se borran las filas por pasada de prueba | worker | una parcela y un rancho reales de punta a punta, vistos en Procesos |
+| **M.5** | El cierre de mes: reconciliador en Geocore y handlers `*.mes.requested` con límite de concurrencia. Reproceso de las parcelas que ya existen | Geocore, worker | el mes se procesa solo; reiniciar Geocore no lo pierde ni lo duplica |
+| **M.6** | Borrar lo viejo (`ARQUITECTURA` §9) y decidir los handlers a demanda | worker, Geocore | ruff sin hallazgos nuevos; el worker con menos líneas que al empezar |
+| **M.7** | Panel: la serie mensual (mediana con banda p10–p90 y cobertura), el mapa del rancho por mes y el editor de geometría | panel | build y prueba en `vite dev` |
+| **M.8** | Futuro: el cultivo en la parcela y las métricas por cultivo; analítica de series (anomalía, tendencia); Sentinel-1 para los meses de lluvia | todos | — |
+
+**Qué pasa con las fases de abajo:**
+- **C.1 a C.6** (por pasada y MosaicJSON) caducan si se confirma `#31`.
+- **G.1** se rehace como M.3, sin `rancho_measurements`.
+- **G.2** está decidida: el promedio ponderado por área de las parcelas (Geocore
+  `#22`).
+- **G.3** se cierra por construcción.
+- **G.4** caduca: la métrica del rancho la calcula Geocore.
+
+---
+
 ## Arrancar en frío: los cuatro comandos
 
 ```powershell
 cd "C:\Users\aayal\Downloads\geework 2.0"
-.venv\Scripts\python.exe -m pytest tests/ -q                 # 72 tests, ~6 s
+.venv\Scripts\python.exe -m pytest tests -q                  # 203 tests, ~35 s
 .venv\Scripts\python.exe -m ruff check .                     # lint
 .venv\Scripts\python.exe -m pip_audit -r requirements.txt    # CVEs
 .venv\Scripts\python.exe scripts\check_minio_region.py       # los 3 en OK
