@@ -1125,10 +1125,12 @@ orquesta, reintenta y limita la concurrencia, y la bitácora va encima (`#29`).
 
 ---
 
-## 33. Se reescribe la capa de satélite, no el servicio (2026-09-12) — propuesta, recomendada
+## 33. Se reescribe la capa de satélite, no el servicio (2026-09-12)
 
-> **Estado: propuesta y recomendada**, a confirmar al empezar M.1. El usuario
-> preguntó "¿reescribimos el worker desde el inicio, o al lado del viejo?".
+> **✅ Confirmada por el usuario el 2026-09-12:** "tal cual como lo decís,
+> reescribí la parte del satélite". Había preguntado "¿reescribimos el worker
+> desde el inicio, o al lado del viejo?". La reescritura arranca en M.1, después
+> del CI (M.0).
 
 **Decisión:** el código de GEE se escribe **de cero**, en un paquete nuevo
 (`pipeline/`), dentro del mismo servicio y del mismo repo. Los handlers se pasan

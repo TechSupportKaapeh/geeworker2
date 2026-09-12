@@ -1,0 +1,488 @@
+<title>Tablero del pipeline mensual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #F1F4F2;
+    --surface: #FFFFFF;
+    --ink: #17201C;
+    --muted: #5A6760;
+    --line: #D5DDD8;
+    --line-strong: #B7C3BD;
+    --accent: #1B6A55;
+    --accent-soft: #DFEDE7;
+    --ok: #2B7748;
+    --ok-soft: #E0F0E5;
+    --run: #9C6210;
+    --run-soft: #F6EAD6;
+    --stop: #B42318;
+    --stop-soft: #FAE3DF;
+    --team: #4A4E8E;
+    --team-soft: #E5E6F3;
+    --gate: #8A5A00;
+    --gate-soft: #F4E9CF;
+    --ndvi: linear-gradient(90deg, #8c2d04 0%, #feb24c 30%, #ffffbf 50%, #74c476 75%, #006837 100%);
+    --display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1513;
+      --surface: #161D1A;
+      --ink: #E2E9E5;
+      --muted: #94A29B;
+      --line: #25302B;
+      --line-strong: #36423C;
+      --accent: #5EBE9F;
+      --accent-soft: #1A2D26;
+      --ok: #6BC48C;
+      --ok-soft: #1A2D21;
+      --run: #E2A544;
+      --run-soft: #332818;
+      --stop: #F27B6F;
+      --stop-soft: #3A1E1B;
+      --team: #A7ABEA;
+      --team-soft: #23243A;
+      --gate: #E7BF5E;
+      --gate-soft: #332A14;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F1513;
+    --surface: #161D1A;
+    --ink: #E2E9E5;
+    --muted: #94A29B;
+    --line: #25302B;
+    --line-strong: #36423C;
+    --accent: #5EBE9F;
+    --accent-soft: #1A2D26;
+    --ok: #6BC48C;
+    --ok-soft: #1A2D21;
+    --run: #E2A544;
+    --run-soft: #332818;
+    --stop: #F27B6F;
+    --stop-soft: #3A1E1B;
+    --team: #A7ABEA;
+    --team-soft: #23243A;
+    --gate: #E7BF5E;
+    --gate-soft: #332A14;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 15px/1.55 var(--body);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 40px 24px 64px; display: grid; gap: 40px; }
+  h1, h2, h3 { font-family: var(--display); font-stretch: 85%; text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted);
+  }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- cabecera ---------- */
+  header.top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px 48px; align-items: end; }
+  header.top h1 { font-size: clamp(34px, 5vw, 52px); font-weight: 780; line-height: 1.02; }
+  header.top p { margin: 12px 0 0; max-width: 62ch; color: var(--muted); }
+  .stats { display: grid; grid-template-columns: repeat(3, auto); gap: 0; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; }
+  .stat { padding: 12px 18px; display: grid; gap: 2px; }
+  .stat + .stat { border-left: 1px solid var(--line); }
+  .stat b { font-family: var(--display); font-stretch: 80%; font-size: 30px; font-weight: 720; line-height: 1; font-variant-numeric: tabular-nums; }
+  .next {
+    grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+    padding: 12px 16px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 6px 6px 0;
+  }
+  .next strong { font-weight: 600; }
+
+  /* ---------- ruta de sesiones ---------- */
+  .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; margin-bottom: 14px; }
+  .section-head h2 { font-size: 24px; font-weight: 720; }
+  .section-head p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
+  .ruta { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; }
+  .sesion {
+    display: grid; gap: 4px; align-content: start; min-height: 92px; padding: 8px 8px 10px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
+  }
+  .sesion .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .sesion .s { font-family: var(--display); font-stretch: 80%; font-weight: 720; font-size: 17px; line-height: 1; }
+  .sesion .d { font-size: 11.5px; line-height: 1.3; color: var(--muted); }
+  .sesion.proxima { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+  .sesion.proxima .n { color: var(--accent); font-weight: 500; }
+
+  /* ---------- leyenda y filtros ---------- */
+  .controles { display: grid; gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--ground); z-index: 2; }
+  .fila { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .fila .label { margin-right: 6px; min-width: 64px; }
+  .filtro {
+    border: 1px solid var(--line-strong); background: var(--surface); border-radius: 999px;
+    padding: 4px 12px; font-size: 13px; cursor: pointer;
+  }
+  .filtro:hover { border-color: var(--accent); }
+  .filtro[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .leyenda { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); }
+  .leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* ---------- chips de estado y marcas ---------- */
+  .estado {
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    font-size: 12px; font-weight: 500; padding: 2px 9px 2px 7px; border-radius: 999px; border: 1px solid transparent;
+  }
+  .estado::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .estado.pendiente { color: var(--muted); border-color: var(--line-strong); }
+  .estado.pendiente::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+  .estado.curso { color: var(--run); background: var(--run-soft); }
+  .estado.hecho { color: var(--ok); background: var(--ok-soft); }
+  .estado.bloqueado { color: var(--stop); background: var(--stop-soft); }
+  .marca { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+  .marca.equipo { color: var(--team); background: var(--team-soft); }
+  .marca.compuerta { color: var(--gate); background: var(--gate-soft); }
+  .marca.temprano { color: var(--accent); background: var(--accent-soft); }
+  .talla { font-family: var(--mono); font-size: 12px; font-weight: 500; display: inline-grid; place-items: center; width: 24px; height: 22px; border: 1px solid var(--line-strong); border-radius: 3px; }
+
+  /* ---------- sprints ---------- */
+  .sprints { display: grid; gap: 28px; }
+  .sprint { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px 32px; padding-top: 20px; border-top: 1px solid var(--line-strong); }
+  .sprint[hidden] { display: none !important; }
+  .meta { display: grid; gap: 10px; align-content: start; }
+  .meta .id { font-family: var(--display); font-stretch: 75%; font-size: 44px; font-weight: 800; line-height: 0.9; color: var(--accent); }
+  .meta h3 { font-size: 21px; font-weight: 700; }
+  .meta p { margin: 0; font-size: 14px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .avance { display: grid; gap: 6px; }
+  .pista { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .pista i { display: block; height: 100%; background: var(--ndvi); background-size: var(--ancho-total, 100%) 100%; border-radius: 999px; }
+  .avance .mono { font-size: 12px; color: var(--muted); }
+  .aviso { font-size: 13px; padding: 8px 10px; border-radius: 4px; }
+  .aviso.compuerta { background: var(--gate-soft); color: var(--ink); border-left: 3px solid var(--gate); }
+  .aviso.equipo { background: var(--team-soft); color: var(--ink); border-left: 3px solid var(--team); }
+  .aviso b { font-weight: 600; }
+
+  .tabla-caja { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: 0; }
+  th { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--ground); }
+  td.tid { font-family: var(--mono); font-size: 13px; white-space: nowrap; font-weight: 500; }
+  td.tarea { min-width: 280px; }
+  td.tarea .marcas { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  td.repo { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  td.ok { font-size: 13px; color: var(--muted); min-width: 200px; }
+  tr.siguiente td { background: var(--accent-soft); }
+  tr.siguiente td.tid { color: var(--accent); }
+  tr[hidden] { display: none; }
+
+  /* ---------- decisiones y método ---------- */
+  .dos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+  .metodo ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; max-width: 62ch; }
+  .metodo li::marker { color: var(--accent); }
+  .metodo code, td code { font-family: var(--mono); font-size: 12.5px; background: var(--accent-soft); padding: 0 4px; border-radius: 3px; }
+  footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+  @media (max-width: 960px) {
+    .ruta { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+    .sprint { grid-template-columns: 1fr; }
+    .dos { grid-template-columns: 1fr; }
+    header.top { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .ruta { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .pista i { transition: width 400ms ease; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="label">Terra · GeeWorker · FASE M</div>
+      <h1>Tablero del pipeline mensual</h1>
+      <p>La reescritura de la capa de satélite: compuesto mensual en Earth Engine, 24 meses de historia por parcela, y un pipeline donde sumar un índice o una estadística es una línea. Cada tarea entra en una sesión y pasa por las seis etapas del WORKFLOW.</p>
+    </div>
+    <div class="stats" aria-label="Resumen">
+      <div class="stat"><span class="label">Tareas</span><b id="st-total">—</b></div>
+      <div class="stat"><span class="label">Hechas</span><b id="st-hechas">—</b></div>
+      <div class="stat"><span class="label">Sesiones</span><b>~16</b></div>
+    </div>
+    <div class="next" id="siguiente"></div>
+  </header>
+
+  <section aria-labelledby="h-ruta">
+    <div class="section-head">
+      <h2 id="h-ruta">Ruta de sesiones</h2>
+      <p>El orden sugerido. La migración de Geocore y los tests de la API van en la sesión 3, para que el equipo aplique la migración mientras corre M.2.</p>
+    </div>
+    <div class="ruta" id="ruta"></div>
+  </section>
+
+  <div class="controles" role="group" aria-label="Filtros">
+    <div class="fila" id="f-tipo"><span class="label">Mostrar</span></div>
+    <div class="fila" id="f-repo"><span class="label">Repo</span></div>
+    <div class="leyenda">
+      <span><span class="estado pendiente">pendiente</span></span>
+      <span><span class="estado curso">en curso</span></span>
+      <span><span class="estado hecho">hecho</span></span>
+      <span><span class="estado bloqueado">bloqueado</span></span>
+      <span><span class="marca equipo">equipo</span> lo hace el equipo: producción, GitHub, Railway, datos reales</span>
+      <span><span class="marca compuerta">compuerta</span> si no pasa, se revisa el diseño</span>
+      <span><span class="talla">S</span> media sesión · <span class="talla">M</span> una sesión</span>
+    </div>
+  </div>
+
+  <div class="sprints" id="sprints"></div>
+
+  <div class="dos">
+    <section class="metodo" aria-labelledby="h-metodo">
+      <div class="section-head"><h2 id="h-metodo">Cómo se trabaja</h2></div>
+      <ul>
+        <li>No se abre un sprint sin cerrar el objetivo del anterior, salvo lo marcado <span class="marca temprano">temprano</span>.</li>
+        <li>Rama por tarea (<code>m1-2-indices</code>), el commit cita la tarea, y se mergea con el CI en verde.</li>
+        <li>El código nuevo vive en <code>pipeline/</code>, al lado del viejo. Los handlers pasan de a uno y lo viejo se borra en M.6: producción nunca queda a medias.</li>
+        <li>Se conserva la plomería probada contra la realidad: firma de Inngest, MinIO, reintentos seguros, bitácora, idempotencia.</li>
+        <li>Al cerrar la sesión se actualiza el estado en <code>SPRINTS_FASE_M.md</code>, la sesión, el HANDOFF y <code>PROXIMA_SESION.md</code>.</li>
+      </ul>
+    </section>
+    <section aria-labelledby="h-dec">
+      <div class="section-head"><h2 id="h-dec">Decisiones que necesita</h2></div>
+      <div class="tabla-caja">
+        <table style="min-width: 0">
+          <thead><tr><th>Decisión</th><th>Antes de</th><th>Estado</th></tr></thead>
+          <tbody id="decisiones"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
+    <span class="mono">Actualizado 2026-09-12</span>
+  </footer>
+</div>
+
+<script>
+const SPRINTS = [
+  { id: "M.0", nombre: "Red de seguridad", objetivo: "Que un test rojo no pueda llegar a producción. Hoy todo va directo a main y a Railway.", sesiones: "1",
+    aviso: { tipo: "compuerta", texto: "<b>Riesgo:</b> pushear <code>.github/workflows</code> exige el scope <code>workflow</code> en la credencial de git." },
+    tareas: [
+      { id: "M.0.1", t: "CI del worker: Python 3.13, pytest, pip-audit, y ruff estricto solo sobre pipeline/", repo: "worker", T: "S", ok: "Verde en main; un PR con un test roto sale rojo" },
+      { id: "M.0.2", t: "CI de Geocore: build, tests y paquetes vulnerables", repo: "Geocore", T: "S", ok: "Verde en main" },
+      { id: "M.0.3", t: "shadcn a devDependencies, subir react-router-dom, los 9 errores de lint viejos", repo: "panel", T: "M", ok: "npm audit sin altas; eslint sin errores" },
+      { id: "M.0.4", t: "CI del panel: tsc, eslint, build y npm audit", repo: "panel", T: "S", ok: "Verde en main" },
+      { id: "M.0.5", t: "CI del tileserver: pytest", repo: "tileserver", T: "S", ok: "Verde en main" },
+      { id: "M.0.6", t: "Proteger main en los cuatro repos y activar «Wait for CI» en Railway", repo: "GitHub · Railway", T: "S", ok: "Un push directo a main se rechaza", equipo: true }
+    ] },
+  { id: "M.1", nombre: "Núcleo", objetivo: "Receta, meses y registros de índices y estadísticas, probados sin tocar la red.", sesiones: "1",
+    tareas: [
+      { id: "M.1.1", t: "periodos.py: Mes AAAA-MM, rango semiabierto, meses_cerrados(hoy, n)", repo: "worker", T: "S", ok: "Un alta el 2026-09-12 cubre 2024-09 → 2026-08" },
+      { id: "M.1.2", t: "indices.py: fórmulas como texto sobre reflectancia 0–1 — NDVI, EVI, NDRE, NDMI", repo: "worker", T: "M", ok: "Evaluadas en Python contra valores de referencia" },
+      { id: "M.1.3", t: "estadisticas.py: mediana, media, mín, máx, p10, p90, desvío", repo: "worker", T: "S", ok: "Claves de salida de GEE probadas" },
+      { id: "M.1.4", t: "receta.py: RECETA_VIGENTE s2-mensual-v1, validada contra los registros", repo: "worker", T: "S", ok: "Cambiar un parámetro sin subir la versión rompe un test" },
+      { id: "M.1.5", t: "Importar pipeline no abre ninguna conexión", repo: "worker", T: "S", ok: "Test con el socket saboteado" }
+    ] },
+  { id: "M.2", nombre: "Etapas y borde", objetivo: "El pipeline calcula el mes de una parcela y el COG de un rancho contra GEE real, y los números se validan.", sesiones: "2",
+    aviso: { tipo: "compuerta", texto: "<b>Compuerta antes de M.4:</b> NDVI en [−1, 1], cobertura coherente con la estación y un mes de parcela en menos de ~60 s." },
+    aviso2: { tipo: "equipo", texto: "<b>El equipo prepara:</b> 3 parcelas reales (ids o KML) y las credenciales de GEE en el .env local." },
+    tareas: [
+      { id: "M.2.1", t: "fuente.py: S2 SR con probabilidad de nubes; bandas ÷ 10000", repo: "worker", T: "S", ok: "Revisado en M.2.6" },
+      { id: "M.2.2", t: "nubes.py: s2cloudless con sombras, sin descartar pasadas enteras", repo: "worker", T: "S", ok: "Revisado en M.2.6" },
+      { id: "M.2.3", t: "compuesto.py: índice por pasada → mediana por píxel, más la banda n_obs", repo: "worker", T: "S", ok: "Revisado en M.2.6" },
+      { id: "M.2.4", t: "reduccion.py: reductor combinado desde el registro, y cobertura", repo: "worker", T: "S", ok: "Revisado en M.2.6" },
+      { id: "M.2.5", t: "productos.py y ejecucion.py: el único lugar que llama a GEE", repo: "worker", T: "M", ok: "Tests de la traducción de errores" },
+      { id: "M.2.6", t: "check_pipeline_real.py: 3 parcelas × 3 meses, lado a lado con lo de hoy", repo: "worker", T: "M", ok: "Números y tiempos anotados en la sesión", compuerta: true }
+    ] },
+  { id: "M.3", nombre: "Esquema y API", objetivo: "Geocore guarda y sirve lo mensual, y calcula la métrica del rancho.", sesiones: "2",
+    tareas: [
+      { id: "M.3.1", t: "Migración MedicionesMensuales: measurements, processing_jobs y layers, con SQL idempotente", repo: "Geocore", T: "M", ok: "dotnet test; script revisado", temprano: true },
+      { id: "M.3.1b", t: "Aplicar la migración en GeoData", repo: "GeoData", T: "S", ok: "Columnas e índices verificados", equipo: true },
+      { id: "M.3.2", t: "GET /api/measurements con estadísticas y cobertura; lista de parcelas; techo para limit", repo: "Geocore", T: "M", ok: "Tests" },
+      { id: "M.3.3", t: "GET /api/ranchos/{id}/metricas: promedio ponderado por área", repo: "Geocore", T: "M", ok: "Tests con parcelas sin dato en un mes" },
+      { id: "M.3.4", t: "check_schema.py valida las columnas nuevas: el contrato entre repos", repo: "worker", T: "S", ok: "Corre contra la base real" },
+      { id: "M.3.5", t: "Borrar las filas por pasada de prueba", repo: "GeoData", T: "S", ok: "SQL listo en la sesión", equipo: true }
+    ] },
+  { id: "M.4", nombre: "Altas", objetivo: "Una parcela nueva trae sus 24 meses; un rancho nuevo, sus 24 mapas.", sesiones: "2",
+    tareas: [
+      { id: "M.4.1", t: "La key del COG lleva el tenant, antes de escribir el primer COG mensual", repo: "worker", T: "S", ok: "DECISIONS escrito" },
+      { id: "M.4.2", t: "handlers/: sacar el wrapper de jobs y las claves sin cambiar comportamiento", repo: "worker", T: "M", ok: "Suite verde sin tocar un test" },
+      { id: "M.4.3", t: "Escritura de la fila mensual y de layers con receta", repo: "worker", T: "S", ok: "Tests con conexión falsa" },
+      { id: "M.4.4", t: "process_parcela: plan y 24 steps mes-AAAA-MM, con bitácora", repo: "worker", T: "M", ok: "Tests con el step que imita al SDK" },
+      { id: "M.4.5", t: "process_rancho: 24 COG de NDVI", repo: "worker", T: "M", ok: "Tests" },
+      { id: "M.4.6", t: "De punta a punta con un rancho y una parcela reales desde el panel", repo: "worker", T: "S", ok: "Filas, COG por el tileserver y Procesos" }
+    ] },
+  { id: "M.5", nombre: "Cierre de mes", objetivo: "Cada mes cerrado se procesa solo, disparado por Geocore.", sesiones: "2",
+    tareas: [
+      { id: "M.5.1", t: "Lógica del reconciliador: día 5, republicar pending de más de 1 h, no reintentar failed", repo: "Geocore", T: "M", ok: "Tests con reloj falso" },
+      { id: "M.5.2", t: "CierreMensualService: pagina entidades, crea jobs, publica terra/*.mes.requested", repo: "Geocore", T: "M", ok: "Dos instancias no duplican" },
+      { id: "M.5.3", t: "Handlers de *.mes.requested con límite de concurrencia", repo: "worker", T: "M", ok: "Tests" },
+      { id: "M.5.4", t: "POST /api/admin/procesos/reprocesar, para las parcelas que ya existen", repo: "Geocore", T: "M", ok: "Tests de la política" },
+      { id: "M.5.5", t: "Forzar el mes objetivo y reiniciar Geocore dos veces", repo: "todos", T: "S", ok: "Sin duplicados ni meses perdidos" }
+    ] },
+  { id: "M.6", nombre: "Limpieza", objetivo: "El worker termina con menos código que al empezar.", sesiones: "1",
+    tareas: [
+      { id: "M.6.1", t: "Borrar la capa vieja y dejar de crear sentinel2_dates", repo: "worker", T: "M", ok: "Líneas netas negativas" },
+      { id: "M.6.1b", t: "DROP TABLE sentinel2_dates", repo: "GeoData", T: "S", ok: "SQL listo", equipo: true },
+      { id: "M.6.2", t: "Handlers a demanda: el equipo confirma si el front de tenants los usa; borrar o rehacer", repo: "worker · Geocore", T: "M", ok: "Decisión escrita", equipo: true },
+      { id: "M.6.3", t: "Un solo EncolarAsync en vez de cinco Request*Async", repo: "Geocore", T: "S", ok: "Tests" },
+      { id: "M.6.4", t: "Excepciones explícitas en lugar de except Exception", repo: "worker", T: "M", ok: "Ruff sin hallazgos nuevos" }
+    ] },
+  { id: "M.7", nombre: "Panel", objetivo: "Ver series y mapas mensuales, y cargar geometría sin sufrir.", sesiones: "2–3",
+    tareas: [
+      { id: "M.7.1", t: "Selector con items obligatorio: cierra el bug de los ids en los selects", repo: "panel", T: "S", ok: "Todos los selects lo usan" },
+      { id: "M.7.2", t: "Partir RanchosPage en hooks y componentes; pedidos cancelables", repo: "panel", T: "M", ok: "Sin cambio visible" },
+      { id: "M.7.3", t: "Serie mensual: mediana con banda p10–p90, cobertura y huecos", repo: "panel", T: "M", ok: "Probado con datos reales" },
+      { id: "M.7.4", t: "Mapa del rancho por mes, con las parcelas encima y su métrica", repo: "panel", T: "M", ok: "Probado con datos reales" },
+      { id: "M.7.5", t: "Editor de geometría: dibujar con clics, polígono en vivo, rancho de referencia", repo: "panel", T: "M", ok: "Probado en vite dev" },
+      { id: "M.7.6", t: "Primeros tests (vitest) de src/lib", repo: "panel", T: "S", ok: "Corren en el CI" }
+    ] },
+  { id: "M.8", nombre: "Seguridad", objetivo: "Cerrar lo que la revisión OWASP del 2026-09-12 dejó en rojo y naranja.", sesiones: "2",
+    tareas: [
+      { id: "M.8.1", t: "A01: el token de mapa lleva el tenant, y TiTiler exige ese prefijo en la key", repo: "Geocore · tileserver", T: "M", ok: "Un token de otro tenant da 403" },
+      { id: "M.8.2", t: "Geocore.API.Tests: políticas TerraAdmin y TerraStaff, 401 y 403", repo: "Geocore", T: "M", ok: "En el CI", temprano: true },
+      { id: "M.8.3", t: "A04: rate limiting en escritura y admin", repo: "Geocore", T: "S", ok: "Tests" },
+      { id: "M.8.4", t: "A09: registro de auditoría de acciones privilegiadas", repo: "Geocore", T: "M", ok: "Tests" },
+      { id: "M.8.5", t: "Retención de processing_job_events", repo: "Geocore", T: "S", ok: "Decisión y job" }
+    ] },
+  { id: "M.9", nombre: "Analítica y futuro", objetivo: "Sin orden fijo: se toma cuando el pipeline esté en producción.", sesiones: "abierto",
+    tareas: [
+      { id: "M.9.1", t: "Cultivo en la parcela, y la métrica del rancho por cultivo", repo: "Geocore · panel", T: "—", ok: "—" },
+      { id: "M.9.2", t: "Anomalía contra la mediana histórica del mes, tendencia y alerta de caída", repo: "worker · Geocore", T: "—", ok: "—" },
+      { id: "M.9.3", t: "Más índices, una entrada cada uno: SAVI, GNDVI o CIre, MSI, NDWI", repo: "worker", T: "—", ok: "—" },
+      { id: "M.9.4", t: "Sentinel-1 (radar) para los meses de lluvia", repo: "worker", T: "—", ok: "—" },
+      { id: "M.9.5", t: "El mes en curso como provisorio", repo: "worker · panel", T: "—", ok: "—" }
+    ] }
+];
+
+// Todas pendientes al 2026-09-12. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
+const ESTADO = {};
+
+const RUTA = [
+  ["M.0", "CI en los cuatro repos"], ["M.1", "Núcleo sin GEE"], ["M.3·M.8", "Migración y tests de la API"],
+  ["M.2", "Etapas"], ["M.2", "Validación real"], ["M.3", "API y métrica del rancho"],
+  ["M.4", "Altas I"], ["M.4", "Altas II"], ["M.5", "Reconciliador"], ["M.5", "Handlers y reproceso"],
+  ["M.6", "Limpieza"], ["M.7", "Selector y series"], ["M.7", "Mapa mensual"], ["M.7", "Editor de geometría"],
+  ["M.8", "A01 y A04"], ["M.8", "A09 y retención"]
+];
+
+const DECISIONES = [
+  ["#31 · histórico mensual, compuesto en GEE (opción B)", "M.1", "hecho", "decidida"],
+  ["Receta v1: NDVI, EVI, NDRE, NDMI · cobertura 0,3 · 24 meses", "M.1.4", "hecho", "decidida"],
+  ["#33 · se reescribe la capa de satélite, no el servicio", "M.1", "hecho", "decidida"],
+  ["La key del COG con el tenant adentro", "M.4", "pendiente", "en M.4.1"],
+  ["Handlers a demanda: ¿los usa el front de tenants?", "M.6.2", "pendiente", "equipo"],
+  ["Capa satelital en el editor: licencia", "M.7.5", "pendiente", "equipo"]
+];
+
+const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
+const estadoDe = id => ESTADO[id] || "pendiente";
+const todas = SPRINTS.flatMap(s => s.tareas.map(t => ({ ...t, sprint: s.id })));
+const siguiente = todas.find(t => estadoDe(t.id) !== "hecho");
+
+document.getElementById("st-total").textContent = todas.length;
+document.getElementById("st-hechas").textContent = todas.filter(t => estadoDe(t.id) === "hecho").length;
+document.getElementById("siguiente").innerHTML = siguiente
+  ? `<span class="label">Siguiente tarea</span><strong class="mono">${siguiente.id}</strong><span>${siguiente.t}</span>`
+  : `<strong>Todas las tareas están hechas.</strong>`;
+
+const sesionProxima = 1;
+document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
+  <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
+    <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>
+    <span class="s">${s}</span>
+    <span class="d">${d}</span>
+  </div>`).join("");
+
+const marcas = t => [
+  t.equipo ? '<span class="marca equipo">equipo</span>' : "",
+  t.compuerta ? '<span class="marca compuerta">compuerta</span>' : "",
+  t.temprano ? '<span class="marca temprano">temprano · sesión 3</span>' : ""
+].join("");
+
+document.getElementById("sprints").innerHTML = SPRINTS.map(s => {
+  const hechas = s.tareas.filter(t => estadoDe(t.id) === "hecho").length;
+  const pct = Math.round(100 * hechas / s.tareas.length);
+  const repos = [...new Set(s.tareas.map(t => t.repo))].join(", ");
+  const avisos = [s.aviso, s.aviso2].filter(Boolean).map(a => `<div class="aviso ${a.tipo}">${a.texto}</div>`).join("");
+  return `
+  <section class="sprint" data-sprint="${s.id}" aria-labelledby="h-${s.id}">
+    <div class="meta">
+      <span class="id">${s.id}</span>
+      <h3 id="h-${s.id}">${s.nombre}</h3>
+      <p>${s.objetivo}</p>
+      <dl class="kv"><dt>Sesiones</dt><dd class="mono">${s.sesiones}</dd><dt>Repos</dt><dd>${repos}</dd></dl>
+      <div class="avance">
+        <div class="pista" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Avance de ${s.id}">
+          <i style="width:${pct}%; --ancho-total:${pct ? (10000 / pct) : 100}%"></i>
+        </div>
+        <span class="mono">${hechas} de ${s.tareas.length} hechas</span>
+      </div>
+      ${avisos}
+    </div>
+    <div class="tabla-caja">
+      <table>
+        <thead><tr><th>Tarea</th><th>Qué</th><th>Repo</th><th>T</th><th>Termina cuando</th><th>Estado</th></tr></thead>
+        <tbody>
+          ${s.tareas.map(t => `
+          <tr data-repo="${t.repo}" data-equipo="${!!t.equipo}" data-compuerta="${!!t.compuerta}" data-estado="${estadoDe(t.id)}"
+              class="${siguiente && siguiente.id === t.id ? "siguiente" : ""}">
+            <td class="tid">${t.id}</td>
+            <td class="tarea">${t.t}${marcas(t) ? `<div class="marcas">${marcas(t)}</div>` : ""}</td>
+            <td class="repo">${t.repo}</td>
+            <td>${t.T === "—" ? '<span class="mono">—</span>' : `<span class="talla">${t.T}</span>`}</td>
+            <td class="ok">${t.ok}</td>
+            <td><span class="estado ${estadoDe(t.id)}">${ETIQUETA[estadoDe(t.id)]}</span></td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+  </section>`;
+}).join("");
+
+document.getElementById("decisiones").innerHTML = DECISIONES.map(([d, antes, e, texto]) =>
+  `<tr><td>${d}</td><td class="mono">${antes}</td><td><span class="estado ${e}">${texto}</span></td></tr>`).join("");
+
+// ---------- filtros ----------
+const TIPOS = [["todas", "Todas"], ["pendiente", "Pendientes"], ["equipo", "Del equipo"], ["compuerta", "Compuertas"]];
+const REPOS = ["todos", "worker", "Geocore", "panel", "tileserver"];
+let filtroTipo = "todas", filtroRepo = "todos";
+
+function botones(contenedor, opciones, activo, alElegir) {
+  const cont = document.getElementById(contenedor);
+  opciones.forEach(([valor, texto]) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "filtro"; b.textContent = texto; b.dataset.valor = valor;
+    b.setAttribute("aria-pressed", String(valor === activo));
+    b.addEventListener("click", () => {
+      cont.querySelectorAll(".filtro").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      alElegir(valor); aplicar();
+    });
+    cont.appendChild(b);
+  });
+}
+botones("f-tipo", TIPOS, filtroTipo, v => filtroTipo = v);
+botones("f-repo", REPOS.map(r => [r, r === "todos" ? "Todos" : r]), filtroRepo, v => filtroRepo = v);
+
+function aplicar() {
+  document.querySelectorAll(".sprint").forEach(sec => {
+    let visibles = 0;
+    sec.querySelectorAll("tbody tr").forEach(tr => {
+      const okTipo = filtroTipo === "todas"
+        || (filtroTipo === "pendiente" && tr.dataset.estado !== "hecho")
+        || (filtroTipo === "equipo" && tr.dataset.equipo === "true")
+        || (filtroTipo === "compuerta" && tr.dataset.compuerta === "true");
+      const okRepo = filtroRepo === "todos" || tr.dataset.repo.toLowerCase().includes(filtroRepo.toLowerCase());
+      tr.hidden = !(okTipo && okRepo);
+      if (!tr.hidden) visibles++;
+    });
+    sec.hidden = visibles === 0;
+  });
+}
+</script>

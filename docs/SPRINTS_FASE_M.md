@@ -1,9 +1,19 @@
 # FASE M por sprints — el backlog
 
 > Armado el 2026-09-12. Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md).
-> Decisiones: `DECISIONS #31` (histórico mensual en GEE, ✅), `#32` (el pipeline) y
-> `#33` (se reescribe la capa de satélite, no el servicio). Cómo se trabaja cada
-> tarea: [`WORKFLOW.md`](WORKFLOW.md).
+> Decisiones:
+> - `DECISIONS #31`: histórico mensual en GEE (✅);
+> - `#32`: el pipeline;
+> - `#33`: se reescribe la capa de satélite, no el servicio (✅).
+>
+> Cómo se trabaja cada tarea: [`WORKFLOW.md`](WORKFLOW.md).
+>
+> **Vista como página:** <https://claude.ai/code/artifact/71e508b6-3583-46b4-89f8-d305c258f36f>.
+> La fuente es [`TABLERO_FASE_M.html`](TABLERO_FASE_M.html). Al cerrar cada sesión:
+> 1. actualizar ahí el objeto `ESTADO` para que coincida con la columna de estado de abajo;
+> 2. republicarla pasando esa URL (`Artifact` con `url`).
+>
+> Si no se pasa la URL, se crea otra página.
 >
 > **Este archivo es el tablero.** Al cerrar una sesión se actualiza la columna de
 > estado: ⬜ pendiente · 🟡 en curso · ✅ hecho · ⛔ bloqueado. La sesión siguiente
@@ -237,7 +247,7 @@ de Geocore).
 |---|---|---|
 | `#31` histórico mensual en GEE | M.1 | ✅ 2026-09-12 (opción B) |
 | La receta v1: 4 índices, 7 estadísticas, cobertura 0,3, 24 meses | M.1.4 | ✅ 2026-09-12 |
-| `#33` se reescribe la capa, no el servicio | M.1 | propuesta, recomendada |
+| `#33` se reescribe la capa, no el servicio | M.1 | ✅ 2026-09-12 |
 | La forma de la key con tenant | M.4 | M.4.1 |
 | Los handlers a demanda | M.6.2 | 👥 |
 | La capa satelital en el editor (licencia) | M.7.5 | 👥 |

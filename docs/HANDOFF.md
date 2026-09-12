@@ -16,7 +16,7 @@
 > [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md).**
 > - `DECISIONS #31`: ✅ decidida (opción B), reemplaza a #19 y #20.
 > - `#32`: aceptada.
-> - `#33`: recomendada. Se reescribe la capa de satélite, no el servicio.
+> - `#33`: ✅ confirmada. Se reescribe la capa de satélite, no el servicio.
 >
 > **La primera corrida real falló** con `CardinalityViolation` en el mes 1 de la
 > serie: dos imágenes del mismo día en un lote. Está arreglado (`DECISIONS #30`).
