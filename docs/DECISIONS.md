@@ -950,3 +950,50 @@ heatmaps del worker, que están alineados exacto a la grilla de zoom 14. Ahora
 lo arma `terra_tiles/png.py` desde los bytes del píxel, y `tests/test_png.py` lo
 decodifica y mira el alfa. Un literal opaco a la lectura deja que el comentario
 de al lado diga cualquier cosa.
+
+---
+
+## 29. La bitácora de un job se escribe desde adentro de los steps (2026-09-12)
+
+**Decisión:** lo que el worker reporta del avance de un job se escribe **dentro
+del callback de un `step.run`**, a través de `services/avance_job.py`: etapas,
+ventanas de fechas y fallos por intento. Desde el cuerpo del handler sólo se
+escriben los errores que ocurren fuera de todo step.
+
+Los contratos de la tabla (`processing_job_events`, de Geocore) y por qué es una
+tabla y no los logs están en `DECISIONS #20` de Geocore.
+
+### Por qué
+
+Inngest vuelve a ejecutar el cuerpo del handler en cada request y sólo memoiza
+lo que devuelven los steps. Una línea escrita en el cuerpo se repite una vez por
+cada step ya completado. El histórico de una parcela tiene 23 steps: el
+"arrancó" aparecería 23 veces. Dentro del step, la línea queda atada a la
+ejecución real: se escribe una vez si sale bien, y una vez por intento si falla.
+Eso es exactamente lo que tiene que decir.
+
+Y los fallos de un step **sólo se ven desde adentro**. El SDK los convierte en
+`ResponseInterrupt`, que es `BaseException`, antes de que salgan de `step.run`.
+El `except Exception` del wrapper nunca los vio.
+
+### Cómo se usa
+
+- En todo step que haga trabajo, `paso(step, "id", fn)` en vez de
+  `step.run("id", fn)`. Registra el fallo de cada intento como `warning` si se va
+  a reintentar, o `error` si no.
+- `reportar(etapa, mensaje, progreso=…, **detalle)`, adentro del callback.
+  `mensaje` es para una persona; `detalle` lleva los datos crudos.
+- Un loop que arma steps pasa los valores de la vuelta como defaults del
+  callback: una clausura común vería los de la última vuelta.
+- Lo que tiene que ser igual en todos los requests, como la fecha de hoy, se fija
+  en un step.
+- `failed` se decide con `es_definitivo()`, no sólo con `attempt`. Un
+  `NonRetriableError` o un `StepError` son definitivos en cualquier intento.
+
+### Costo aceptado
+
+- Cada línea es un round-trip a la base, unas 50 por parcela. No se agrupan.
+- Si la base no está, la línea se pierde: nunca levanta. Si falta la tabla, la
+  bitácora se pausa 10 minutos en vez de loguear el mismo error cada vez.
+- Los ids de step nuevos (`-1…-8`, `-1…-12`) hacen que un run en vuelo durante
+  un deploy rehaga esas etapas. Es idempotente.

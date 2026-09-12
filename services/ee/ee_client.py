@@ -184,11 +184,20 @@ def get_sentinel2_collection(roi, start, end, cloud_pct=30, min_coverage=0.5):
 
     return filtered
 
-def get_sentinel2_time_series(roi, start, end, index, cloud_pct=70, limit=30):
+def get_sentinel2_time_series(roi, start, end, index, cloud_pct=70, limit=30, rescate=True):
     """
     Obtiene serie temporal de cada pasada individual de Sentinel-2 filtrada por cobertura del KML
+
+    `rescate`: si no hay ninguna imagen bajo `cloud_pct`, se reintenta aceptando
+    hasta 90 % de nubes. `process_parcela` lo apaga al consultar mes por mes y lo
+    aplica despues sobre el año entero: mes por mes, cada mes nublado caeria al
+    90 % y la serie mezclaria dos criterios de calidad.
+
+    OJO con `limit`: se aplica sobre la coleccion **ordenada de la mas vieja a la
+    mas nueva**, asi que un periodo con mas imagenes que `limit` pierde las
+    ultimas, no las peores.
     """
-    cloud_thresholds = [min(cloud_pct, 80), 90]
+    cloud_thresholds = [min(cloud_pct, 80), 90] if rescate else [min(cloud_pct, 80)]
     limit_to_use = limit if limit and limit > 0 else 30
 
     for threshold in cloud_thresholds:

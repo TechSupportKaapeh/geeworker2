@@ -2,8 +2,21 @@
 
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
-> Última revisión: **2026-09-11**. Crónica:
-> [`SESSION_2026-09-11_el_arranque_que_dice_la_verdad.md`](SESSION_2026-09-11_el_arranque_que_dice_la_verdad.md).
+> Última revisión: **2026-09-12**. Crónica:
+> [`SESSION_2026-09-12_la_bitacora_del_worker.md`](SESSION_2026-09-12_la_bitacora_del_worker.md).
+> Para retomar: `geocore/docs/PROXIMA_SESION.md`.
+>
+> **Novedades del 2026-09-12:** cada job escribe su bitácora
+> (`processing_job_events`, `DECISIONS #29`) y su `progress`. El histórico de una
+> parcela se procesa por ventanas: 8 trimestres de fechas y 12 meses de serie.
+> Salieron y se arreglaron tres bugs:
+>
+> - los fallos de un step eran invisibles para el wrapper;
+> - un `NonRetriableError` dejaba el job en `running` para siempre;
+> - la serie anual se truncaba en 30 imágenes.
+>
+> **Necesita la migración `ProcessingJobEvents` de Geocore aplicada.** Sin ella
+> pausa la bitácora, pero no rompe nada.
 >
 > **Novedades desde el 2026-09-07:** el flujo corre de punta a punta (Inngest
 > registrado, firma verificada, COG subido y servido). La contraseña de
@@ -50,7 +63,8 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Despliegue del worker | 🟡 `Dockerfile` escrito el 2026-09-07, **sin construir** (FASE H) |
 | TLS contra MinIO | ✅ 2026-09-07 — el default se deduce del host; lo desconocido asume TLS (`W-2`) |
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **102 tests en ~9 s** |
+| **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — probada con un step falso que imita al SDK; falta la migración en prod y una corrida real (`DECISIONS #29`) |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **201 tests con `pytest tests`**. La raíz también junta los scripts de `scratch/`, que piden GEE |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 
 ## 2b. La cadena de tiles, verificada
@@ -98,8 +112,22 @@ measurements      parcela_id, indice, fecha, tenant_id, valor, min_val, max_val
 processing_jobs   id, tenant_id, parcela_id, rancho_id, request_type, status,
                   progress, error_message, created_by, created_at,
                   started_at, finished_at
+processing_job_events
+                  id, job_id, created_at, attempt, stage, level, message, detail
+                  (2026-09-12, migracion ProcessingJobEvents; el worker solo inserta)
 sentinel2_dates   PascalCase — tabla del worker, no la administra EF Core
 ```
+
+**La bitácora (2026-09-12).** Cómo se llenan las columnas:
+
+| Columna | Qué lleva |
+|---|---|
+| `attempt` | Desde 1. |
+| `level` | `info`, `warning` o `error`. |
+| `stage` | El id del step, o `inicio` / `fin` / `reintento`. |
+| `detail` | JSON con `desde`, `hasta`, `imagenes`, `escritas`, `megas`, `ms` y `error`. |
+
+La escribe `registrar_evento_job`. El panel traduce los niveles y los `request_type`: si se cambia algo, avisar en `terra-admin/src/lib/procesos.ts`.
 
 **`storage_key` guarda la key pelada.** Geocore compone
 `s3://{GeoData:MinioBucket}/{storage_key}` (`LayersController.cs`). Guardar la
@@ -140,6 +168,10 @@ y el archivo. No hay subcarpeta por fecha.
 el procesamiento; los 5 `terra/parcela.*.requested` son pedidos puntuales.
 Coordenadas como `CoordinateDto`, nunca ValueTuples.
 
+**Desde el 2026-09-12 las altas traen `JobId`**, con `request_type`
+`ParcelaInicial` o `RanchoInicial`. Puede venir `null` si Geocore no pudo crear
+el job: en ese caso el worker procesa igual y no reporta.
+
 **Idempotencia obligatoria.** Inngest reintenta y el backoff de Geocore puede
 publicar dos veces. `layers` usa un UUIDv5 determinista; `measurements`, un
 `ON CONFLICT` sobre su PK.
@@ -169,6 +201,18 @@ Supabase lo ofrece ya convertido en la pestaña `.NET` del diálogo de conexión
 ---
 
 ## 4. Deuda abierta
+
+**Abierta el 2026-09-12** (sesión del día):
+
+- **`get_sentinel2_dates` hace un `getInfo()` por imagen**: cientos en el
+  histórico de dos años. Ahora se ve el avance por trimestre, pero sigue siendo
+  lo lento. `aggregate_array` lo haría en una sola llamada.
+- **`compute_timeseries` (a demanda) conserva el tope de 30 imágenes**, ordenadas
+  de la más vieja: un rango largo pierde el final. `process_parcela` ya no lo
+  sufre porque va mes por mes.
+- **No está verificado qué vale `ctx.attempt` en el request que recibe un
+  `StepError`.** Ya no decide `failed` (`es_definitivo`), pero sí el `attempt` de
+  la línea `fin` de la bitácora.
 
 **Cerrado el 2026-08-30** — se deja el registro porque explica qué mirar si algo
 de esto reaparece:

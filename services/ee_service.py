@@ -213,13 +213,17 @@ def generate_time_series_data(
     cloud_pct: int = 70,
     limit: int = 30,
     kml_id: Optional[str] = None,
-    source: str = 'on_demand'
+    source: str = 'on_demand',
+    rescate: bool = True
 ) -> List[Dict[str, Any]]:
-    """Calcula y retorna la serie temporal de valores medios de un índice sobre un ROI, registrando mediciones."""
+    """Calcula y retorna la serie temporal de valores medios de un índice sobre un ROI, registrando mediciones.
+
+    `rescate` y `limit`: ver `get_sentinel2_time_series`.
+    """
     init_ee()
-    
+
     # Obtener serie temporal optimizada
-    series_data = get_sentinel2_time_series(roi, start, end, index, cloud_pct, limit)
+    series_data = get_sentinel2_time_series(roi, start, end, index, cloud_pct, limit, rescate=rescate)
     
             
     return series_data

@@ -1,7 +1,8 @@
 import logging
 import os
 import tempfile
-from datetime import datetime, timedelta, timezone
+import time
+from datetime import date, datetime, timedelta, timezone
 
 import ee
 import inngest
@@ -23,6 +24,8 @@ from services.cog_converter import convert_to_cog
 from repositories.db_repository import (update_processing_job, insert_layer,
                                        insert_measurement, insert_measurements,
                                        insert_sentinel2_date)
+from services.avance_job import (AVISO, ERROR, INFO, es_definitivo, paso, reportar,
+                                 resumir_error, seguimiento)
 from utils_pkg.logging_config import contexto_de_ejecucion
 from utils_pkg.visualization import index_band_and_vis
 
@@ -147,6 +150,10 @@ def _with_job_tracking(func):
         #
         # `run_id` es el identificador que asigna Inngest y el unico que permite
         # juntar los intentos de una misma ejecucion en el panel y en el log.
+        #
+        # `seguimiento` hace lo mismo para la bitacora del job: `reportar()` y
+        # `paso()` saben a que job y en que intento escriben sin que cada
+        # handler tenga que pasarlos (`services/avance_job.py`).
         with contexto_de_ejecucion(
             run_id=getattr(ctx, "run_id", None),
             attempt=ctx.attempt,
@@ -155,7 +162,7 @@ def _with_job_tracking(func):
             tenant_id=payload.get("tenantId"),
             parcela_id=payload.get("parcelaId"),
             rancho_id=payload.get("ranchoId"),
-        ):
+        ), seguimiento(job_id, ctx.attempt, RETRIES):
             return _correr_con_estado(func, ctx, step, payload, job_id)
 
     wrapper.__name__ = func.__name__
@@ -163,17 +170,24 @@ def _with_job_tracking(func):
 
 
 def _correr_con_estado(func, ctx, step, payload, job_id):
-    """El cuerpo de `_with_job_tracking`, ya dentro del contexto de logging."""
+    """El cuerpo de `_with_job_tracking`, ya dentro del contexto de logging.
+
+    Los eventos `inicio` y `fin` de la bitacora van **dentro** de los steps que
+    cambian el estado: quedan memoizados con el, y se escriben una vez por
+    ejecucion aunque Inngest vuelva a correr este cuerpo en cada request.
+    """
     if job_id:
         def _mark_running():
             update_processing_job(job_id, "running", started_at_now=True)
+            reportar("inicio", "El worker tomó el job", progreso=1, funcion=func.__name__)
         step.run("mark-job-running", _mark_running)
 
     try:
         res = func(ctx, step, payload)
         if job_id:
             def _mark_completed():
-                update_processing_job(job_id, "completed", finished_at_now=True)
+                update_processing_job(job_id, "completed", progress=100, finished_at_now=True)
+                reportar("fin", "Terminó sin errores", progreso=100)
             step.run("mark-job-completed", _mark_completed)
         return res
     except Exception as e:
@@ -182,11 +196,15 @@ def _correr_con_estado(func, ctx, step, payload, job_id):
         # lo referencie funciona solo mientras se llame aca adentro. Hoy es
         # el caso, pero es una trampa que espera a que alguien mueva la
         # linea. Ruff lo marcaba como F821/F841.
-        mensaje = str(e)
-        es_ultimo_intento = ctx.attempt >= RETRIES
+        #
+        # Y va resumido: termina en `error_message`, que
+        # `GET /api/processing/jobs/{id}` le devuelve al usuario del tenant, y
+        # el crudo puede traer una URL prefirmada o un host privado. El crudo
+        # va al log.
+        mensaje = resumir_error(e)
 
-        if job_id and es_ultimo_intento:
-            # E.4: **solo el ultimo intento marca `failed`.**
+        if job_id and es_definitivo(e, ctx.attempt, RETRIES):
+            # E.4: **solo un error definitivo marca `failed`.**
             #
             # Antes se marcaba en cada intento, y el reintento lo volvia a
             # poner en `running`. Con `retries=3` eso significa que el
@@ -194,17 +212,83 @@ def _correr_con_estado(func, ctx, step, payload, job_id):
             # reintentos: un job que se va a recuperar solo aparece como
             # fallido, y quien lo mire va a diagnosticar un problema que no
             # existe. `failed` tiene que significar "no se va a recuperar".
+            #
+            # "Definitivo" no es solo el ultimo intento: ver `es_definitivo`.
+            # Mirar solo `attempt` dejaba en `running` para siempre a un
+            # `NonRetriableError`, que Inngest no reintenta.
+            logger.error("Job %s fallo y no se va a reintentar: %s", job_id, e)
+
             def _mark_failed():
                 update_processing_job(job_id, "failed", error_message=mensaje,
                                       finished_at_now=True)
+                reportar("fin", f"Falló y no se va a reintentar: {mensaje}", nivel=ERROR)
             step.run("mark-job-failed", _mark_failed)
         elif job_id:
             logger.warning(
                 "Job %s fallo en el intento %s de %s; Inngest va a "
                 "reintentar, asi que el estado sigue en `running`: %s",
-                job_id, ctx.attempt + 1, RETRIES + 1, mensaje,
+                job_id, ctx.attempt + 1, RETRIES + 1, e,
             )
+            # Aca solo llegan errores del cuerpo del handler, fuera de los
+            # steps: los de un step los registra `paso()` desde adentro
+            # (`avance_job`, regla 2). Cada request que falla aca es un intento
+            # real, asi que la linea no se duplica en los replays.
+            reportar("reintento",
+                     f"Falló en el intento {ctx.attempt + 1} de {RETRIES + 1}; "
+                     f"Inngest lo va a reintentar: {mensaje}",
+                     nivel=AVISO)
         raise
+
+
+# El historico de una parcela nueva se procesa **por ventanas**, cada una en su
+# propio step. Antes eran dos llamadas enteras a GEE —730 dias de fechas y 365 de
+# serie— y el panel no tenia forma de saber por donde iba. Por ventanas:
+#
+#   - la bitacora dice que rango de fechas se esta procesando;
+#   - un reintento repite una ventana, no los dos años: Inngest memoiza cada step;
+#   - la serie ya no se trunca. `get_sentinel2_time_series` corta en 30 imagenes
+#     **ordenadas de la mas vieja a la mas nueva**, asi que en un año con mas de
+#     30 pasadas utiles se perdian los ultimos meses — justo los que importan.
+#     Un mes tiene a lo sumo ~12.
+DIAS_HISTORICO = 730
+VENTANAS_HISTORICO = 8  # trimestres
+DIAS_SERIE = 365
+VENTANAS_SERIE = 12  # meses
+
+
+def ventanas(desde: date, hasta: date, n: int) -> list[tuple[str, str]]:
+    """Parte `[desde, hasta)` en `n` ventanas contiguas, como strings ISO.
+
+    Sin huecos ni solapes: el `hasta` de una es el `desde` de la siguiente, y el
+    `filterDate` de GEE es semiabierto —incluye el inicio, excluye el fin—, asi
+    que ninguna imagen cae en dos ventanas ni entre dos.
+    """
+    total = (hasta - desde).days
+    cortes = [desde + timedelta(days=round(total * i / n)) for i in range(n + 1)]
+    return [(cortes[i].isoformat(), cortes[i + 1].isoformat()) for i in range(n)]
+
+
+def _entre(inicio: float, fin: float, hechas: int, total: int) -> float:
+    """Avance de la barra cuando `hechas` de las `total` partes de una etapa terminaron."""
+    return inicio + (fin - inicio) * hechas / total
+
+
+def _ms_desde(t0: float) -> int:
+    return int((time.monotonic() - t0) * 1000)
+
+
+def _escribir_serie(parcela_id: str, tenant_id: str, puntos) -> int:
+    # E.7: en lote. Una serie anual son ~70 fechas, y de a una eran ~70
+    # conexiones al pool con su commit —o sea su fsync— cada una. Ademas es
+    # atomico: entran todas o ninguna.
+    #
+    # Se cuenta lo escrito, no lo recibido: GEE devuelve fechas sin valor
+    # cuando la nube tapo la parcela y esas no llegan a la tabla.
+    return insert_measurements(
+        {"parcela_id": parcela_id, "indice": "ndvi", "fecha": p["date"],
+         "tenant_id": tenant_id, "valor": p.get("mean")}
+        for p in puntos
+    )
 
 
 @inngest_client.create_function(
@@ -220,37 +304,73 @@ def process_parcela(ctx: inngest.Context, step: inngest.StepSync, payload: dict)
     # dejo `rancho_id` en NULL en las tres filas del 2026-08-10.
     tenant_id = payload["tenantId"]
     coordinates = payload["coordinates"]
-    
+
     roi = coords_to_geometry(coordinates)
-    end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(days=730) # 2 years
-    
-    # 1. Query available dates for 2 years
-    def _query_dates():
-        init_ee()
-        dates = get_sentinel2_dates(roi, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"), 100)
-        for d in dates:
-            insert_sentinel2_date(
-                geometry_id=parcela_id,
-                user_id=tenant_id,
-                date=d.get("date"),
-                system_time_start=d.get("system_time_start"),
-                cloud_cover=d.get("cloud_cover"),
-                tile_id=d.get("tile_id")
-            )
-        return {"dates": dates}
-    dates_info = step.run("query-sentinel2-dates", _query_dates)
-    
-    # 2. Generate NDVI heatmap for the most recent date
+
+    # 0. "Hoy" se fija en un step. El cuerpo del handler corre de nuevo en cada
+    # request de Inngest, y un `datetime.now()` suelto daria un "hoy" distinto
+    # en cada una: si el run cruza la medianoche —o un reintento espera horas—
+    # las ventanas de los steps que faltan se correrian un dia respecto de las
+    # ya memoizadas, y quedaria un dia sin procesar o uno procesado dos veces.
+    def _planificar():
+        hoy = datetime.now(timezone.utc).date()
+        desde_hist = hoy - timedelta(days=DIAS_HISTORICO)
+        desde_serie = hoy - timedelta(days=DIAS_SERIE)
+        reportar(
+            "plan-historico",
+            f"Histórico de {DIAS_HISTORICO} días ({desde_hist} → {hoy}) en "
+            f"{VENTANAS_HISTORICO} trimestres, y serie NDVI de {DIAS_SERIE} días "
+            f"({desde_serie} → {hoy}) en {VENTANAS_SERIE} meses",
+            progreso=2, desde=desde_hist.isoformat(), hasta=hoy.isoformat(),
+        )
+        return {"hoy": hoy.isoformat()}
+    hoy = date.fromisoformat(paso(step, "plan-historico", _planificar)["hoy"])
+
+    # 1. Fechas con imagen Sentinel-2 de los ultimos dos años, por trimestre.
+    fechas = []
+    ventanas_hist = ventanas(hoy - timedelta(days=DIAS_HISTORICO), hoy, VENTANAS_HISTORICO)
+    for i, (desde, hasta) in enumerate(ventanas_hist, start=1):
+        # Los valores del bucle entran como defaults: una clausura comun veria
+        # los de la ultima vuelta.
+        def _consultar_fechas(i=i, desde=desde, hasta=hasta):
+            etapa, n = f"query-sentinel2-dates-{i}", VENTANAS_HISTORICO
+            reportar(etapa, f"Buscando imágenes Sentinel-2, trimestre {i} de {n}: {desde} → {hasta}",
+                     progreso=_entre(2, 30, i - 1, n), desde=desde, hasta=hasta, ventana=f"{i}/{n}")
+            t0 = time.monotonic()
+            init_ee()
+            encontradas = get_sentinel2_dates(roi, desde, hasta, cloud_pct=100)
+            for d in encontradas:
+                insert_sentinel2_date(
+                    geometry_id=parcela_id,
+                    user_id=tenant_id,
+                    date=d.get("date"),
+                    system_time_start=d.get("system_time_start"),
+                    cloud_cover=d.get("cloud_cover"),
+                    tile_id=d.get("tile_id")
+                )
+            reportar(etapa, f"Trimestre {i} de {n}: {len(encontradas)} imágenes ({desde} → {hasta})",
+                     progreso=_entre(2, 30, i, n), desde=desde, hasta=hasta, ventana=f"{i}/{n}",
+                     imagenes=len(encontradas), ms=_ms_desde(t0))
+            return {"dates": encontradas}
+        fechas.extend(paso(step, f"query-sentinel2-dates-{i}", _consultar_fechas)["dates"])
+
+    # 2. Mapa NDVI de la fecha mas reciente con imagen.
     def _generate_heatmap():
-        init_ee()
-        dates = dates_info["dates"]
-        # dates is a list of dicts with 'date' key, get most recent
-        if dates:
-            recent_date = dates[-1].get("date") if isinstance(dates[-1], dict) else str(dates[-1])
+        etapa = "generate-recent-heatmap"
+        # Las ventanas van en orden y cada una sale ordenada por fecha: la
+        # ultima fecha de la lista es la mas reciente.
+        if fechas:
+            recent_date = fechas[-1].get("date") if isinstance(fechas[-1], dict) else str(fechas[-1])
+            reportar(etapa, f"Generando el mapa NDVI de la fecha más reciente con imagen: {recent_date}",
+                     progreso=31, fecha=recent_date)
         else:
-            recent_date = end_date.strftime("%Y-%m-%d")
-        
+            recent_date = hoy.isoformat()
+            reportar(etapa, f"No hubo imágenes en {DIAS_HISTORICO} días: se intenta el mapa "
+                            f"con la fecha de hoy ({recent_date})",
+                     progreso=31, nivel=AVISO, fecha=recent_date)
+        t0 = time.monotonic()
+        init_ee()
+
         # Using export_heatmap to get the geotiff directly
         path, stats = export_heatmap(
             roi=roi,
@@ -262,10 +382,10 @@ def process_parcela(ctx: inngest.Context, step: inngest.StepSync, payload: dict)
             export_format="geotiff"
         )
         cog_path = convert_to_cog(path)
-        
+
         object_name, natural_key = claves_de_capa("parcela", parcela_id, "ndvi", recent_date)
         storage_key = get_storage_service().upload_file(object_name, cog_path, "image/tiff")
-        
+
         # `stats` (min/max/mean/stddev) no se persiste: `layers` no tiene esas
         # columnas. Requiere migracion en Geocore.
         insert_layer(
@@ -280,31 +400,53 @@ def process_parcela(ctx: inngest.Context, step: inngest.StepSync, payload: dict)
             source='systematic'
         )
         _borrar_temporales(path, cog_path)
+        reportar(etapa, f"Mapa NDVI del {recent_date} subido y registrado como capa",
+                 progreso=45, fecha=recent_date, ms=_ms_desde(t0))
         return {"storage_key": storage_key, "recent_date": recent_date}
-    heatmap_info = step.run("generate-recent-heatmap", _generate_heatmap)
-    
-    # 3. Compute NDVI time-series for 12 months
-    def _compute_ts():
-        init_ee()
-        ts_start = (end_date - timedelta(days=365)).strftime("%Y-%m-%d")
-        ts_end = end_date.strftime("%Y-%m-%d")
-        ts_data = generate_time_series_data(roi, ts_start, ts_end, "ndvi", cloud_pct=30)
-        
-        # E.7: en lote. Una serie anual son ~70 fechas, y de a una eran ~70
-        # conexiones al pool con su commit —o sea su fsync— cada una. Ademas
-        # ahora es atomico: entran las 70 o ninguna.
-        #
-        # Se cuenta lo escrito, no lo recibido: GEE devuelve fechas sin valor
-        # cuando la nube tapo la parcela y esas no llegan a la tabla.
-        written = insert_measurements(
-            {"parcela_id": parcela_id, "indice": "ndvi", "fecha": p['date'],
-             "tenant_id": tenant_id, "valor": p.get('mean')}
-            for p in ts_data
-        )
-        return {"count": written}
-    ts_info = step.run("compute-time-series", _compute_ts)
-    
-    return {"status": "success", "heatmap": heatmap_info, "ts_count": ts_info["count"]}
+    heatmap_info = paso(step, "generate-recent-heatmap", _generate_heatmap)
+
+    # 3. Serie NDVI de los ultimos 12 meses, mes por mes.
+    total_escritas = 0
+    ventanas_serie = ventanas(hoy - timedelta(days=DIAS_SERIE), hoy, VENTANAS_SERIE)
+    for i, (desde, hasta) in enumerate(ventanas_serie, start=1):
+        def _serie_del_mes(i=i, desde=desde, hasta=hasta):
+            etapa, n = f"compute-time-series-{i}", VENTANAS_SERIE
+            reportar(etapa, f"Serie NDVI, mes {i} de {n}: {desde} → {hasta}",
+                     progreso=_entre(45, 98, i - 1, n), desde=desde, hasta=hasta, ventana=f"{i}/{n}")
+            t0 = time.monotonic()
+            init_ee()
+            # `rescate=False`: aceptar nubes hasta 90 % se decide sobre el año
+            # entero (paso 4), como antes. Mes por mes, cualquier mes nublado
+            # caeria al 90 % y la serie mezclaria dos criterios de calidad.
+            puntos = generate_time_series_data(roi, desde, hasta, "ndvi", cloud_pct=30, rescate=False)
+            escritas = _escribir_serie(parcela_id, tenant_id, puntos)
+            reportar(etapa, f"Mes {i} de {n}: {escritas} fechas con valor ({desde} → {hasta})",
+                     progreso=_entre(45, 98, i, n), desde=desde, hasta=hasta, ventana=f"{i}/{n}",
+                     escritas=escritas, ms=_ms_desde(t0))
+            return {"count": escritas}
+        total_escritas += paso(step, f"compute-time-series-{i}", _serie_del_mes)["count"]
+
+    # 4. El rescate de antes, sobre el año entero: si ningun mes dio un valor
+    # con menos de 30 % de nubes, se acepta hasta 90 %. `limit=100` porque es
+    # un año entero y el tope de 30 lo volveria a truncar.
+    if total_escritas == 0:
+        def _rescate():
+            etapa = "compute-time-series-rescate"
+            desde, hasta = ventanas_serie[0][0], ventanas_serie[-1][1]
+            reportar(etapa, f"Ningún mes tuvo un valor con menos de 30 % de nubes: se reintenta "
+                            f"el año entero ({desde} → {hasta}) aceptando hasta 90 %",
+                     progreso=98, nivel=AVISO, desde=desde, hasta=hasta)
+            t0 = time.monotonic()
+            init_ee()
+            puntos = generate_time_series_data(roi, desde, hasta, "ndvi", cloud_pct=30, limit=100)
+            escritas = _escribir_serie(parcela_id, tenant_id, puntos)
+            reportar(etapa, f"Rescate: {escritas} fechas con valor en el año",
+                     progreso=99, nivel=INFO if escritas else AVISO,
+                     desde=desde, hasta=hasta, escritas=escritas, ms=_ms_desde(t0))
+            return {"count": escritas}
+        total_escritas += paso(step, "compute-time-series-rescate", _rescate)["count"]
+
+    return {"status": "success", "heatmap": heatmap_info, "ts_count": total_escritas}
 
 @inngest_client.create_function(
     fn_id="process-rancho",
@@ -337,15 +479,21 @@ def process_rancho(ctx: inngest.Context, step: inngest.StepSync, payload: dict) 
     # mismo indice antes de convertirse a COG, nunca se registro en `layers`, y
     # duplicaba almacenamiento sin aportar nada. Eso cierra E.8.
     def _ingest_rancho_raster():
+        etapa = "ingest-rancho-raster"
         init_ee()
         roi = coords_to_geometry(coordinates)
         end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         start_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+        reportar(etapa, f"Buscando el compuesto NDVI de los últimos 30 días: {start_date} → {end_date}",
+                 progreso=10, desde=start_date, hasta=end_date)
+        t0 = time.monotonic()
 
         index = "ndvi"
         img = compute_sentinel2_index(roi, start_date, end_date, index, cloud_pct=30)
         if img is None:
-            raise inngest.NonRetriableError(f"No se encontraron imágenes útiles para el rancho {rancho_id}.")
+            raise inngest.NonRetriableError(
+                f"No se encontraron imágenes útiles para el rancho {rancho_id} "
+                f"entre {start_date} y {end_date}.")
 
         band, _ = index_band_and_vis(index, satellite="sentinel2")
         layer = img.select(band).clip(roi)
@@ -355,6 +503,8 @@ def process_rancho(ctx: inngest.Context, step: inngest.StepSync, payload: dict) 
             fecha_captura = datetime.fromtimestamp(acquired_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
         except Exception:
             fecha_captura = end_date
+        reportar(etapa, f"Imagen del {fecha_captura}: descargando el GeoTIFF de GEE",
+                 progreso=25, fecha=fecha_captura)
 
         temp_raw_path = None
         cog_path = None
@@ -363,6 +513,9 @@ def process_rancho(ctx: inngest.Context, step: inngest.StepSync, payload: dict) 
             os.close(fd)
 
             descargar_geotiff(layer, roi, temp_raw_path)
+            megas = round(os.path.getsize(temp_raw_path) / 1_000_000, 2)
+            reportar(etapa, f"GeoTIFF descargado ({megas} MB): convirtiendo a COG y subiendo",
+                     progreso=60, megas=megas)
 
             import rasterio
             with rasterio.open(temp_raw_path) as src:
@@ -377,10 +530,12 @@ def process_rancho(ctx: inngest.Context, step: inngest.StepSync, payload: dict) 
             # disco: el proceso es de larga vida y los reintentos se acumulan.
             _borrar_temporales(temp_raw_path, cog_path)
 
+        reportar(etapa, f"Ráster del rancho listo: imagen del {fecha_captura}",
+                 progreso=90, fecha=fecha_captura, ms=_ms_desde(t0))
         return {"storage_key": storage_key, "fecha_captura": fecha_captura,
                 "bbox": bounds, "crs": crs}
 
-    gee_info = step.run("ingest-rancho-raster", _ingest_rancho_raster)
+    gee_info = paso(step, "ingest-rancho-raster", _ingest_rancho_raster)
     upload_info = gee_info
 
     # E.1: acá había un step `_calculate_measurements` que calculaba NDVI por
@@ -417,13 +572,17 @@ def process_rancho(ctx: inngest.Context, step: inngest.StepSync, payload: dict) 
 @_with_job_tracking
 def generate_heatmap_on_demand(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
     def _generate():
+        etapa = "generate-heatmap"
+        indice, inicio, fin = payload["indice"], payload["fechaInicio"], payload["fechaFin"]
+        reportar(etapa, f"Mapa de {indice} para {inicio} → {fin}",
+                 progreso=5, indice=indice, desde=inicio, hasta=fin)
+        t0 = time.monotonic()
         init_ee()
         roi = coords_to_geometry(payload["coordinates"])
-        tiles = generate_heatmap_tiles(roi, None, payload["indice"], payload["fechaInicio"], payload["fechaFin"], payload.get("cloudPct", 30))
+        tiles = generate_heatmap_tiles(roi, None, indice, inicio, fin, payload.get("cloudPct", 30))
 
         obj_name, natural_key = claves_de_capa(
-            "parcela", payload["parcelaId"], payload["indice"],
-            payload["fechaInicio"], payload["fechaFin"],
+            "parcela", payload["parcelaId"], indice, inicio, fin,
         )
 
         # E.9: si el objeto ya esta, no se vuelve a pedir a GEE. La key encodea
@@ -433,9 +592,13 @@ def generate_heatmap_on_demand(ctx: inngest.Context, step: inngest.StepSync, pay
         # de red ya no se lee como "no existe" y no dispara un recalculo.
         if get_storage_service().object_exists(obj_name):
             logger.info("La capa %s ya existe; se saltea el calculo en GEE", obj_name)
+            reportar(etapa, "La capa ya estaba en el almacenamiento: se reutiliza sin calcular en GEE",
+                     progreso=80)
             storage_key = obj_name
         else:
-            path, stats = export_heatmap(roi, None, payload["indice"], payload["fechaInicio"], payload["fechaFin"], payload.get("cloudPct", 30), "geotiff")
+            reportar(etapa, "Calculando y exportando el GeoTIFF en GEE", progreso=20)
+            path, stats = export_heatmap(roi, None, indice, inicio, fin, payload.get("cloudPct", 30), "geotiff")
+            reportar(etapa, "GeoTIFF exportado: convirtiendo a COG y subiendo", progreso=60)
             cog_path = convert_to_cog(path)
             storage_key = get_storage_service().upload_file(obj_name, cog_path, "image/tiff")
             _borrar_temporales(path, cog_path)
@@ -447,15 +610,17 @@ def generate_heatmap_on_demand(ctx: inngest.Context, step: inngest.StepSync, pay
         # `stats` no se persiste: `layers` no tiene columnas para min/max/mean/stddev.
         insert_layer(
             natural_key=natural_key,
-            product=payload['indice'], storage_key=storage_key,
-            acquired_ts=payload['fechaInicio'],
+            product=indice, storage_key=storage_key,
+            acquired_ts=inicio,
             ingested_ts=datetime.now(timezone.utc),
             tenant_id=payload['tenantId'], parcela_id=payload['parcelaId'],
             bbox=None, source='on_demand'
         )
+        reportar(etapa, f"Capa de {indice} registrada ({inicio} → {fin})",
+                 progreso=95, ms=_ms_desde(t0))
         return {"tiles": tiles, "storage_key": storage_key}
-        
-    res = step.run("generate-heatmap", _generate)
+
+    res = paso(step, "generate-heatmap", _generate)
     return res
 
 @inngest_client.create_function(
@@ -466,17 +631,24 @@ def generate_heatmap_on_demand(ctx: inngest.Context, step: inngest.StepSync, pay
 @_with_job_tracking
 def compute_timeseries(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
     def _compute_ts():
+        etapa = "compute-ts"
+        indice, inicio, fin = payload["indice"], payload["fechaInicio"], payload["fechaFin"]
+        reportar(etapa, f"Serie de {indice}: {inicio} → {fin}",
+                 progreso=10, indice=indice, desde=inicio, hasta=fin)
+        t0 = time.monotonic()
         init_ee()
         roi = coords_to_geometry(payload["coordinates"])
-        ts_data = generate_time_series_data(roi, payload["fechaInicio"], payload["fechaFin"], payload["indice"], payload.get("cloudPct", 30))
-        insert_measurements(
-            {"parcela_id": payload['parcelaId'], "indice": payload['indice'],
+        ts_data = generate_time_series_data(roi, inicio, fin, indice, payload.get("cloudPct", 30))
+        escritas = insert_measurements(
+            {"parcela_id": payload['parcelaId'], "indice": indice,
              "fecha": p['date'], "tenant_id": payload['tenantId'],
              "valor": p.get('mean')}
             for p in ts_data
         )
+        reportar(etapa, f"Serie de {indice}: {escritas} fechas con valor",
+                 progreso=95, escritas=escritas, ms=_ms_desde(t0))
         return {"data": ts_data}
-    res = step.run("compute-ts", _compute_ts)
+    res = paso(step, "compute-ts", _compute_ts)
     return res
 
 @inngest_client.create_function(

@@ -1,5 +1,7 @@
+import json
 import logging
 import os
+import time
 import uuid
 from datetime import date, datetime, timezone
 from psycopg2.extras import Json, execute_values
@@ -97,8 +99,11 @@ def update_processing_job(job_id: str, status: str, progress: int = None, error_
     """
     if not job_id:
         return
-    conn = get_connection()
+    # `get_connection()` va adentro del `try`: si la base no responde, crear el
+    # pool levanta, y eso rompia el "no se relanza" que promete el `except`.
+    conn = None
     try:
+        conn = get_connection()
         cur = conn.cursor()
 
         updates = ['status = %s']
@@ -129,6 +134,99 @@ def update_processing_job(job_id: str, status: str, progress: int = None, error_
         # ya corrio. Pero se loguea como ERROR y no con un print, para que se
         # vea en el log estructurado del deploy.
         logger.error("No se pudo actualizar el job %s: %s", job_id, e)
+        _deshacer(conn)
+    finally:
+        release_connection(conn)
+
+
+def _deshacer(conn):
+    """Rollback antes de devolver la conexion al pool.
+
+    Una sentencia que falla deja la transaccion abortada, y el pool no la
+    limpia: el siguiente que tomara esa conexion recibiria `current transaction
+    is aborted` en una consulta que no tiene nada de malo.
+    """
+    if conn is None:
+        return
+    try:
+        conn.rollback()
+    except Exception as e:
+        logger.warning("No se pudo hacer rollback de una conexion del pool: %s", e)
+
+
+# Si falta la tabla —el worker se desplego antes de que se aplicara la migracion
+# de Geocore— cada evento fallaria igual y llenaria el log con el mismo error,
+# unas cincuenta veces por parcela. Se deja de intentar por un rato y se avisa
+# una vez. Pasado el rato se vuelve a probar, asi que aplicar la migracion no
+# exige reiniciar el worker.
+_PAUSA_SIN_TABLA_S = 600
+_sin_tabla_de_eventos_hasta = 0.0
+
+
+def registrar_evento_job(job_id: str, attempt: int, stage: str, level: str, message: str,
+                         detail: dict | None = None, progress: float | None = None):
+    """Una linea en la bitacora del job (`processing_job_events`) y su avance.
+
+    La tabla es de Geocore (migracion `ProcessingJobEvents`); el worker solo
+    escribe. La lee el panel para mostrar en que etapa y en que ventana de
+    fechas va cada job. Quien decide *que* reportar es `services/avance_job.py`.
+
+    **Nunca levanta**, igual que `update_processing_job`: es telemetria, y
+    perderla no puede abortar un procesamiento.
+
+    Son **dos sentencias con dos commits** a proposito. `progress` existe en
+    `processing_jobs` desde siempre; la tabla de eventos llega con una migracion.
+    Si el worker se despliega antes de que se aplique, el INSERT falla y el
+    avance igual queda escrito.
+
+    El avance usa `GREATEST`: la barra no retrocede cuando un reintento vuelve
+    a reportar el arranque de una etapa que ya habia avanzado.
+    """
+    global _sin_tabla_de_eventos_hasta
+    if not job_id:
+        return
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        if progress is not None:
+            try:
+                cur.execute(
+                    'UPDATE processing_jobs SET progress = GREATEST(progress, %s) WHERE id = %s',
+                    (round(progress), job_id),
+                )
+                conn.commit()
+            except Exception as e:
+                logger.error("No se pudo actualizar el avance del job %s: %s", job_id, e)
+                _deshacer(conn)
+
+        if time.monotonic() < _sin_tabla_de_eventos_hasta:
+            return
+
+        cur.execute(
+            '''
+            INSERT INTO processing_job_events
+                (job_id, attempt, stage, level, message, detail, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, now())
+            ''',
+            (job_id, attempt, stage, level, message,
+             # `default=str`: fechas y Paths llegan tal cual los armo el handler.
+             Json(detail, dumps=lambda o: json.dumps(o, default=str)) if detail else None),
+        )
+        conn.commit()
+    except Exception as e:
+        _deshacer(conn)
+        if getattr(e, "pgcode", None) == "42P01":  # undefined_table
+            _sin_tabla_de_eventos_hasta = time.monotonic() + _PAUSA_SIN_TABLA_S
+            logger.warning(
+                "No existe processing_job_events: falta aplicar la migracion "
+                "ProcessingJobEvents de Geocore en la base de GeoData. La bitacora "
+                "se pausa %s s; el avance de los jobs se sigue escribiendo.",
+                _PAUSA_SIN_TABLA_S,
+            )
+        else:
+            logger.error("No se pudo registrar el evento %s del job %s: %s", stage, job_id, e)
     finally:
         release_connection(conn)
 
