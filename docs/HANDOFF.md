@@ -2,8 +2,14 @@
 
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
-> Última revisión: **2026-09-07**. Crónica del día:
-> [`SESSION_2026-09-07_logs_pedido_y_las_dos_claves.md`](SESSION_2026-09-07_logs_pedido_y_las_dos_claves.md).
+> Última revisión: **2026-09-11**. Crónica:
+> [`SESSION_2026-09-11_el_arranque_que_dice_la_verdad.md`](SESSION_2026-09-11_el_arranque_que_dice_la_verdad.md).
+>
+> **Novedades desde el 2026-09-07:** el flujo corre de punta a punta (Inngest
+> registrado, firma verificada, COG subido y servido). La contraseña de
+> `geodata` está resuelta, así que §5b-bis quedó histórica. El worker ahora
+> reporta su configuración y verifica sus conexiones al arrancar
+> (`DECISIONS #27`). Variables de Railway, versión final: sesión del 09-11, §8.
 
 ---
 

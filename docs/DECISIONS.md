@@ -865,3 +865,88 @@ Dos cosas que aparecieron al unificar:
   el **0.0 como ausente**. El meridiano de Greenwich y el ecuador son
   coordenadas válidas, y un `lng` de 0.0 quedaba en `None` — un ROI corrupto sin
   ningún error.
+
+---
+
+## 27. El arranque verifica con I/O real, y cada chequeo dice hasta dónde probó (2026-09-08)
+
+**Decisión:** al arrancar, el worker escribe dos cosas. Primero, su modo y el
+estado de cada variable de entorno —**sin un carácter de ningún secreto**, sólo
+largos—, con la consecuencia de cada faltante (`utils_pkg/arranque.py`).
+Después, el resultado de **conectarse de verdad** a cada dependencia, con el
+alcance de cada chequeo impreso al lado del resultado
+(`utils_pkg/conexiones.py`).
+
+### Por qué no alcanzaba con el reporte de configuración
+
+Pasó tres veces en la misma semana, con la misma forma: **la variable estaba
+puesta, el reporte la mostraba como "definida", y no servía.** `DB_PASSWORD`
+rechazada por Supabase, `INNGEST_SIGNING_KEY` vacía, `BASE_OUTPUT_DIR` apuntando
+fuera del contenedor. Un reporte de configuración dice qué hay; sólo conectar,
+escribir o consultar dice si funciona.
+
+Y había un agravante: `init_db()` atrapa su propia excepción, así que el
+precalentamiento de `app.py` **no podía distinguir** una base caída de una que
+anda.
+
+### Reglas
+
+- **Ningún chequeo levanta y ninguno cuelga.** Cada uno devuelve un `Resultado`
+  y tiene timeout corto, porque hasta que termina el `startup`, `/health` no
+  contesta.
+- **Ningún chequeo pide más que el trabajo real** (`DECISIONS #21`). Por eso
+  `minio` prueba alcance y TLS, **no credenciales**: cualquier operación barata
+  exige un permiso que la subida no usa. Y el resultado lo dice, para que un OK
+  no se lea como más garantía de la que da.
+- **El reporte de configuración va a nivel de módulo**, antes de
+  `inngest.fast_api.serve()`. Si algo del import falla, el evento `startup`
+  nunca se dispara, y un diagnóstico que sólo aparece cuando todo anda no sirve.
+  Es seguro ahí porque sólo lee `os.environ`. Los chequeos con I/O van en
+  `startup`.
+- **`/health` responde 200 aunque el worker esté degradado**, con el estado en
+  el cuerpo. Con 503, Railway reiniciaría en bucle un servicio mal configurado,
+  que es justo el que hay que poder mirar.
+
+### Consecuencias
+
+- Unos 10 s de chequeos antes de que `/health` conteste. Acotados; es lo
+  primero a revisar si el healthcheck de Railway se pone estricto.
+- Geocore (`StartupBanner.cs`) y el tileserver (`terra_tiles/arranque.py`)
+  siguen el mismo patrón, cada uno reusando lo que ya tenía: el tileserver
+  reusa las comprobaciones de `/health/ready`.
+
+---
+
+## 28. El tileserver no devuelve mensajes crudos de error (2026-09-11)
+
+**Decisión:** las excepciones de rio-tiler se atienden **caso por caso, con
+mensaje fijo** —`TileOutsideBounds` → 200 con PNG transparente,
+`PointOutsideBounds` → 404—, y **no** se registra
+`titiler.core.errors.add_exception_handlers`, que era lo obvio.
+
+### Por qué
+
+Ese registro incluye un manejador para cualquier `Exception` que devuelve
+`str(exc)` en la respuesta. Y los errores de GDAL traen el endpoint de S3
+adentro. Verificado contra un MinIO inalcanzable:
+
+    CURL error: Failed to connect to <host> port <puerto> ...
+
+Con el MinIO privado de Railway, eso publicaría `bucket.railway.internal:9000`
+en una respuesta HTTP, que es exactamente lo que `/health/ready` se cuida de no
+mostrar.
+
+### Costo aceptado
+
+Un archivo inexistente responde **500 sin motivo** en el cuerpo (en TiTiler 0.18
+eso es 500, no 404). El motivo queda en el log del servicio, que no es público.
+
+### Los bytes fijos se generan con código
+
+El PNG de "fuera del raster" era un literal base64 comentado como transparente.
+Decodificado, era **blanco opaco** —píxel `[filtro 1, gris 255, alfa 255]`— y
+además con el CRC de su bloque IDAT roto. Pintaba cuadrados blancos junto a los
+heatmaps del worker, que están alineados exacto a la grilla de zoom 14. Ahora
+lo arma `terra_tiles/png.py` desde los bytes del píxel, y `tests/test_png.py` lo
+decodifica y mira el alfa. Un literal opaco a la lectura deja que el comentario
+de al lado diga cualquier cosa.
