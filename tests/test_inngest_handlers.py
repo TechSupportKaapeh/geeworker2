@@ -333,6 +333,63 @@ def test_una_serie_entera_nublada_no_toca_la_base(monkeypatch):
     ) == 0
 
 
+def test_dos_filas_del_mismo_dia_no_rompen_el_lote(monkeypatch):
+    """La primera corrida real del historico (2026-09-12) fallo asi.
+
+    Postgres rechaza un `INSERT ... ON CONFLICT DO UPDATE` que toque la misma
+    fila dos veces, y el lote entero se cae con `CardinalityViolation`. Tiene
+    que llegar una sola fila por (parcela, indice, fecha): la ultima.
+    """
+    from datetime import datetime, timezone
+
+    from repositories import db_repository
+
+    llamadas = []
+    monkeypatch.setattr(db_repository, "get_connection", lambda: _ConexionFalsa())
+    monkeypatch.setattr(db_repository, "release_connection", lambda conn: None)
+    monkeypatch.setattr(
+        db_repository, "execute_values",
+        lambda cur, sql, filas: llamadas.append(filas),
+    )
+
+    escritas = db_repository.insert_measurements([
+        {"parcela_id": "p", "indice": "ndvi", "fecha": "2025-09-20",
+         "tenant_id": "t", "valor": 0.41},
+        {"parcela_id": "p", "indice": "ndvi", "fecha": "2025-09-25",
+         "tenant_id": "t", "valor": 0.50},
+        {"parcela_id": "p", "indice": "ndvi", "fecha": "2025-09-20",
+         "tenant_id": "t", "valor": 0.43},
+    ])
+
+    assert escritas == 2
+    assert [f[2] for f in llamadas[0]] == [
+        datetime(2025, 9, 20, tzinfo=timezone.utc),
+        datetime(2025, 9, 25, tzinfo=timezone.utc),
+    ]
+    assert llamadas[0][0][4] == 0.43
+
+
+def test_la_serie_trae_una_medicion_por_dia():
+    """Una parcela en el borde de dos tiles MGRS recibe dos imagenes de la misma
+    pasada. Se promedian: `fecha` esta en la PK de `measurements` (DECISIONS #30).
+    """
+    from services.ee.ee_client import una_por_dia
+
+    puntos = [
+        {"date": "2025-09-20", "timestamp": 2000, "mean": 0.40},
+        {"date": "2025-09-15", "timestamp": 1000, "mean": 0.30},
+        {"date": "2025-09-20", "timestamp": 2001, "mean": 0.50},
+    ]
+
+    juntos = una_por_dia(puntos)
+
+    assert [p["date"] for p in juntos] == ["2025-09-15", "2025-09-20"]
+    assert juntos[0]["mean"] == 0.30
+    assert abs(juntos[1]["mean"] - 0.45) < 1e-9
+    # Conserva el resto de los campos del primero del dia.
+    assert juntos[1]["timestamp"] == 2000
+
+
 class _ConexionFalsa:
     def cursor(self):
         return object()

@@ -387,6 +387,18 @@ def insert_measurements(mediciones) -> int:
     if not filas:
         return 0
 
+    # Postgres rechaza un `INSERT ... ON CONFLICT DO UPDATE` que toque dos veces
+    # la misma fila (`CardinalityViolation`), y rechaza el lote entero. De a una
+    # fila, la segunda pisaba a la primera; en lote hay que hacerlo aca. Queda la
+    # ultima, que es lo que pasaba antes de E.7. Quien produce la serie ya junta
+    # las imagenes del mismo dia (`una_por_dia`): esto es la defensa en el borde.
+    por_clave = {fila[:3]: fila for fila in filas}
+    if len(por_clave) < len(filas):
+        logger.warning(
+            "insert_measurements: %d filas repetidas por (parcela, indice, fecha); "
+            "queda la ultima de cada una", len(filas) - len(por_clave))
+        filas = list(por_clave.values())
+
     conn = get_connection()
     try:
         cur = conn.cursor()

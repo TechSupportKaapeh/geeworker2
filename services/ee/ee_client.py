@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timezone
 
 import ee
 from dotenv import load_dotenv
@@ -301,30 +302,66 @@ def get_sentinel2_time_series(roi, start, end, index, cloud_pct=70, limit=30, re
         limited_collection = processed_collection.limit(limit_to_use)
         image_count = limited_collection.size().getInfo()
         image_list = limited_collection.toList(image_count)
-        time_series = []
+        puntos = []
         for i in range(image_count):
             try:
                 img = ee.Image(image_list.get(i))
                 stats = img.select(index).reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=60, maxPixels=1e5, bestEffort=True).getInfo()
                 metadata = img.getInfo()
                 date_ms = metadata['properties']['system:time_start']
-                import datetime
-                date_obj = datetime.datetime.fromtimestamp(date_ms / 1000)
-                date_str = date_obj.strftime('%Y-%m-%d')
+                # En UTC: `system:time_start` es un instante UTC, y sin `tz` el dia
+                # salia del huso de la maquina que corre el worker.
+                date_str = datetime.fromtimestamp(date_ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
                 mean_value = stats.get(index)
                 if mean_value is not None:
-                    try:
-                        from utils_pkg.io import round_sig
-                        rounded = round_sig(float(mean_value), sig=2)
-                    except Exception:
-                        rounded = float(mean_value)
-                    time_series.append({'date': date_str, 'datetime': date_str + ' 12:00:00', 'timestamp': date_ms, 'mean': rounded})
+                    puntos.append({'date': date_str, 'datetime': date_str + ' 12:00:00', 'timestamp': date_ms, 'mean': float(mean_value)})
             except Exception:
                 continue
-        time_series.sort(key=lambda x: x.get('timestamp', 0))
+        # Se redondea despues de juntar los del mismo dia: promediar valores ya
+        # redondeados a dos cifras sumaria el error de los dos.
+        time_series = una_por_dia(puntos)
+        for p in time_series:
+            p['mean'] = _redondear(p['mean'])
         return time_series
     except Exception:
         return []
+
+
+def una_por_dia(puntos):
+    """Una medicion por dia: promedia las imagenes que comparten fecha.
+
+    Una parcela en el borde de dos tiles MGRS recibe **dos imagenes de la misma
+    pasada**, una por tile y con la misma fecha. Cada una da la media de la parte
+    de la parcela que cubre. `measurements` guarda una fila por
+    (parcela, indice, dia) —`fecha` esta en la PK—, y dos filas del mismo dia en
+    un lote tiraban el `INSERT ... ON CONFLICT DO UPDATE` entero con
+    `CardinalityViolation`: la primera corrida real del historico, el 2026-09-12,
+    fallo asi en el mes 1 de la serie.
+
+    El promedio simple es una aproximacion: no pondera por cuanta superficie de
+    la parcela cubre cada tile (`DECISIONS #30`).
+
+    `puntos` son dicts con `date`, `timestamp` y `mean`. Devuelve uno por fecha,
+    ordenados por `timestamp`, cada uno con el resto de los campos del primero.
+    """
+    por_dia = {}
+    for p in puntos:
+        por_dia.setdefault(p['date'], []).append(p)
+    juntos = []
+    for del_dia in por_dia.values():
+        primero = min(del_dia, key=lambda x: x.get('timestamp', 0))
+        media = sum(x['mean'] for x in del_dia) / len(del_dia)
+        juntos.append({**primero, 'mean': media})
+    juntos.sort(key=lambda x: x.get('timestamp', 0))
+    return juntos
+
+
+def _redondear(valor):
+    try:
+        from utils_pkg.io import round_sig
+        return round_sig(float(valor), sig=2)
+    except Exception:
+        return float(valor)
 
 
 def get_sentinel2_dates(roi, start, end, cloud_pct=100):
