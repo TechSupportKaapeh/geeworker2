@@ -24,7 +24,9 @@ Lo común a los cuatro:
 - Un push nuevo a un PR cancela la corrida anterior del mismo PR. En `main` no se
   cancela, así que cada commit que llega a producción tiene su resultado.
 - **Ninguno necesita secretos.** Se verificó corriendo cada suite desde un clon
-  limpio, sin `.env` ni `.env.local`.
+  limpio, sin `.env` ni `.env.local`. En los tres repos públicos importa: un PR
+  desde un fork también dispara el CI, y por eso no puede depender de secretos ni
+  tener un token con escritura.
 
 ## Reproducirlo en local
 
@@ -88,11 +90,16 @@ Para cada repo de `TechSupportKaapeh` (`Geocore`, `geeworker2`, `Terra-admin` y
   - *Require status checks to pass* → *Add checks* → **`ci`**. El check aparece
     en la lista después de que el workflow corrió al menos una vez.
 
-> ⚠️ **Plan de GitHub.** Los cuatro repos son privados. Los rulesets y la
-> protección de ramas en repos privados piden GitHub Team para una organización
-> (o Pro para una cuenta personal). Con el plan Free la pantalla aparece, pero la
-> regla no se aplica. Si ese es el caso, las opciones son subir el plan o quedarse
-> solo con el punto 2, que igual frena el deploy.
+> ⚠️ **El plan de GitHub, verificado con la API el 2026-09-14.**
+> `TechSupportKaapeh` es una **cuenta personal**, no una organización.
+> - `geeworker2`, `Terra-admin` y `terra-tileserver` son **públicos**. Ahí la
+>   protección funciona con el plan gratis: `GET …/branches/main/protection` da
+>   `404 Branch not protected`.
+> - `Geocore` es **privado**, y la misma consulta da `403 Upgrade to GitHub Pro
+>   or make this repository public`.
+>
+> Para Geocore las opciones son pasar la cuenta a GitHub Pro, o quedarse solo con
+> el punto 2, que igual frena el deploy.
 
 ### 2. Activar "Wait for CI" en Railway, en los cuatro servicios
 
