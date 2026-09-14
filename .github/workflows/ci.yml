@@ -1,0 +1,64 @@
+# CI del worker (DECISIONS #34, tarea M.0.1 de docs/SPRINTS_FASE_M.md).
+#
+# Es la compuerta VERIFY de docs/WORKFLOW.md, ejecutada por una máquina: nada
+# llega a `main` —ni a Railway, con "Wait for CI"— sin la suite en verde.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Solo lectura: el CI no escribe en el repo ni publica nada.
+permissions:
+  contents: read
+
+# Un push nuevo a un PR cancela la corrida anterior del mismo PR. En `main` no se
+# cancela: cada commit que llega a producción tiene que tener su resultado.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    # Es el nombre del check obligatorio en la protección de `main` (M.0.6):
+    # cambiarlo obliga a cambiar esa regla.
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # DECISIONS #22: todo instala como wheel. Como variable de entorno alcanza
+      # también al pip que pip-audit usa por dentro.
+      PIP_ONLY_BINARY: ":all:"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      # 3.13 es el contrato del Dockerfile (`python:3.13-slim`, DECISIONS #22).
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      # Sin .env ni credenciales: la suite no toca GEE, MinIO ni la base. Se
+      # verificó el 2026-09-14 corriéndola desde un clon limpio.
+      - name: pytest
+        run: python -m pytest tests -q
+
+      # Estricto solo sobre pipeline/, con su propio ruff.toml. El resto del repo
+      # arrastra ~200 hallazgos históricos, y ahí la regla es no sumar.
+      - name: ruff (pipeline/)
+        run: |
+          python -m ruff check pipeline/
+          python -m ruff format --check pipeline/
+
+      # CVEs conocidos de las dependencias del servicio (OWASP A06). No audita
+      # requirements-dev.txt: esas herramientas no van a la imagen.
+      - name: pip-audit
+        run: python -m pip_audit -r requirements.txt

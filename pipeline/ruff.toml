@@ -1,0 +1,30 @@
+# Ruff estricto para `pipeline/` (DECISIONS #34, tarea M.0.1 de
+# docs/SPRINTS_FASE_M.md).
+#
+# Ruff usa la configuración más cercana a cada archivo, así que esta gobierna
+# solo lo que está debajo de `pipeline/`. El resto del repo sigue con las reglas
+# por defecto de la versión pinneada y sus ~200 hallazgos históricos: ahí la
+# regla es no sumar, no limpiar de golpe.
+#
+# `pipeline/` es código nuevo, así que arranca con todas las reglas. Cada
+# excepción se escribe acá, con su porqué: abrir una regla con un motivo es más
+# barato que cerrarla después con cien hallazgos encima.
+
+target-version = "py313"
+
+[lint]
+select = ["ALL"]
+ignore = [
+    # Choca con `ruff format`, que el CI también corre sobre pipeline/: el
+    # formateador decide las comas finales. Lo recomienda la documentación de
+    # ruff.
+    "COM812",
+    # Pide un aviso de copyright al principio de cada archivo. Ningún archivo
+    # del repo lo lleva, y el proyecto no definió uno.
+    "CPY001",
+]
+
+[lint.pydocstyle]
+# Google apaga D401, que chequea el modo imperativo con una lista de verbos en
+# inglés y da falsos positivos con docstrings en castellano.
+convention = "google"
