@@ -1160,3 +1160,86 @@ de a uno al pipeline nuevo, y lo viejo se borra al final (M.6). Es el patrón
 un destino. M.6 tiene criterio de salida: el worker termina con **menos** líneas
 que al empezar. Si después los handlers todavía molestan, rehacerlos es barato,
 porque quedan finos.
+
+---
+
+## 34. CI en los cuatro repos: la compuerta VERIFY la corre una máquina (2026-09-14)
+
+> Sprint M.0 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). Qué corre cada repo, cómo
+> reproducirlo y qué hace el equipo en M.0.6: [`CI.md`](CI.md). Lo propio de Geocore
+> y del panel está en `DECISIONS #24` de Geocore.
+
+**Decisión:** cada repo tiene `.github/workflows/ci.yml`, con un solo job llamado
+`ci`, que corre en cada PR y en cada push a `main`. El worker corre `pytest`,
+`pip-audit` y un ruff estricto solo sobre `pipeline/`. Geocore corre build, tests y
+paquetes vulnerables. El panel corre lint, build y `npm audit`. El tileserver corre
+`pytest`.
+
+**Por qué ahora, antes que el pipeline:** hasta el 2026-09-13 todo iba directo a
+`main`, y Railway desplegaba lo que llegara. La FASE M reescribe la capa de
+satélite (`#33`), y el `#33` mismo lo dice: un reemplazo grande sin red de
+seguridad es la jugada más riesgosa. La compuerta VERIFY ya existía, pero dependía
+de que alguien se acordara de correrla.
+
+**Los criterios, comunes a los cuatro:**
+1. **La versión de la imagen, no la de la máquina de quien desarrolla.** Python 3.13
+   en el worker y 3.11 en el tileserver, Node 22 en el panel y .NET 10 en Geocore,
+   las de cada Dockerfile. Un CI verde con otra versión no dice nada del deploy.
+2. **Se instala como la imagen.** En el worker, `--only-binary=:all:` (`#22`), como
+   variable de entorno para que alcance también al pip interno de `pip-audit`. El
+   Dockerfile del worker nunca se construyó (FASE H), así que el CI es la primera
+   vez que esos pins se instalan en Linux.
+3. **Sin secretos.** Antes de escribir los workflows se corrió cada suite desde un
+   clon limpio, sin `.env`: el worker dio 203, Geocore 243 y el tileserver 150, y
+   el panel compiló sin `.env.local`. Si un test empieza a necesitar credenciales,
+   el CI lo va a decir.
+4. **Un solo job y siempre `ci`.** Es el nombre del check obligatorio de M.0.6.
+   Partirlo en varios jobs multiplica los checks que hay que mantener en cuatro
+   repos, para ganar unos segundos de paralelismo.
+5. **Solo lectura** (`permissions: contents: read`). Un push nuevo a un PR cancela
+   la corrida anterior; en `main` no se cancela nada.
+
+**El ruff estricto vive en `pipeline/ruff.toml`.** Ruff usa la configuración más
+cercana a cada archivo, así que ese archivo gobierna solo el paquete nuevo y el
+resto del repo queda como estaba: 198 hallazgos, que no suben. `pipeline/` nace
+vacío en M.0.1 justamente para que la regla exista antes de la primera línea.
+- `select = ["ALL"]`, porque es código nuevo: abrir una regla con un motivo es más
+  barato que cerrarla después con cien hallazgos encima.
+- Tres excepciones, cada una con su porqué en el archivo: `COM812` choca con el
+  formateador; `CPY001` pide un aviso de copyright que el repo no tiene; y la
+  convención `google` de pydocstyle apaga `D401`, que chequea el imperativo con
+  verbos en inglés.
+- También `ruff format --check`: en código nuevo el formato no se discute.
+- **Control negativo:** una función sin anotaciones da `ANN001` y `ANN202` dentro
+  de `pipeline/`, y la misma función pasa limpia en la raíz.
+
+**La auditoría de dependencias es compuerta en tres repos.** Consecuencia buscada:
+un advisory nuevo puede poner el CI en rojo sin que nadie haya tocado el código. Se
+arregla subiendo la dependencia, no apagando el paso. En Geocore apareció una
+trampa: **`dotnet list package --vulnerable` sale con 0 aunque encuentre algo**
+(se probó metiendo un paquete vulnerable a propósito), así que el paso busca la
+frase de la salida (`DECISIONS #24` de Geocore).
+
+**Lo que se descartó:**
+- **Fijar las actions por SHA.** Van por tag de major (`@v7`): son todas de
+  `actions/*`, mantenidas por GitHub, y sin Dependabot un SHA se queda viejo en
+  silencio. Si se suma una action de terceros, esa sí va por SHA.
+- **Construir la imagen Docker en el CI.** Railway ya la construye en cada deploy;
+  hacerlo dos veces duplica el costo. Lo que se pierde está anotado abajo.
+- **Un workflow reutilizable entre los cuatro repos.** Son cuatro stacks sin un
+  paso en común.
+
+**Lo que el CI no cubre, y queda registrado en [`CI.md`](CI.md):**
+- Un Dockerfile roto. El caso que viene: **el Dockerfile del worker no copia
+  `pipeline/`**, y cuando un handler lo importe (M.4.4) el contenedor va a morir al
+  arrancar, que es el bug que ya tuvo el tileserver.
+- El tileserver no audita dependencias, y tiene varias sin pin.
+- Las 9 vulnerabilidades altas de las herramientas de desarrollo del panel
+  (`vite` entre ellas): no llegan al bundle.
+
+**Sin M.0.6 el CI avisa pero no frena.** Proteger `main` y activar "Wait for CI" en
+Railway lo hace el equipo. `TechSupportKaapeh` es una cuenta personal: los tres
+repos públicos (worker, panel y tileserver) se pueden proteger con el plan gratis,
+y Geocore, que es privado, pide GitHub Pro. Se verificó con la API el 2026-09-14.
+"Wait for CI" en Railway no depende del plan, y alcanza para que un rojo no se
+despliegue.
