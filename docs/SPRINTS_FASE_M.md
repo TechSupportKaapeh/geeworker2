@@ -33,7 +33,11 @@
 - **Desde M.0, rama por tarea y PR.**
   - La rama se nombra por la tarea: `m1-2-indices`.
   - El commit cita la tarea: `feat(pipeline): M.1.2 registro de indices`.
-  - Se mergea con el CI en verde. Sin `gh` instalado, el PR se abre desde GitHub web.
+  - Se mergea con el CI en verde. Desde el 2026-09-14 hay CI en los cuatro repos
+    (`DECISIONS #34`, [`CI.md`](CI.md)), y los PR se abren con `gh`, con la sesión
+    de la cuenta `TechSupportKaapeh`.
+- **Las tareas 👥 no frenan la sesión:** corren en paralelo, y la sesión sigue por la
+  primera tarea ⬜ que no sea del equipo.
 - **👥 = lo hace el equipo:** migraciones en producción, configuración de GitHub y
   de Railway, secrets y datos reales. La tarea deja escrito exactamente qué hacer.
 - **🚦 = compuerta.** Si no pasa, se revisa el diseño antes de seguir.
@@ -81,15 +85,25 @@ refactor es grande, y hoy todo va directo a `main` y a Railway.
 
 | | Tarea | Repo | T | Aceptación | Estado |
 |---|---|---|---|---|---|
-| M.0.1 | CI: Python 3.13, `pip install --only-binary=:all:`, `pytest tests`, `pip-audit`, y `ruff` estricto **solo sobre `pipeline/`**. El resto arrastra más de 200 hallazgos históricos: la regla es no sumar | worker | S | verde en `main`; un PR con un test roto sale rojo | ⬜ |
-| M.0.2 | CI: `dotnet build`, `dotnet test` y `dotnet list package --vulnerable` (falla si hay alguno) | Geocore | S | ídem | ⬜ |
-| M.0.3 | Dependencias y lint, para que el CI pueda ser compuerta: `shadcn` a `devDependencies`, subir `react-router-dom`, y los 9 errores de lint viejos | panel | M | `npm audit --omit=dev` sin altas; `eslint src` sin errores | ⬜ |
-| M.0.4 | CI: `tsc`, `eslint`, `npm run build` y `npm audit --omit=dev --audit-level=high` | panel | S | verde en `main` | ⬜ |
-| M.0.5 | CI: `pytest` | tileserver | S | verde en `main` | ⬜ |
+| M.0.1 | CI: Python 3.13, `pip install --only-binary=:all:`, `pytest tests`, `pip-audit`, y `ruff` estricto **solo sobre `pipeline/`**. El resto arrastra más de 200 hallazgos históricos: la regla es no sumar | worker | S | verde en `main`; un PR con un test roto sale rojo | ✅ 2026-09-14 · geeworker2#1; el test roto, #2 |
+| M.0.2 | CI: `dotnet build`, `dotnet test` y `dotnet list package --vulnerable` (falla si hay alguno) | Geocore | S | ídem | ✅ 2026-09-14 · Geocore#1; el test roto, #2 |
+| M.0.3 | Dependencias y lint, para que el CI pueda ser compuerta: `shadcn` a `devDependencies`, subir `react-router-dom`, y los 9 errores de lint viejos | panel | M | `npm audit --omit=dev` sin altas; `eslint src` sin errores | ✅ 2026-09-14 · Terra-admin#1 |
+| M.0.4 | CI: `tsc`, `eslint`, `npm run build` y `npm audit --omit=dev --audit-level=high` | panel | S | verde en `main` | ✅ 2026-09-14 · Terra-admin#2 |
+| M.0.5 | CI: `pytest` | tileserver | S | verde en `main` | ✅ 2026-09-14 · terra-tileserver#1 |
 | 👥 M.0.6 | Proteger `main` en los cuatro repos (checks obligatorios, sin push directo) y activar "Wait for CI" en cada servicio de Railway | GitHub, Railway | S | un push directo a `main` se rechaza | ⬜ |
 
-**Riesgo:** pushear `.github/workflows/` exige que la credencial de git tenga el
-scope `workflow`. Si el push lo rechaza, es eso.
+**Cierre (2026-09-14):** M.0.1 a M.0.5 están hechas. Se mergearon por PR con el CI
+en verde, el push a `main` salió verde en los cuatro repos, y los PR con un test
+roto a propósito salieron rojos en el paso de tests. Crónica:
+[`SESSION_2026-09-14_el_ci_en_los_cuatro_repos.md`](SESSION_2026-09-14_el_ci_en_los_cuatro_repos.md).
+
+**Falta 👥 M.0.6**, con los pasos de [`CI.md`](CI.md). Hasta entonces el CI avisa
+pero no frena. `geeworker2`, `Terra-admin` y `terra-tileserver` son públicos, y ahí
+la protección funciona con el plan gratis. Geocore es privado y pide GitHub Pro.
+"Wait for CI" en Railway no depende del plan.
+
+El riesgo del scope `workflow` no se dio: `gh auth setup-git` dejó la credencial con
+ese scope.
 
 ---
 

@@ -89,7 +89,7 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
 | **Pipeline mensual** | 🟡 2026-09-12 — diseñado ([`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md)), sin empezar. `PLAN.md` FASE M. Desde M.0.1 (2026-09-14) `pipeline/` existe vacío, con su `ruff.toml` estricto |
 | Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **203 tests con `pytest tests`**. La raíz también junta los scripts de `scratch/`, que piden GEE |
-| **CI** (`.github/workflows/ci.yml`) | 🟡 2026-09-14 — escrito y simulado desde un clon limpio. `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
+| **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 
 ## 2b. La cadena de tiles, verificada
