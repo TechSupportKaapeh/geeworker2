@@ -155,6 +155,10 @@ Si la auditoría encuentra algo → **volver a la etapa 2** y corregir antes de 
 - **terra-admin:** `npx tsc -p tsconfig.app.json --noEmit` + `npm run build`.
 - **GeeWorker / tileserver:** `pytest` verde. No hay compilador que agarre un
   error de nombres, así que el peso recae entero en los tests.
+- **Desde el 2026-09-14 esto lo corre también el CI**, en cada PR y en cada push a
+  `main`, en los cuatro repos (`DECISIONS #34`; qué corre cada uno, en
+  [`CI.md`](CI.md)). Correrlo en local sigue siendo la compuerta: el CI es la red
+  de seguridad, no el reemplazo.
 - Caveat: build/typecheck **no** prueban runtime → un check en `vite dev`, o
   levantar la app y pegarle, cuando aplique.
 - Actualizar los docs de contexto pertinentes (`HANDOFF`, `PLAN`,

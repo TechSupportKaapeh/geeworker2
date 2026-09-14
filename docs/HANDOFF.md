@@ -2,10 +2,18 @@
 
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
-> Última revisión: **2026-09-12**, dos sesiones. Crónicas:
+> Última revisión: **2026-09-14**. Crónica:
+> [`SESSION_2026-09-14_el_ci_en_los_cuatro_repos.md`](SESSION_2026-09-14_el_ci_en_los_cuatro_repos.md).
+> Antes, el 2026-09-12:
 > [`SESSION_2026-09-12_la_bitacora_del_worker.md`](SESSION_2026-09-12_la_bitacora_del_worker.md)
 > y [`SESSION_2026-09-12_primera_corrida_y_el_pipeline_mensual.md`](SESSION_2026-09-12_primera_corrida_y_el_pipeline_mensual.md).
 > Para retomar: `geocore/docs/PROXIMA_SESION.md`.
+>
+> **🛡️ Desde el 2026-09-14 hay CI en los cuatro repos** (sprint M.0,
+> `DECISIONS #34`). En este repo corre `pytest`, `pip-audit` y un ruff estricto
+> solo sobre `pipeline/`, que ya existe, vacío. Referencia: [`CI.md`](CI.md).
+> **Hasta que el equipo haga M.0.6, el CI avisa pero no frena** un push directo a
+> `main`.
 >
 > **🎯 Hacia dónde va (2026-09-12, tarde).**
 > - El histórico pasa a ser **mensual**, con el compuesto armado en GEE.
@@ -79,8 +87,9 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | TLS contra MinIO | ✅ 2026-09-07 — el default se deduce del host; lo desconocido asume TLS (`W-2`) |
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
-| **Pipeline mensual** | 🟡 2026-09-12 — diseñado ([`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md)), sin empezar. `PLAN.md` FASE M |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **201 tests con `pytest tests`**. La raíz también junta los scripts de `scratch/`, que piden GEE |
+| **Pipeline mensual** | 🟡 2026-09-12 — diseñado ([`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md)), sin empezar. `PLAN.md` FASE M. Desde M.0.1 (2026-09-14) `pipeline/` existe vacío, con su `ruff.toml` estricto |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **203 tests con `pytest tests`**. La raíz también junta los scripts de `scratch/`, que piden GEE |
+| **CI** (`.github/workflows/ci.yml`) | 🟡 2026-09-14 — escrito y simulado desde un clon limpio. `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 
 ## 2b. La cadena de tiles, verificada
