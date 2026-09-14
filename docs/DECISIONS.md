@@ -1238,6 +1238,8 @@ frase de la salida (`DECISIONS #24` de Geocore).
   (`vite` entre ellas): no llegan al bundle.
 
 **Sin M.0.6 el CI avisa pero no frena.** Proteger `main` y activar "Wait for CI" en
-Railway lo hace el equipo. Los cuatro repos son privados, y la protección de ramas
-en repos privados depende del plan de GitHub. "Wait for CI" en Railway no depende
-del plan, y alcanza para que un rojo no se despliegue.
+Railway lo hace el equipo. `TechSupportKaapeh` es una cuenta personal: los tres
+repos públicos (worker, panel y tileserver) se pueden proteger con el plan gratis,
+y Geocore, que es privado, pide GitHub Pro. Se verificó con la API el 2026-09-14.
+"Wait for CI" en Railway no depende del plan, y alcanza para que un rojo no se
+despliegue.
