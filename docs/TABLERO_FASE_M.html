@@ -265,14 +265,14 @@
 
   <footer>
     <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
-    <span class="mono">Actualizado 2026-09-12</span>
+    <span class="mono">Actualizado 2026-09-14</span>
   </footer>
 </div>
 
 <script>
 const SPRINTS = [
   { id: "M.0", nombre: "Red de seguridad", objetivo: "Que un test rojo no pueda llegar a producción. Hoy todo va directo a main y a Railway.", sesiones: "1",
-    aviso: { tipo: "compuerta", texto: "<b>Riesgo:</b> pushear <code>.github/workflows</code> exige el scope <code>workflow</code> en la credencial de git." },
+    aviso: { tipo: "equipo", texto: "<b>Falta M.0.6:</b> hasta proteger <code>main</code> y activar «Wait for CI» en Railway, el CI avisa pero no frena. Geocore es privado, y proteger su <code>main</code> pide GitHub Pro. Los pasos, en <code>docs/CI.md</code>." },
     tareas: [
       { id: "M.0.1", t: "CI del worker: Python 3.13, pytest, pip-audit, y ruff estricto solo sobre pipeline/", repo: "worker", T: "S", ok: "Verde en main; un PR con un test roto sale rojo" },
       { id: "M.0.2", t: "CI de Geocore: build, tests y paquetes vulnerables", repo: "Geocore", T: "S", ok: "Verde en main" },
@@ -361,8 +361,8 @@ const SPRINTS = [
     ] }
 ];
 
-// Todas pendientes al 2026-09-12. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
-const ESTADO = {};
+// Al 2026-09-14: M.0.1 a M.0.5 hechas; M.0.6 es del equipo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
+const ESTADO = { "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho" };
 
 const RUTA = [
   ["M.0", "CI en los cuatro repos"], ["M.1", "Núcleo sin GEE"], ["M.3·M.8", "Migración y tests de la API"],
@@ -384,7 +384,8 @@ const DECISIONES = [
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
 const estadoDe = id => ESTADO[id] || "pendiente";
 const todas = SPRINTS.flatMap(s => s.tareas.map(t => ({ ...t, sprint: s.id })));
-const siguiente = todas.find(t => estadoDe(t.id) !== "hecho");
+// La siguiente es la primera sin hacer que no sea del equipo: las del equipo corren en paralelo a las sesiones.
+const siguiente = todas.find(t => estadoDe(t.id) !== "hecho" && !t.equipo);
 
 document.getElementById("st-total").textContent = todas.length;
 document.getElementById("st-hechas").textContent = todas.filter(t => estadoDe(t.id) === "hecho").length;
@@ -392,7 +393,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   ? `<span class="label">Siguiente tarea</span><strong class="mono">${siguiente.id}</strong><span>${siguiente.t}</span>`
   : `<strong>Todas las tareas están hechas.</strong>`;
 
-const sesionProxima = 1;
+const sesionProxima = 2;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>
