@@ -121,6 +121,13 @@ tests, sin tocar la red.
 | M.1.3 | `pipeline/estadisticas.py`: mediana, media, mín, máx, p10, p90 y desvío, con el nombre con que GEE devuelve cada una | S | tests de las claves de salida con uno y con varios índices | ✅ 2026-09-15 · geeworker2#6 |
 | M.1.4 | `pipeline/receta.py`: `Receta` inmutable y `RECETA_VIGENTE = "s2-mensual-v1"`. v1: los 4 índices, las 7 estadísticas, cobertura mínima 0,3, 24 meses, escala 10 m, `max_prob` 45 y dilatación 50 m. Se valida contra los registros | S | un test fija la huella de la receta: cambiar un parámetro sin subir la versión lo rompe | ✅ 2026-09-15 · geeworker2#7 |
 | M.1.5 | Importar `pipeline` no toca la red | S | test que lo importa en un proceso con el socket saboteado (el patrón de `DECISIONS #24`) | ✅ 2026-09-15 · geeworker2#8 |
+| M.1.6 | **Estadísticas declarativas y reducción fusionada.** El registro describe cada estadística (tipo y percentil) en vez de guardar una fábrica. `plan_de_reduccion()` junta los percentiles en **un** `ee.Reducer.percentile`, y mín y máx en un `minMax`: hoy mediana, p10 y p90 arman tres histogramas. La huella cubre el reductor entero, y `estadisticas.py` deja de importar `ee` | S | tests del plan: la receta v1 arma un solo histograma; las claves de salida siguen sin chocar; v1 re-fijada, porque no escribió filas | ⬜ |
+| M.1.7 | **La receta fija lo que el pedido a GEE podría cambiar sin avisar.** El `remuestreo` de las bandas de 20 m (v1: `nearest`, lo de hoy; `bilinear` se compara en M.2.6) y la distancia de sombra en píxeles, que sale de `escala_m`. Hoy es `1000 / 10` fijo: a 60 m se proyectaba hasta 6 km. Política escrita: `bestEffort=False`, GEE nunca sube la escala solo | S | tests de la receta; `DECISIONS` escrito | ⬜ |
+
+**Reabierto el 2026-09-15** con M.1.6 y M.1.7, que salen de la revisión de eficiencia
+del código nuevo contra el viejo (crónica de la sesión, §6). Van antes de M.2 porque
+cambian lo que M.2.2 y M.2.4 van a usar, y porque `s2-mensual-v1` todavía no escribió
+ninguna fila: corregirla ahora es gratis.
 
 **Cierre del sprint:** `pytest` verde y `ruff` limpio en `pipeline/`.
 
@@ -148,14 +155,14 @@ los números se validan contra la realidad (`WORKFLOW` §6).
 | | Tarea | T | Aceptación | Estado |
 |---|---|---|---|---|
 | M.2.1 | `etapas/fuente.py`: S2 SR HARMONIZED con su probabilidad de nubes, filtro por ROI y mes, y **bandas ÷ 10000** | S | revisado en M.2.6 | ⬜ |
-| M.2.2 | `etapas/nubes.py`: s2cloudless con sombras y parámetros de la receta, **sin** el descarte por pasada (`ARQUITECTURA` §8) | S | ídem | ⬜ |
+| M.2.2 | `etapas/nubes.py`: s2cloudless con sombras y parámetros de la receta, **sin** el descarte por pasada (`ARQUITECTURA` §8). **La distancia de sombra va en píxeles y sale de la receta (M.1.7), y la máscara se arma en una proyección fija a `escala_m`**: `directionalDistanceTransform` mide en píxeles del pedido, así que sin eso el COG y las estadísticas podrían salir con máscaras distintas | S | ídem | ⬜ |
 | M.2.3 | `etapas/compuesto.py`: índices por pasada, después la mediana por píxel, y la banda `n_obs` | S | ídem | ⬜ |
-| M.2.4 | `etapas/reduccion.py`: el reductor combinado desde el registro y la cobertura (píxeles válidos sobre el total) | S | ídem | ⬜ |
+| M.2.4 | `etapas/reduccion.py`: el reductor combinado **desde `plan_de_reduccion()` (M.1.6)** y la cobertura (píxeles válidos sobre el total). **`bestEffort=False`** y `maxPixels` explícito: si GEE no puede a `escala_m`, falla. Una clave que falta en la respuesta es un error, no un nulo | S | ídem | ⬜ |
 | M.2.5 | `productos.py` y `ejecucion.py`. `ejecucion.py` hace tres cosas: el deadline con `ee.data.setDeadline`; traducir errores (sin memoria → no reintentable, concurrencia o timeout → reintentable); y contar las llamadas | M | tests puros de la traducción de errores | ⬜ |
-| M.2.6 | `scripts/check_pipeline_real.py`: 3 parcelas reales × 3 meses (uno de lluvia), lado a lado con el código de hoy; tiempo por mes; el COG de un rancho validado con `rio-cogeo` | M | resultados anotados en la sesión | ⬜ |
+| M.2.6 | `scripts/check_pipeline_real.py`: 3 parcelas reales × 3 meses (uno de lluvia), lado a lado con el código de hoy; tiempo por mes; el COG de un rancho validado con `rio-cogeo`. Suma: `nearest` contra `bilinear` en NDRE y NDMI; comparar con tolerancia de float32 (~1e-6), no la de los tests; confirmar que GEE da 0 al dividir por cero y la clave de `reduceRegion` con una banda y varias salidas | M | resultados anotados en la sesión | ⬜ |
 
-👥 **Para M.2.6:** 3 parcelas reales (ids o KML) y las credenciales de GEE en el
-`.env` local.
+👥 **Para M.2.6:** 3 parcelas reales (ids o KML). Las credenciales de GEE ya están en
+el `.env` local del worker: el round-trip respondió el 2026-09-15.
 
 🚦 **Compuerta antes de M.4:**
 - los números tienen que ser plausibles: NDVI en [-1, 1], y la cobertura coherente
