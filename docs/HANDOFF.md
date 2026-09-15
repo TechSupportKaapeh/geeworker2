@@ -12,9 +12,18 @@
 > Para retomar: `geocore/docs/PROXIMA_SESION.md`.
 >
 > **🧩 Desde el 2026-09-15, `pipeline/` tiene el núcleo del diseño** (sprint M.1,
-> `DECISIONS #35`): meses, fórmulas, registros de índices y de estadísticas, y la
-> receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y ningún handler lo
-> importa todavía: en producción no cambió nada.
+> `DECISIONS #35` y `#36`): meses, fórmulas, registros de índices y de estadísticas,
+> y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y ningún handler
+> lo importa todavía: en producción no cambió nada.
+>
+> Después de revisarlo contra la capa vieja se le hicieron dos arreglos (M.1.6 y
+> M.1.7):
+> - las estadísticas son declarativas, y los percentiles salen de un solo
+>   histograma;
+> - la receta fija el remuestreo y la sombra en píxeles;
+> - los pedidos van con `bestEffort=False`.
+>
+> **M.2 tiene que respetarlo**: ver `DECISIONS #36`.
 >
 > **🛡️ Desde el 2026-09-14 hay CI en los cuatro repos** (sprint M.0,
 > `DECISIONS #34`). En este repo corre `pytest`, `pip-audit` y un ruff estricto
@@ -95,7 +104,7 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
 | **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. Faltan las etapas contra GEE (M.2) y los handlers (M.4). Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **352 tests con `pytest tests`** (203 antes de M.1). La raíz también junta los scripts de `scratch/`, que piden GEE. ⚠️ Con el `.env` local, un test le habla de verdad a GEE, a la base y a MinIO: ver §4 |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **386 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7). La raíz también junta los scripts de `scratch/`, que piden GEE. ⚠️ Con el `.env` local, un test le habla de verdad a GEE, a la base y a MinIO: ver §4 |
 | **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 

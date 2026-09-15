@@ -121,13 +121,17 @@ tests, sin tocar la red.
 | M.1.3 | `pipeline/estadisticas.py`: mediana, media, mín, máx, p10, p90 y desvío, con el nombre con que GEE devuelve cada una | S | tests de las claves de salida con uno y con varios índices | ✅ 2026-09-15 · geeworker2#6 |
 | M.1.4 | `pipeline/receta.py`: `Receta` inmutable y `RECETA_VIGENTE = "s2-mensual-v1"`. v1: los 4 índices, las 7 estadísticas, cobertura mínima 0,3, 24 meses, escala 10 m, `max_prob` 45 y dilatación 50 m. Se valida contra los registros | S | un test fija la huella de la receta: cambiar un parámetro sin subir la versión lo rompe | ✅ 2026-09-15 · geeworker2#7 |
 | M.1.5 | Importar `pipeline` no toca la red | S | test que lo importa en un proceso con el socket saboteado (el patrón de `DECISIONS #24`) | ✅ 2026-09-15 · geeworker2#8 |
-| M.1.6 | **Estadísticas declarativas y reducción fusionada.** El registro describe cada estadística (tipo y percentil) en vez de guardar una fábrica. `plan_de_reduccion()` junta los percentiles en **un** `ee.Reducer.percentile`, y mín y máx en un `minMax`: hoy mediana, p10 y p90 arman tres histogramas. La huella cubre el reductor entero, y `estadisticas.py` deja de importar `ee` | S | tests del plan: la receta v1 arma un solo histograma; las claves de salida siguen sin chocar; v1 re-fijada, porque no escribió filas | ⬜ |
-| M.1.7 | **La receta fija lo que el pedido a GEE podría cambiar sin avisar.** El `remuestreo` de las bandas de 20 m (v1: `nearest`, lo de hoy; `bilinear` se compara en M.2.6) y la distancia de sombra en píxeles, que sale de `escala_m`. Hoy es `1000 / 10` fijo: a 60 m se proyectaba hasta 6 km. Política escrita: `bestEffort=False`, GEE nunca sube la escala solo | S | tests de la receta; `DECISIONS` escrito | ⬜ |
+| M.1.6 | **Estadísticas declarativas y reducción fusionada.** El registro describe cada estadística (tipo y percentil) en vez de guardar una fábrica. `plan_de_reduccion()` junta los percentiles en **un** `ee.Reducer.percentile`, y mín y máx en un `minMax`: hoy mediana, p10 y p90 arman tres histogramas. La huella cubre el reductor entero, y `estadisticas.py` deja de importar `ee` | S | tests del plan: la receta v1 arma un solo histograma; las claves de salida siguen sin chocar; v1 re-fijada, porque no escribió filas | ✅ 2026-09-15 · geeworker2#11 |
+| M.1.7 | **La receta fija lo que el pedido a GEE podría cambiar sin avisar.** El `remuestreo` de las bandas de 20 m (v1: `nearest`, lo de hoy; `bilinear` se compara en M.2.6) y la distancia de sombra en píxeles, que sale de `escala_m`. Hoy es `1000 / 10` fijo: a 60 m se proyectaba hasta 6 km. Política escrita: `bestEffort=False`, GEE nunca sube la escala solo | S | tests de la receta; `DECISIONS` escrito | ✅ 2026-09-15 · geeworker2#12 |
 
 **Reabierto el 2026-09-15** con M.1.6 y M.1.7, que salen de la revisión de eficiencia
 del código nuevo contra el viejo (crónica de la sesión, §6). Van antes de M.2 porque
 cambian lo que M.2.2 y M.2.4 van a usar, y porque `s2-mensual-v1` todavía no escribió
 ninguna fila: corregirla ahora es gratis.
+
+**Cerrado otra vez el mismo día.** M.1.6 (#11) y M.1.7 (#12) están hechas. La suite
+pasó de 352 a 386. Decisión: `DECISIONS #36`. `s2-mensual-v1` se re-fijó dos veces
+sin pasar a v2; desde M.4.3, cuando escriba su primera fila, queda congelada.
 
 **Cierre del sprint:** `pytest` verde y `ruff` limpio en `pipeline/`.
 
