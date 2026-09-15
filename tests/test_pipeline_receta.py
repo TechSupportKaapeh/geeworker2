@@ -15,7 +15,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 import pipeline.receta as modulo_receta
-from pipeline.estadisticas import ESTADISTICAS, Estadistica
+from pipeline.estadisticas import ESTADISTICAS, Estadistica, Tipo
 from pipeline.indices import INDICES, Indice
 from pipeline.receta import RECETA_VIGENTE
 from pipeline.registro import registro
@@ -24,8 +24,14 @@ from pipeline.registro import registro
 #   1. subi la version de RECETA_VIGENTE (s2-mensual-v2);
 #   2. agrega aca su huella, sin borrar las anteriores;
 #   3. las filas guardadas con la version vieja quedan para reprocesar.
+#
+# Una version se congela cuando escribe su primera fila (M.4.3). Antes se puede
+# re-fijar, porque no hay ningun numero que rastrear con ella (DECISIONS #36).
+# s2-mensual-v1 se re-fijo asi el 2026-09-15:
+#   - M.1.4: 328a9a778020fc0c9ce769a44436ef6d280ee65f1fcdd20eacbc8780fbb39305
+#   - M.1.6: las estadisticas pasaron a ser declarativas (tipo y percentil).
 HUELLAS = {
-    "s2-mensual-v1": "328a9a778020fc0c9ce769a44436ef6d280ee65f1fcdd20eacbc8780fbb39305",
+    "s2-mensual-v1": "333dedb7ab255d2b98dcf381e993038d7f38107ce07a9dc9addd801e10af767f",
 }
 
 # Un cambio por campo de Receta, salvo la version. Si se suma un campo, tiene
@@ -106,10 +112,20 @@ def test_cambiar_una_formula_del_registro_cambia_la_huella(monkeypatch):
     assert RECETA_VIGENTE.huella() != HUELLAS["s2-mensual-v1"]
 
 
-def test_cambiar_un_sufijo_del_registro_cambia_la_huella(monkeypatch):
-    p10 = Estadistica("p10", ESTADISTICAS["p10"].fabrica, sufijo="p20")
+def test_cambiar_un_percentil_del_registro_cambia_la_huella(monkeypatch):
+    # Sin tocar la receta: alguien pasa `p10` al percentil 20 en el registro.
+    # Antes de M.1.6 la huella veia solo el sufijo, no el reductor.
+    p10 = Estadistica("p10", Tipo.PERCENTIL, percentil=20)
     otras = (e for nombre, e in ESTADISTICAS.items() if nombre != "p10")
     monkeypatch.setattr(modulo_receta, "ESTADISTICAS", registro(p10, *otras))
+    assert RECETA_VIGENTE.huella() != HUELLAS["s2-mensual-v1"]
+
+
+def test_cambiar_el_tipo_de_una_estadistica_cambia_la_huella(monkeypatch):
+    # La mediana calculada como media: el nombre y la receta siguen iguales.
+    mediana = Estadistica("mediana", Tipo.MEDIA)
+    otras = (e for nombre, e in ESTADISTICAS.items() if nombre != "mediana")
+    monkeypatch.setattr(modulo_receta, "ESTADISTICAS", registro(mediana, *otras))
     assert RECETA_VIGENTE.huella() != HUELLAS["s2-mensual-v1"]
 
 
@@ -144,7 +160,7 @@ def test_reordenar_los_indices_no_cambia_la_huella():
     ("sombras_distancia_m", -1, "sombras_distancia_m"),
     ("indices", (), "al menos un"),
     ("indices", ("ndvi", "savi"), "fuera del registro"),
-    ("estadisticas", ("mediana", "mediana"), "repetido"),
+    ("estadisticas", ("mediana", "mediana"), "repetid"),
 ])
 def test_valores_invalidos_se_rechazan(campo, valor, mensaje):
     with pytest.raises(ValueError, match=mensaje):

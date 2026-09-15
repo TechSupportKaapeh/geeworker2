@@ -65,16 +65,22 @@ del mapa en `ee_indices.py` y la de la serie en `ee_client.py`. Además no dan l
 mismo. En el diseño nuevo un índice y una estadística son **datos**: una entrada
 en un diccionario, que las etapas recorren. Agregar uno es agregar una entrada.
 
-Los registros guardan **fábricas**, no objetos de GEE: un reductor no se puede
-armar antes de `ee.Initialize()`. Así importar el módulo no toca la red, que es la
-regla que el repo ya sigue (`DECISIONS #24`).
+Los registros guardan **descripciones**, no objetos de GEE: un reductor no se
+puede armar antes de `ee.Initialize()`. El registro de estadísticas dice qué
+calcula cada una (tipo y percentil). La etapa de reducción arma los reductores
+siguiendo `plan_de_reduccion()`, que junta todos los percentiles en uno solo y mín
+y máx en un `minMax`. Así importar el módulo no toca la red, que es la regla que el
+repo ya sigue (`DECISIONS #24`), y la huella de la receta ve la definición
+completa de cada estadística.
 
-> **Corregido el 2026-09-15** (M.1.3, `DECISIONS #35`). Este párrafo decía que
-> "las clases de GEE existen recién después de `ee.Initialize()`". Con
-> `earthengine-api` 1.7.41 no es así: `ee.Reducer.median` existe al importar, y lo
-> que falla es **llamarlo** (`EEException: ... not initialized`). La fábrica
-> sigue haciendo falta, y puede ser el método mismo (`ee.Reducer.median`). La
-> `lambda` queda para los que llevan argumentos, como `percentile([10])`.
+> **Corregido dos veces el 2026-09-15.**
+> - **M.1.3** (`DECISIONS #35`): este párrafo decía que "las clases de GEE existen
+>   recién después de `ee.Initialize()`". Con `earthengine-api` 1.7.41,
+>   `ee.Reducer.median` existe al importar; lo que falla es **llamarlo**.
+> - **M.1.6** (`DECISIONS #36`): el registro guardaba fábricas, un reductor por
+>   estadística. Mediana, p10 y p90 armaban tres histogramas de los mismos
+>   píxeles, y la huella no veía la fábrica, solo su nombre. Ahora el registro es
+>   declarativo y el plan fusiona.
 
 ### 3.3 Armar no es calcular: núcleo sin I/O y un solo borde
 
@@ -167,13 +173,15 @@ aunque el run cruce la medianoche o se reintente días después.
 ```python
 # pipeline/estadisticas.py
 ESTADISTICAS = registro(
-    Estadistica("mediana", ee.Reducer.median,                   sufijo="median"),
-    Estadistica("media",   ee.Reducer.mean,                     sufijo="mean"),
-    Estadistica("min",     ee.Reducer.min,                      sufijo="min"),
-    Estadistica("max",     ee.Reducer.max,                      sufijo="max"),
-    Estadistica("p10",     lambda: ee.Reducer.percentile([10]), sufijo="p10"),
-    Estadistica("p90",     lambda: ee.Reducer.percentile([90]), sufijo="p90"),
-    Estadistica("desvio",  ee.Reducer.stdDev,                   sufijo="stdDev"),
+    # Declarativo (M.1.6): plan_de_reduccion() junta mediana, p10 y p90 en un solo
+    # ee.Reducer.percentile([10, 50, 90]), y mín y máx en un ee.Reducer.minMax().
+    Estadistica("mediana", Tipo.PERCENTIL, percentil=50),
+    Estadistica("media",   Tipo.MEDIA),
+    Estadistica("min",     Tipo.MINIMO),
+    Estadistica("max",     Tipo.MAXIMO),
+    Estadistica("p10",     Tipo.PERCENTIL, percentil=10),
+    Estadistica("p90",     Tipo.PERCENTIL, percentil=90),
+    Estadistica("desvio",  Tipo.DESVIO),
 )
 ```
 
