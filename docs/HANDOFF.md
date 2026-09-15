@@ -2,16 +2,23 @@
 
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
-> Última revisión: **2026-09-14**. Crónica:
+> Última revisión: **2026-09-15**. Crónica:
+> [`SESSION_2026-09-15_el_nucleo_del_pipeline.md`](SESSION_2026-09-15_el_nucleo_del_pipeline.md).
+> Antes, el 2026-09-14:
 > [`SESSION_2026-09-14_el_ci_en_los_cuatro_repos.md`](SESSION_2026-09-14_el_ci_en_los_cuatro_repos.md).
-> Antes, el 2026-09-12:
+> Y el 2026-09-12:
 > [`SESSION_2026-09-12_la_bitacora_del_worker.md`](SESSION_2026-09-12_la_bitacora_del_worker.md)
 > y [`SESSION_2026-09-12_primera_corrida_y_el_pipeline_mensual.md`](SESSION_2026-09-12_primera_corrida_y_el_pipeline_mensual.md).
 > Para retomar: `geocore/docs/PROXIMA_SESION.md`.
 >
+> **🧩 Desde el 2026-09-15, `pipeline/` tiene el núcleo del diseño** (sprint M.1,
+> `DECISIONS #35`): meses, fórmulas, registros de índices y de estadísticas, y la
+> receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y ningún handler lo
+> importa todavía: en producción no cambió nada.
+>
 > **🛡️ Desde el 2026-09-14 hay CI en los cuatro repos** (sprint M.0,
 > `DECISIONS #34`). En este repo corre `pytest`, `pip-audit` y un ruff estricto
-> solo sobre `pipeline/`, que ya existe, vacío. Referencia: [`CI.md`](CI.md).
+> solo sobre `pipeline/`. Referencia: [`CI.md`](CI.md).
 > **Hasta que el equipo haga M.0.6, el CI avisa pero no frena** un push directo a
 > `main`.
 >
@@ -87,8 +94,8 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | TLS contra MinIO | ✅ 2026-09-07 — el default se deduce del host; lo desconocido asume TLS (`W-2`) |
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
-| **Pipeline mensual** | 🟡 2026-09-12 — diseñado ([`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md)), sin empezar. `PLAN.md` FASE M. Desde M.0.1 (2026-09-14) `pipeline/` existe vacío, con su `ruff.toml` estricto |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **203 tests con `pytest tests`**. La raíz también junta los scripts de `scratch/`, que piden GEE |
+| **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. Faltan las etapas contra GEE (M.2) y los handlers (M.4). Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **352 tests con `pytest tests`** (203 antes de M.1). La raíz también junta los scripts de `scratch/`, que piden GEE. ⚠️ Con el `.env` local, un test le habla de verdad a GEE, a la base y a MinIO: ver §4 |
 | **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 
@@ -226,6 +233,23 @@ Supabase lo ofrece ya convertido en la pestaña `.NET` del diálogo de conexión
 ---
 
 ## 4. Deuda abierta
+
+**Abierta el 2026-09-15** (sesión del sprint M.1):
+
+- **En local, la suite le habla de verdad a GEE, a la base y a MinIO.**
+  `tests/test_http_surface.py::test_el_worker_arranca_aunque_falten_las_credenciales`
+  reemplaza `app.init_ee` y `app.init_db`, y llama a `_startup()`. Pero `_startup()`
+  termina en `registrar_conexiones()`, que importa **su propio** `init_ee`
+  (`utils_pkg/conexiones.py:409`) y verifica el disco, MinIO, `geodata`, GEE con un
+  round-trip e Inngest. Con el `.env` local, GEE respondió en 3,4 s.
+  - En el CI no hay `.env`, así que degrada sin tocar nada: lo que `DECISIONS #34`
+    verificó sigue valiendo ahí.
+  - El test no prueba lo que dice su docstring, que es un arranque *sin*
+    credenciales.
+  - **Arreglo:** reemplazar también `app.registrar_conexiones` en ese test. Es una
+    línea, en su propia rama.
+
+  Cómo se encontró: [`SESSION_2026-09-15_el_nucleo_del_pipeline.md`](SESSION_2026-09-15_el_nucleo_del_pipeline.md) §2.2.
 
 **Abierta el 2026-09-12** (sesión del día):
 

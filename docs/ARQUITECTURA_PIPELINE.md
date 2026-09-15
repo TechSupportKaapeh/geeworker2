@@ -65,9 +65,16 @@ del mapa en `ee_indices.py` y la de la serie en `ee_client.py`. Además no dan l
 mismo. En el diseño nuevo un índice y una estadística son **datos**: una entrada
 en un diccionario, que las etapas recorren. Agregar uno es agregar una entrada.
 
-Los registros guardan **fábricas** (`lambda: ee.Reducer.median()`), no objetos de
-GEE: las clases de GEE existen recién después de `ee.Initialize()`. Así importar
-el módulo no toca la red, que es la regla que el repo ya sigue (`DECISIONS #24`).
+Los registros guardan **fábricas**, no objetos de GEE: un reductor no se puede
+armar antes de `ee.Initialize()`. Así importar el módulo no toca la red, que es la
+regla que el repo ya sigue (`DECISIONS #24`).
+
+> **Corregido el 2026-09-15** (M.1.3, `DECISIONS #35`). Este párrafo decía que
+> "las clases de GEE existen recién después de `ee.Initialize()`". Con
+> `earthengine-api` 1.7.41 no es así: `ee.Reducer.median` existe al importar, y lo
+> que falla es **llamarlo** (`EEException: ... not initialized`). La fábrica
+> sigue haciendo falta, y puede ser el método mismo (`ee.Reducer.median`). La
+> `lambda` queda para los que llevan argumentos, como `percentile([10])`.
 
 ### 3.3 Armar no es calcular: núcleo sin I/O y un solo borde
 
@@ -117,10 +124,12 @@ paralelizar miles de parcelas por fuera de Inngest, se revisa.
 
 ```
 pipeline/
-  receta.py          Receta (dataclass inmutable) y RECETA_VIGENTE
-  periodos.py        Mes, rango de un mes, los últimos N meses cerrados   ← puro
-  indices.py         registro INDICES                                     ← puro
-  estadisticas.py    registro ESTADISTICAS                                ← puro
+  receta.py          Receta (dataclass inmutable) y RECETA_VIGENTE        ← puro, M.1.4
+  periodos.py        Mes, rango de un mes, los últimos N meses cerrados   ← puro, M.1.1
+  formulas.py        el lenguaje de las fórmulas: validar y evaluar       ← puro, M.1.2 (🆕)
+  registro.py        registro(): un mapa inmutable por nombre             ← puro, M.1.2 (🆕)
+  indices.py         registro INDICES                                     ← puro, M.1.2
+  estadisticas.py    registro ESTADISTICAS y claves_de_salida()           ← puro, M.1.3
   etapas/
     fuente.py        coleccion(roi, mes, receta)            -> ImageCollection
     nubes.py         enmascarar(img, receta)                -> Image
@@ -158,13 +167,13 @@ aunque el run cruce la medianoche o se reintente días después.
 ```python
 # pipeline/estadisticas.py
 ESTADISTICAS = registro(
-    Estadistica("mediana", lambda: ee.Reducer.median(),         sufijo="median"),
-    Estadistica("media",   lambda: ee.Reducer.mean(),           sufijo="mean"),
-    Estadistica("min",     lambda: ee.Reducer.min(),            sufijo="min"),
-    Estadistica("max",     lambda: ee.Reducer.max(),            sufijo="max"),
+    Estadistica("mediana", ee.Reducer.median,                   sufijo="median"),
+    Estadistica("media",   ee.Reducer.mean,                     sufijo="mean"),
+    Estadistica("min",     ee.Reducer.min,                      sufijo="min"),
+    Estadistica("max",     ee.Reducer.max,                      sufijo="max"),
     Estadistica("p10",     lambda: ee.Reducer.percentile([10]), sufijo="p10"),
     Estadistica("p90",     lambda: ee.Reducer.percentile([90]), sufijo="p90"),
-    Estadistica("desvio",  lambda: ee.Reducer.stdDev(),         sufijo="stdDev"),
+    Estadistica("desvio",  ee.Reducer.stdDev,                   sufijo="stdDev"),
 )
 ```
 
