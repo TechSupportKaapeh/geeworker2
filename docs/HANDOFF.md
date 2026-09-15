@@ -2,7 +2,13 @@
 
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
-> Última revisión: **2026-09-15, sesión 3**. Crónica de este lado:
+> Última revisión: **2026-09-15, a mitad de la sesión 4**:
+> [`SESSION_2026-09-15_sesion_4_fuente_y_nubes.md`](SESSION_2026-09-15_sesion_4_fuente_y_nubes.md).
+> Están M.2.1, la fuente, y M.2.2, la máscara en proyección fija (`DECISIONS #38` y `#39`).
+> Los tests que le hablan a GEE corren solo con `pytest --gee`. **La máscara de hoy descarta
+> de más**: el 95 % de una escena con 32 % de nubes. Lo decide M.2.6.
+>
+> Sesión 3, de este lado:
 > [`SESSION_2026-09-15_sesion_3_el_test_de_arranque.md`](SESSION_2026-09-15_sesion_3_el_test_de_arranque.md).
 > La sesión fue sobre todo en Geocore: M.3.1 (la migración mensual) y M.8.2 (los tests de
 > la API). Su crónica es `geocore/docs/SESSION_2026-09-15_la_migracion_mensual_y_los_tests_de_la_api.md`.
@@ -107,7 +113,7 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | TLS contra MinIO | ✅ 2026-09-07 — el default se deduce del host; lo desconocido asume TLS (`W-2`) |
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
-| **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. Faltan las etapas contra GEE (M.2) y los handlers (M.4). Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
+| **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. Desde el 2026-09-15 están la fuente y la máscara (`pipeline/etapas/`, M.2.1 y M.2.2, `DECISIONS #38` y `#39`), verificadas contra GEE con `pytest --gee`. Faltan el compuesto, la reducción y el borde (M.2.3 a M.2.5), y los handlers (M.4). Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
 | Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **386 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
 | **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |

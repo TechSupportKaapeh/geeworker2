@@ -272,7 +272,7 @@
 <script>
 const SPRINTS = [
   { id: "M.0", nombre: "Red de seguridad", objetivo: "Que un test rojo no pueda llegar a producción. Hoy todo va directo a main y a Railway.", sesiones: "1",
-    aviso: { tipo: "equipo", texto: "<b>Falta M.0.6:</b> hasta proteger <code>main</code> y activar «Wait for CI» en Railway, el CI avisa pero no frena. <b>Verificado el 2026-09-15:</b> la API de GitHub no muestra ningún ruleset ni protección en los tres repos públicos. Geocore es privado, y proteger su <code>main</code> pide GitHub Pro. Los pasos, en <code>docs/CI.md</code>." },
+    aviso: { tipo: "equipo", texto: "<b>M.0.6, postergada por la demo</b> (decisión del 2026-09-15): hasta proteger <code>main</code> y activar «Wait for CI» en Railway, el CI avisa pero no frena, y cada merge va detrás de <code>gh pr checks</code>. Ese día la API de GitHub no mostraba rulesets en los repos públicos. Los pasos, en <code>docs/CI.md</code>." },
     tareas: [
       { id: "M.0.1", t: "CI del worker: Python 3.13, pytest, pip-audit, y ruff estricto solo sobre pipeline/", repo: "worker", T: "S", ok: "Verde en main; un PR con un test roto sale rojo" },
       { id: "M.0.2", t: "CI de Geocore: build, tests y paquetes vulnerables", repo: "Geocore", T: "S", ok: "Verde en main" },
@@ -294,7 +294,7 @@ const SPRINTS = [
     ] },
   { id: "M.2", nombre: "Etapas y borde", objetivo: "El pipeline calcula el mes de una parcela y el COG de un rancho contra GEE real, y los números se validan.", sesiones: "2",
     aviso: { tipo: "compuerta", texto: "<b>Compuerta antes de M.4:</b> NDVI en [−1, 1], cobertura coherente con la estación y un mes de parcela en menos de ~60 s." },
-    aviso2: { tipo: "equipo", texto: "<b>El equipo prepara:</b> 3 parcelas reales (ids o KML). Las credenciales de GEE ya están en el .env local." },
+    aviso2: { tipo: "equipo", texto: "<b>El equipo prepara:</b> 3 parcelas reales (ids o KML). <b>Y decide antes de M.4.3</b> si la máscara lleva una erosión antes de dilatar: la de hoy descartó el 95 % de una escena con 32 % de nubes; con erosión, el 50 % (DECISIONS #39)." },
     tareas: [
       { id: "M.2.1", t: "fuente.py: S2 SR con probabilidad de nubes; bandas ÷ 10000", repo: "worker", T: "S", ok: "Revisado en M.2.6" },
       { id: "M.2.2", t: "nubes.py: s2cloudless con sombras, sin descartar pasadas; sombra en píxeles desde la receta y máscara en proyección fija", repo: "worker", T: "S", ok: "Revisado en M.2.6" },
@@ -364,11 +364,12 @@ const SPRINTS = [
     ] }
 ];
 
-// Al 2026-09-15 (sesión 3): M.0.1 a M.0.5, M.1 entero, M.3.1 y M.8.2 hechas; M.0.6 y M.3.1b son del equipo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
+// Al 2026-09-15 (sesión 4, en curso): M.0.1 a M.0.5, M.1 entero, M.2.1, M.2.2, M.3.1 y M.8.2 hechas; M.0.6 (postergada por la demo) y M.3.1b son del equipo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
 const ESTADO = {
   "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho",
   "M.1.1": "hecho", "M.1.2": "hecho", "M.1.3": "hecho", "M.1.4": "hecho", "M.1.5": "hecho",
   "M.1.6": "hecho", "M.1.7": "hecho",
+  "M.2.1": "hecho", "M.2.2": "hecho",
   "M.3.1": "hecho", "M.8.2": "hecho"
 };
 
