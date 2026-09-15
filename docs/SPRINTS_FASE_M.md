@@ -92,7 +92,7 @@ refactor es grande, y hoy todo va directo a `main` y a Railway.
 | M.0.3 | Dependencias y lint, para que el CI pueda ser compuerta: `shadcn` a `devDependencies`, subir `react-router-dom`, y los 9 errores de lint viejos | panel | M | `npm audit --omit=dev` sin altas; `eslint src` sin errores | ✅ 2026-09-14 · Terra-admin#1 |
 | M.0.4 | CI: `tsc`, `eslint`, `npm run build` y `npm audit --omit=dev --audit-level=high` | panel | S | verde en `main` | ✅ 2026-09-14 · Terra-admin#2 |
 | M.0.5 | CI: `pytest` | tileserver | S | verde en `main` | ✅ 2026-09-14 · terra-tileserver#1 |
-| 👥 M.0.6 | Proteger `main` en los cuatro repos (checks obligatorios, sin push directo) y activar "Wait for CI" en cada servicio de Railway | GitHub, Railway | S | un push directo a `main` se rechaza | ⬜ · el 2026-09-15 la API no mostraba rulesets ni protección |
+| 👥 M.0.6 | Proteger `main` en los cuatro repos (checks obligatorios, sin push directo) y activar "Wait for CI" en cada servicio de Railway | GitHub, Railway | S | un push directo a `main` se rechaza | ⬜ · **postergada por la demo** (decisión del usuario, 2026-09-15); ese día la API no mostraba rulesets ni protección |
 
 **Cierre (2026-09-14):** M.0.1 a M.0.5 están hechas. Se mergearon por PR con el CI
 en verde, el push a `main` salió verde en los cuatro repos, y los PR con un test
@@ -158,7 +158,7 @@ los números se validan contra la realidad (`WORKFLOW` §6).
 
 | | Tarea | T | Aceptación | Estado |
 |---|---|---|---|---|
-| M.2.1 | `etapas/fuente.py`: S2 SR HARMONIZED con su probabilidad de nubes, filtro por ROI y mes, y **bandas ÷ 10000** | S | revisado en M.2.6 | ⬜ |
+| M.2.1 | `etapas/fuente.py`: S2 SR HARMONIZED con su probabilidad de nubes, filtro por ROI y mes, y **bandas ÷ 10000** | S | revisado en M.2.6 | ✅ 2026-09-15 · `DECISIONS #38`; verificado con `pytest --gee` |
 | M.2.2 | `etapas/nubes.py`: s2cloudless con sombras y parámetros de la receta, **sin** el descarte por pasada (`ARQUITECTURA` §8). **La distancia de sombra va en píxeles y sale de la receta (M.1.7), y la máscara se arma en una proyección fija a `escala_m`**: `directionalDistanceTransform` mide en píxeles del pedido, así que sin eso el COG y las estadísticas podrían salir con máscaras distintas | S | ídem | ⬜ |
 | M.2.3 | `etapas/compuesto.py`: índices por pasada, después la mediana por píxel, y la banda `n_obs` | S | ídem | ⬜ |
 | M.2.4 | `etapas/reduccion.py`: el reductor combinado **desde `plan_de_reduccion()` (M.1.6)** y la cobertura (píxeles válidos sobre el total). **`bestEffort=False`** y `maxPixels` explícito: si GEE no puede a `escala_m`, falla. Una clave que falta en la respuesta es un error, no un nulo | S | ídem | ⬜ |
