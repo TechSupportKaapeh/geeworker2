@@ -8,7 +8,7 @@
 >
 > Cómo se trabaja cada tarea: [`WORKFLOW.md`](WORKFLOW.md).
 >
-> **Vista como página:** <https://claude.ai/code/artifact/71e508b6-3583-46b4-89f8-d305c258f36f>.
+> **Vista como página:** <https://claude.ai/artifact/F4ixwF2wXa3bc6SSNpmDze>.
 > La fuente es [`TABLERO_FASE_M.html`](TABLERO_FASE_M.html). Al cerrar cada sesión:
 > 1. actualizar ahí el objeto `ESTADO` para que coincida con la columna de estado de abajo;
 > 2. republicarla pasando esa URL (`Artifact` con `url`).
@@ -92,7 +92,7 @@ refactor es grande, y hoy todo va directo a `main` y a Railway.
 | M.0.3 | Dependencias y lint, para que el CI pueda ser compuerta: `shadcn` a `devDependencies`, subir `react-router-dom`, y los 9 errores de lint viejos | panel | M | `npm audit --omit=dev` sin altas; `eslint src` sin errores | ✅ 2026-09-14 · Terra-admin#1 |
 | M.0.4 | CI: `tsc`, `eslint`, `npm run build` y `npm audit --omit=dev --audit-level=high` | panel | S | verde en `main` | ✅ 2026-09-14 · Terra-admin#2 |
 | M.0.5 | CI: `pytest` | tileserver | S | verde en `main` | ✅ 2026-09-14 · terra-tileserver#1 |
-| 👥 M.0.6 | Proteger `main` en los cuatro repos (checks obligatorios, sin push directo) y activar "Wait for CI" en cada servicio de Railway | GitHub, Railway | S | un push directo a `main` se rechaza | ⬜ |
+| 👥 M.0.6 | Proteger `main` en los cuatro repos (checks obligatorios, sin push directo) y activar "Wait for CI" en cada servicio de Railway | GitHub, Railway | S | un push directo a `main` se rechaza | ⬜ · el 2026-09-15 la API no mostraba rulesets ni protección |
 
 **Cierre (2026-09-14):** M.0.1 a M.0.5 están hechas. Se mergearon por PR con el CI
 en verde, el push a `main` salió verde en los cuatro repos, y los PR con un test
@@ -184,7 +184,7 @@ de Geocore).
 
 | | Tarea | T | Aceptación | Estado |
 |---|---|---|---|---|
-| M.3.1 | Migración `MedicionesMensuales`, con su script SQL idempotente en `docs/sql/`. **Se hace temprano** (sesión 3). Tres tablas: | M | `dotnet test`; el script revisado | ⬜ |
+| M.3.1 | Migración `MedicionesMensuales`, con su script SQL idempotente en `docs/sql/`. **Se hace temprano** (sesión 3). Tres tablas: | M | `dotnet test`; el script revisado | ✅ 2026-09-15 · Geocore#6 |
 | | · `measurements`: `valor` nullable, `estadisticas` jsonb, `cobertura`, `observaciones`, `receta` | | | |
 | | · `processing_jobs`: `periodo` y el índice único por tipo, entidad y periodo | | | |
 | | · `layers`: `receta` y `estadisticas` | | | |
@@ -193,6 +193,20 @@ de Geocore).
 | M.3.3 | `GET /api/ranchos/{id}/metricas?indice=&desde=&hasta=`: el promedio ponderado por área de las parcelas, más la fracción del área con dato | M | tests con parcelas sin dato en un mes | ⬜ |
 | M.3.4 | `check_schema.py` del worker valida las columnas nuevas: el contrato entre repos | S | corre contra la base real | ⬜ |
 | 👥 M.3.5 | Borrar las filas por pasada de prueba (SQL listo en la sesión) | S | — | ⬜ |
+
+**M.3.1 hecha el 2026-09-15** (sesión 3, Geocore#6, `DECISIONS #25` de Geocore). Tres
+cosas que cambian lo que sigue:
+- **El índice único son dos índices parciales**: uno por parcela y otro por rancho. Uno solo
+  no chocaba en los jobs de rancho, porque llevan `parcela_id` nulo y Postgres cuenta los
+  NULL como distintos. M.5.2 inserta y deja que el índice rechace el duplicado.
+- **Hay CHECK en la base:** `cobertura` en [0, 1], `observaciones` ≥ 0, `estadisticas`
+  tiene que ser un objeto JSON, y `periodo` va como `AAAA-MM`. M.4.3 escribe la cobertura como
+  fracción, no como porcentaje: con 73, el insert falla.
+- **`observaciones` es `double precision`**, porque una mediana puede caer entre dos enteros.
+
+👥 **M.3.1b:** aplicar `geocore/docs/sql/2026-09-15_MedicionesMensuales.sql` en GeoData y
+correr `…_verificar.sql`, que es de solo lectura. Todas las filas tienen que decir `ok`. Se
+probó contra PostGIS 15 en un contenedor local.
 
 ---
 
@@ -263,10 +277,15 @@ de Geocore).
 | | Tarea | Repo | T | Aceptación | Estado |
 |---|---|---|---|---|---|
 | M.8.1 | 🔴 **A01:** el token de mapa lleva `tenant_id`, y TiTiler exige que la key empiece con ese tenant (depende de M.4.1) | Geocore, tileserver | M | un token de otro tenant da 403 | ⬜ |
-| M.8.2 | Proyecto `Geocore.API.Tests` con `WebApplicationFactory`: políticas `TerraAdmin` y `TerraStaff`, 401 y 403. **Temprano** (sesión 3) | Geocore | M | en el CI | ⬜ |
+| M.8.2 | Proyecto `Geocore.API.Tests` con `WebApplicationFactory`: políticas `TerraAdmin` y `TerraStaff`, 401 y 403. **Temprano** (sesión 3) | Geocore | M | en el CI | ✅ 2026-09-15 · Geocore#7 |
 | M.8.3 | **A04:** rate limiting (ASP.NET `RateLimiter`) en escritura y admin | Geocore | S | tests | ⬜ |
 | M.8.4 | **A09:** registro de auditoría de acciones privilegiadas: roles, altas de usuarios, reprocesos | Geocore | M | tests | ⬜ |
 | M.8.5 | Retención de `processing_job_events` | Geocore | S | decisión y job | ⬜ |
+
+**M.8.2 hecha el 2026-09-15** (sesión 3, Geocore#7, `DECISIONS #26` de Geocore). La
+cadena JWT de `Program.cs` corre de verdad, y solo la clave es de prueba. Son 35 tests de
+401, 403, `TenantMiddleware` y el token de mapas. Salió un bug: un `app_metadata` que no era
+un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fábrica.
 
 ---
 

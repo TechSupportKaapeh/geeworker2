@@ -1373,3 +1373,31 @@ quedan anotadas en el test.
 - M.2.4 arma el reductor desde el plan, con `bestEffort=False`.
 - M.2.6 compara `nearest` contra `bilinear`, y confirma los nombres de `minMax` y
   la proyección de sombras.
+
+---
+
+## 37. Un test que llama al arranque reemplaza `registrar_conexiones`, y un socket saboteado lo comprueba (2026-09-15)
+
+> geeworker2#14. Era la deuda de `HANDOFF` §4 abierta el mismo día.
+
+**Decisión:** `test_el_worker_arranca_aunque_falten_las_credenciales` reemplaza también
+`app.registrar_conexiones` y verifica que se lo llama. Además sabotea
+`socket.socket.connect`: anota cada intento y falla si hubo alguno.
+
+**Por qué:** el test reemplazaba `app.init_ee` y `app.init_db`, pero `_startup()` termina en
+`registrar_conexiones()`, que importa su propio `init_ee` y verifica el disco, MinIO,
+`geodata`, GEE e Inngest. Con el `.env` local, la suite le hablaba de verdad a esos
+servicios. En el CI no, porque no hay `.env`, y por eso nadie lo vio.
+
+Reemplazar una función por su nombre en el módulo que la usa no alcanza cuando la función
+importa sus propias dependencias. El socket saboteado es la red de seguridad de eso: si
+mañana `_startup()` suma otro chequeo, el test lo agarra aunque `_startup()` se trague el
+error. Es el mismo patrón de `#24` y M.1.5, en el mismo proceso en vez de uno aparte.
+
+**Control negativo:** el test como estaba, con el mismo socket saboteado (sin tráfico real),
+anotó 9 intentos, a los puertos 443 y 8288.
+
+**Lo que el guardia no ve: la base.** psycopg2 se conecta desde libpq, en C, sin pasar por
+el `socket` de Python, y en el control no apareció ningún intento a Postgres. A la base no
+se llega porque se reemplazan `init_db` y `registrar_conexiones`, no por el guardia. Está
+escrito en el docstring, para que nadie crea que el guardia cubre todo.

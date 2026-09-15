@@ -2,7 +2,11 @@
 
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
-> Última revisión: **2026-09-15**. Crónica:
+> Última revisión: **2026-09-15, sesión 3**. Crónica de este lado:
+> [`SESSION_2026-09-15_sesion_3_el_test_de_arranque.md`](SESSION_2026-09-15_sesion_3_el_test_de_arranque.md).
+> La sesión fue sobre todo en Geocore: M.3.1 (la migración mensual) y M.8.2 (los tests de
+> la API). Su crónica es `geocore/docs/SESSION_2026-09-15_la_migracion_mensual_y_los_tests_de_la_api.md`.
+> Antes, el mismo día:
 > [`SESSION_2026-09-15_el_nucleo_del_pipeline.md`](SESSION_2026-09-15_el_nucleo_del_pipeline.md).
 > Antes, el 2026-09-14:
 > [`SESSION_2026-09-14_el_ci_en_los_cuatro_repos.md`](SESSION_2026-09-14_el_ci_en_los_cuatro_repos.md).
@@ -104,7 +108,7 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
 | **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. Faltan las etapas contra GEE (M.2) y los handlers (M.4). Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **386 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7). La raíz también junta los scripts de `scratch/`, que piden GEE. ⚠️ Con el `.env` local, un test le habla de verdad a GEE, a la base y a MinIO: ver §4 |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **386 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
 | **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 
@@ -243,20 +247,14 @@ Supabase lo ofrece ya convertido en la pestaña `.NET` del diálogo de conexión
 
 ## 4. Deuda abierta
 
-**Abierta el 2026-09-15** (sesión del sprint M.1):
+**Cerrada el 2026-09-15** (sesión 3, geeworker2#14, `DECISIONS #37`):
 
-- **En local, la suite le habla de verdad a GEE, a la base y a MinIO.**
-  `tests/test_http_surface.py::test_el_worker_arranca_aunque_falten_las_credenciales`
-  reemplaza `app.init_ee` y `app.init_db`, y llama a `_startup()`. Pero `_startup()`
-  termina en `registrar_conexiones()`, que importa **su propio** `init_ee`
-  (`utils_pkg/conexiones.py:409`) y verifica el disco, MinIO, `geodata`, GEE con un
-  round-trip e Inngest. Con el `.env` local, GEE respondió en 3,4 s.
-  - En el CI no hay `.env`, así que degrada sin tocar nada: lo que `DECISIONS #34`
-    verificó sigue valiendo ahí.
-  - El test no prueba lo que dice su docstring, que es un arranque *sin*
-    credenciales.
-  - **Arreglo:** reemplazar también `app.registrar_conexiones` en ese test. Es una
-    línea, en su propia rama.
+- ✅ **En local, la suite le hablaba de verdad a GEE, a la base y a MinIO.**
+  `test_el_worker_arranca_aunque_falten_las_credenciales` reemplazaba `app.init_ee` y
+  `app.init_db`, pero `_startup()` termina en `registrar_conexiones()`, que importa su
+  propio `init_ee`. Ahora el test reemplaza también `registrar_conexiones` y sabotea
+  `socket.connect`. En el control negativo, el test como estaba anotó 9 intentos.
+  **El guardia no ve la base:** psycopg2 se conecta desde libpq, en C.
 
   Cómo se encontró: [`SESSION_2026-09-15_el_nucleo_del_pipeline.md`](SESSION_2026-09-15_el_nucleo_del_pipeline.md) §2.2.
 
