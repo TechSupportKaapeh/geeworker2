@@ -98,6 +98,15 @@ Consecuencia de diseño: las etapas solo arman, y `pipeline/ejecucion.py` es el
   y "demasiados pedidos concurrentes" sí;
 - el conteo de llamadas para la bitácora.
 
+**Y un pedido nunca cambia la escala solo** (M.1.7, `DECISIONS #36`). Cada
+`reduceRegion` y cada descarga van con `bestEffort=False` y un `maxPixels`
+explícito. Con `bestEffort=True`, que es lo que usa la serie vieja, GEE toma una
+escala mayor que la pedida cuando hay demasiados píxeles, y el número cambia sin
+avisar. Si no se puede a `escala_m`, el pedido falla y el borde traduce el error.
+Por la misma razón, las operaciones que miden en píxeles (la proyección de
+sombras) toman su distancia de la receta en píxeles de `escala_m`, y la máscara se
+arma en una proyección fija.
+
 ### 3.4 La receta versionada
 
 Todos los parámetros que cambian un número viven juntos en una `Receta`, con

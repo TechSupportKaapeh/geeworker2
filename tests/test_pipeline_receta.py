@@ -1,9 +1,12 @@
-"""M.1.4: la receta versionada y su huella.
+"""M.1.4 y M.1.7: la receta versionada y su huella.
 
-La aceptacion del tablero: un test fija la huella de la receta, y cambiar un
+La aceptacion de M.1.4: un test fija la huella de la receta, y cambiar un
 parametro sin subir la version lo rompe. `HUELLAS` es ese registro, una linea por
 version. Los controles negativos prueban que la huella se mueve con cada
 parametro y con lo que la receta toma de los registros.
+
+La de M.1.7: la receta fija lo que el pedido a GEE podria cambiar sin avisar, el
+remuestreo de las bandas de 20 m y la distancia de sombra en pixeles.
 """
 import dataclasses
 import sys
@@ -29,9 +32,11 @@ from pipeline.registro import registro
 # re-fijar, porque no hay ningun numero que rastrear con ella (DECISIONS #36).
 # s2-mensual-v1 se re-fijo asi el 2026-09-15:
 #   - M.1.4: 328a9a778020fc0c9ce769a44436ef6d280ee65f1fcdd20eacbc8780fbb39305
-#   - M.1.6: las estadisticas pasaron a ser declarativas (tipo y percentil).
+#   - M.1.6: 333dedb7ab255d2b98dcf381e993038d7f38107ce07a9dc9addd801e10af767f
+#            (las estadisticas pasaron a ser declarativas: tipo y percentil)
+#   - M.1.7: se sumo `remuestreo`.
 HUELLAS = {
-    "s2-mensual-v1": "333dedb7ab255d2b98dcf381e993038d7f38107ce07a9dc9addd801e10af767f",
+    "s2-mensual-v1": "8b9790029510baee1447c3647dca6ec7542e451d8d652703857f1261b2cd5b32",
 }
 
 # Un cambio por campo de Receta, salvo la version. Si se suma un campo, tiene
@@ -44,6 +49,7 @@ CAMBIOS = {
     "cobertura_minima": 0.31,
     "meses_historico": 25,
     "escala_m": 20,
+    "remuestreo": "bilinear",
     "nubes_max_prob": 50,
     "nubes_dilatacion_m": 100,
     "sombras_nir_oscuro": 0.2,
@@ -74,7 +80,8 @@ def test_la_huella_es_un_sha256_estable():
 
 
 def test_la_receta_v1_es_la_decidida():
-    """DECISIONS #31, mas los parametros de sombras de la mascara vieja (§8.7)."""
+    """DECISIONS #31, los parametros de sombras de la mascara vieja (§8.7) y el
+    remuestreo que GEE usa si no se le pide otro (DECISIONS #36)."""
     receta = RECETA_VIGENTE
     assert receta.version == "s2-mensual-v1"
     assert receta.coleccion == "COPERNICUS/S2_SR_HARMONIZED"
@@ -84,10 +91,12 @@ def test_la_receta_v1_es_la_decidida():
     assert receta.cobertura_minima == 0.3
     assert receta.meses_historico == 24
     assert receta.escala_m == 10
+    assert receta.remuestreo == "nearest"
     assert receta.nubes_max_prob == 45
     assert receta.nubes_dilatacion_m == 50
     assert receta.sombras_nir_oscuro == 0.15
     assert receta.sombras_distancia_m == 1000
+    assert receta.sombras_distancia_px == 100
 
 
 # --- Controles negativos: que la huella de verdad se mueva ----------------
@@ -142,7 +151,42 @@ def test_reordenar_los_indices_no_cambia_la_huella():
     assert otra.huella() == RECETA_VIGENTE.huella()
 
 
+# --- La sombra en pixeles (M.1.7) -----------------------------------------
+
+
+@pytest.mark.parametrize("escala_m,distancia_m,esperado", [
+    (10, 1000, 100), (20, 1000, 50), (60, 1000, 17), (30, 100, 4), (10, 0, 0),
+])
+def test_la_sombra_en_pixeles_sale_de_la_escala(escala_m, distancia_m, esperado):
+    receta = dataclasses.replace(
+        RECETA_VIGENTE, escala_m=escala_m, sombras_distancia_m=distancia_m
+    )
+    assert receta.sombras_distancia_px == esperado
+
+
+@pytest.mark.parametrize("escala_m", [10, 20, 30, 60, 7])
+def test_la_sombra_en_pixeles_cubre_la_distancia_de_la_receta(escala_m):
+    """Redondeada hacia arriba: nunca proyecta menos que lo que dice la receta, y
+    como mucho un pixel mas."""
+    receta = dataclasses.replace(RECETA_VIGENTE, escala_m=escala_m)
+    metros = receta.sombras_distancia_px * escala_m
+    assert receta.sombras_distancia_m <= metros < receta.sombras_distancia_m + escala_m
+
+
+def test_a_60_m_la_sombra_ya_no_llega_a_6_km():
+    """La capa vieja pasaba `1000 / 10` pixeles fijos: pedida a 60 m, como la serie
+    vieja, eso eran 100 x 60 m = 6 km de sombra."""
+    a_60 = dataclasses.replace(RECETA_VIGENTE, escala_m=60)
+    assert a_60.sombras_distancia_px * 60 < 1100
+
+
 # --- Validacion contra los registros --------------------------------------
+
+
+@pytest.mark.parametrize("remuestreo", ["nearest", "bilinear", "bicubic"])
+def test_los_remuestreos_de_gee_se_aceptan(remuestreo):
+    otra = dataclasses.replace(RECETA_VIGENTE, remuestreo=remuestreo)
+    assert otra.remuestreo == remuestreo
 
 
 @pytest.mark.parametrize("campo,valor,mensaje", [
@@ -152,6 +196,8 @@ def test_reordenar_los_indices_no_cambia_la_huella():
     ("cobertura_minima", 1.5, "cobertura_minima"),
     ("meses_historico", 0, "meses_historico"),
     ("escala_m", 0, "escala_m"),
+    ("remuestreo", "cubic", "remuestreo"),
+    ("remuestreo", "Bilinear", "remuestreo"),
     ("nubes_max_prob", 101, "nubes_max_prob"),
     ("nubes_max_prob", -1, "nubes_max_prob"),
     ("nubes_dilatacion_m", -1, "nubes_dilatacion_m"),
