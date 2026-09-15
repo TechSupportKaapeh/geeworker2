@@ -1311,3 +1311,65 @@ quedaban afuera, M.2.2 los escribía como constantes y la huella no los veía.
   `reduceRegion` con una banda y varias salidas.
 - Un hallazgo fuera de M.1 quedó registrado en el `HANDOFF` §4: en local, la suite
   le habla a GEE, a la base y a MinIO a través de `test_http_surface`.
+
+> **Revisada el 2026-09-15 por `#36`:** el punto 5 queda reemplazado (el registro
+> ya no guarda fábricas), y el argumento del punto 4 ("el sufijo fija la fábrica")
+> deja de hacer falta, porque el sufijo se deriva del tipo.
+
+---
+
+## 36. Estadísticas declarativas, un solo histograma, y una receta que no deja que GEE cambie la escala (2026-09-15)
+
+> Tareas M.1.6 y M.1.7 (geeworker2#11 y #12). Salieron de revisar el código nuevo
+> contra la capa vieja: [`SESSION_2026-09-15_el_nucleo_del_pipeline.md`](SESSION_2026-09-15_el_nucleo_del_pipeline.md)
+> §6. Reemplaza el punto 5 de `#35`.
+
+**Decisión**, en cuatro partes:
+
+1. **El registro de estadísticas es declarativo** (tipo y percentil), y
+   `plan_de_reduccion()` fusiona:
+   - todos los percentiles van en un `ee.Reducer.percentile` con `outputNames`;
+   - mín y máx van en un `minMax`;
+   - la mediana es el percentil 50.
+
+   **Por qué:** según la documentación de `ee.Reducer.median` y de
+   `ee.Reducer.percentile`, cada reductor arma su propio histograma. La receta v1
+   armaba tres de los mismos píxeles, en cada índice de cada mes. Además, la
+   huella veía cada fábrica solo por su sufijo. Ahora ve la definición entera, y
+   `estadisticas.py` deja de importar `ee`.
+2. **El sufijo se deriva del tipo** (`p50`, `mean`, `stdDev`, `min`, `max`), así
+   que no puede contradecir al reductor.
+3. **La receta suma `remuestreo` y `sombras_distancia_px`.**
+   - `remuestreo`: v1 usa `nearest`, que es lo que GEE hace si no se le pide otro
+     y lo que hacía la capa vieja. `bilinear` se compara en M.2.6.
+   - `sombras_distancia_px` sale de `escala_m`. `directionalDistanceTransform`
+     mide en píxeles del pedido, y la capa vieja pasaba `1000 / 10` fijo. La
+     serie vieja pedía a 60 m, así que proyectaba sombras hasta 6 km. Eso sale de
+     la documentación, y se confirma en M.2.6.
+4. **Los pedidos a GEE van con `bestEffort=False` y `maxPixels` explícito.** Con
+   `bestEffort=True`, GEE usa una escala mayor sin avisar; la serie vieja lo hacía,
+   con `maxPixels=1e5`. No es un parámetro de la receta: es la garantía de que
+   `escala_m` se respeta. Lo implementan M.2.4 y M.2.5.
+
+**Una versión se congela con su primera fila.** `s2-mensual-v1` se re-fijó dos
+veces el 2026-09-15 (M.1.6 y M.1.7) sin pasar a v2. La huella existe para rastrear
+qué receta produjo cada fila, y v1 todavía no escribió ninguna. Desde que M.4.3
+escriba la primera, cambiar el contenido de v1 exige v2. Las huellas anteriores
+quedan anotadas en el test.
+
+**Descartado:**
+- **Pasar a v2 en cada ajuste antes de producir datos.** `HUELLAS` mostraría
+  versiones que nunca se usaron.
+- **`bilinear` en v1 sin medirlo.** Cambia NDRE y NDMI respecto de lo de hoy, y
+  M.2.6 compara lado a lado con la capa vieja: con `nearest`, esa comparación es
+  entre iguales.
+- **Fusionar media y desvío.** Son acumulados, no histogramas: no hay nada que
+  ganar.
+
+**Consecuencias:**
+- La clave de la mediana en GEE pasa a `ndvi_p50`. La del jsonb sigue siendo
+  `mediana`.
+- M.2.2 usa `sombras_distancia_px` y fija la proyección de la máscara.
+- M.2.4 arma el reductor desde el plan, con `bestEffort=False`.
+- M.2.6 compara `nearest` contra `bilinear`, y confirma los nombres de `minMax` y
+  la proyección de sombras.

@@ -21,8 +21,10 @@ handler lo importa todavía, así que **en producción no cambió nada**.
 | M.1.3 `estadisticas` | [geeworker2#6](https://github.com/TechSupportKaapeh/geeworker2/pull/6) | `050d91f` | 18 |
 | M.1.4 `receta` | [geeworker2#7](https://github.com/TechSupportKaapeh/geeworker2/pull/7) | `c30284e` | 36 |
 | M.1.5 importar sin red | [geeworker2#8](https://github.com/TechSupportKaapeh/geeworker2/pull/8) | `93d9e2c` | 2 |
+| M.1.6 estadísticas declarativas (§6) | [geeworker2#11](https://github.com/TechSupportKaapeh/geeworker2/pull/11) | `e5c2363` | 17 |
+| M.1.7 remuestreo y sombra en píxeles (§6) | [geeworker2#12](https://github.com/TechSupportKaapeh/geeworker2/pull/12) | `97583b6` | 17 |
 
-**La suite pasó de 203 a 352 verdes.** El ruff estricto de `pipeline/`
+**La suite pasó de 203 a 352 verdes con M.1.1 a M.1.5, y a 386 con M.1.6 y M.1.7.** El ruff estricto de `pipeline/`
 (`select = ["ALL"]`) está limpio, sin una sola excepción nueva en `ruff.toml`. Los
 tests nuevos no suman hallazgos al ruff por defecto de la raíz.
 
@@ -145,3 +147,52 @@ junto con las dos colecciones, y `sombras_nir_oscuro` va en reflectancia 0-1.
   [run](https://github.com/TechSupportKaapeh/geeworker2/actions/runs/34935249269).
 - Cada merge se hizo detrás de un `gh pr checks <n>` que dijera `pass`: sin M.0.6,
   `gh pr merge` mergea aunque el CI esté rojo.
+
+---
+
+## 6. Segunda parte: la revisión de eficiencia (M.1.6 y M.1.7)
+
+Después del cierre, el usuario preguntó si el código nuevo era eficiente y estaba
+bien hecho comparado con la capa vieja, o si flaqueaba en algo. Se leyó
+`services/ee/ee_indices.py` y la serie de `ee_client.py`, y se consultó la
+documentación de la librería instalada.
+
+**Lo que ya estaba mejor, con evidencia del código viejo:**
+- **Una fórmula por índice.** Antes estaban el mapa y la serie, cada uno con la
+  suya.
+- **El `clamp(-0.2, 0.6)` de EVI escondía el bug de la escala.** Con las bandas
+  crudas, la vegetación densa da ~2,2, y el clamp la dejaba en 0,6, sin error.
+- **No hay fallbacks silenciosos.** Antes, un índice desconocido devolvía NDVI con
+  otro nombre, y un `except Exception: size = 0` convertía un error de cuota o de
+  credenciales en "no hay imágenes".
+- **El orden de las operaciones:** primero el índice y después la mediana.
+- **Menos pedidos, por diseño y todavía sin medir.** La serie vieja hace dos
+  `getInfo()` por imagen; el pipeline, uno por mes.
+
+**Dónde flaqueaba lo nuevo, y qué se hizo:**
+
+| Hallazgo | Qué se hizo | PR |
+|---|---|---|
+| Mediana, p10 y p90 eran tres reductores: tres histogramas de los mismos píxeles | M.1.6: el registro es declarativo y `plan_de_reduccion()` los fusiona en uno | [#11](https://github.com/TechSupportKaapeh/geeworker2/pull/11) `e5c2363` |
+| La huella no veía la fábrica del reductor, solo su sufijo | M.1.6: la huella ve el tipo y el percentil | #11 |
+| `bestEffort=True` sube la escala sin avisar (la serie vieja lo usa) | M.1.7: política escrita, `bestEffort=False`; lo implementa M.2.4 | [#12](https://github.com/TechSupportKaapeh/geeworker2/pull/12) `SHA_M17` |
+| El remuestreo de B5 y B11 era implícito | M.1.7: `remuestreo` en la receta, v1 `nearest` | #12 |
+| La sombra medía en píxeles del pedido: `1000 / 10` fijo, que a 60 m son 6 km | M.1.7: `sombras_distancia_px`; M.2.2 fija la proyección de la máscara | #12 |
+| float32 contra float64, la división por cero, la clave con una banda | anotados en M.2.6 | [#10](https://github.com/TechSupportKaapeh/geeworker2/pull/10) `f9d1e15` |
+
+El usuario pidió sumarlo al tablero y hacerlo: el sprint M.1 se reabrió con M.1.6 y
+M.1.7 (#10), y se cerró de nuevo el mismo día. Decisión: `DECISIONS #36`.
+
+**Una decisión que tomé yo, para que el usuario la confirme:** `s2-mensual-v1` se
+re-fijó dos veces, en lugar de pasar a v2. La huella existe para rastrear qué receta
+produjo cada fila, y v1 no escribió ninguna. La regla quedó escrita: una versión se
+congela con su primera fila (M.4.3).
+
+**Un tropiezo.** La cadena de M.1.7 falló en `git checkout main`. El `main` local
+todavía no tenía M.1.6, y `receta.py` tenía cambios sin commitear. Se partió la
+rama de `origin/main`, que ya tenía M.1.6, y no se perdió nada. Regla: cuando hay
+cambios sin commitear que dependen del PR recién mergeado, partir de `origin/main`
+después de un `fetch`.
+
+**La suite pasó de 352 a 386 verdes.** La página del tablero se republicó con las
+tareas nuevas (versión 4) y otra vez al cierre.
