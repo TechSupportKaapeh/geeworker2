@@ -115,9 +115,10 @@ class Receta:
         """Todo lo que cambia un número, en tipos de JSON. Sin la versión.
 
         Además de los parámetros, lo que la receta toma de los registros: la
-        fórmula y las bandas de cada índice, y el sufijo de cada estadística. Así,
-        cambiar la fórmula de NDVI en el registro también cambia la huella, aunque
-        la receta no se toque.
+        fórmula y las bandas de cada índice, y el tipo y el percentil de cada
+        estadística (M.1.6). Así, cambiar la fórmula de NDVI o el percentil de
+        ``p10`` en el registro también cambia la huella, aunque la receta no se
+        toque.
 
         No cubre el código de las etapas (M.2), como la división por 10.000 o el
         agua de SCL en la máscara de sombras: eso se revisa en su PR, como
@@ -138,7 +139,11 @@ class Receta:
             for nombre in self.indices
         }
         contenido["estadisticas"] = {
-            nombre: ESTADISTICAS[nombre].sufijo for nombre in self.estadisticas
+            nombre: {
+                "tipo": ESTADISTICAS[nombre].tipo,
+                "percentil": ESTADISTICAS[nombre].percentil,
+            }
+            for nombre in self.estadisticas
         }
         return contenido
 
