@@ -151,6 +151,11 @@ llegar a producción", aunque la protección del punto 1 no se pueda activar.
     arrancar: es el mismo bug que tuvo el tileserver.
 - **El tileserver no audita dependencias**, y varias no tienen pin (`aiofiles`,
   `boto3`, `numpy`).
+- **Los tests del worker que le hablan a GEE** (marcados `gee`, desde M.2.1,
+  `DECISIONS #38`). Piden credenciales, y el CI no tiene secretos, así que se
+  saltean. Corren solo con `pytest --gee`: el `.env` no alcanza. Quien toque una
+  etapa los corre en local antes de abrir el PR:
+  `.venv\Scripts\python.exe -m pytest tests -q --gee -m gee`.
 - **El panel no frena por las altas de sus herramientas de desarrollo.** El
   2026-09-14 eran 9, `vite` entre ellas: no llegan al bundle, pero `vite dev`
   corre en la máquina de quien desarrolla.

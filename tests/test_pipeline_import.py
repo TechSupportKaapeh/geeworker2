@@ -47,6 +47,8 @@ def test_importar_cada_modulo_de_pipeline_no_abre_conexiones():
     assert {
         "pipeline.periodos", "pipeline.formulas", "pipeline.registro",
         "pipeline.indices", "pipeline.estadisticas", "pipeline.receta",
+        # M.2: la primera etapa que importa `ee`. `import ee` no abre conexiones.
+        "pipeline.etapas", "pipeline.etapas.fuente",
     } <= set(resultado.stdout.split())
 
 

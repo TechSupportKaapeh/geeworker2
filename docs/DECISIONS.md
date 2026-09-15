@@ -1401,3 +1401,60 @@ anotó 9 intentos, a los puertos 443 y 8288.
 el `socket` de Python, y en el control no apareció ningún intento a Postgres. A la base no
 se llega porque se reemplazan `init_db` y `registrar_conexiones`, no por el guardia. Está
 escrito en el docstring, para que nadie crea que el guardia cubre todo.
+
+---
+
+## 38. La fuente del pipeline, y cómo se prueba una etapa contra GEE: `pytest --gee` (2026-09-15)
+
+> Tarea M.2.1, la primera etapa del sprint M.2. Diseño: `ARQUITECTURA_PIPELINE.md` §2,
+> §3.3 y §8.
+
+**La fuente** (`pipeline/etapas/fuente.py`) arma la colección del mes sobre el ROI, sin
+calcular nada:
+- **Pide solo las bandas que la receta usa:** las de sus índices, más el NIR, que la máscara
+  de sombras necesita siempre. Para v1 son B2, B4, B5, B8 y B11, en el orden de S2.
+- **Divide por 10.000 solo las bandas espectrales.** `SCL` es una clasificación y
+  `probability` va de 0 a 100: ninguna de las dos es reflectancia.
+- **El `remuestreo` de la receta va solo a las espectrales.** Promediar clases de `SCL` con
+  `bilinear` daría clases que no existen. Con `nearest` no se llama a `resample`, porque
+  `ee.Image.resample` no lo acepta como argumento.
+- **Se arma con `addBands` sobre la escena**, porque la aritmética de GEE no conserva las
+  propiedades, y la máscara necesita el azimut solar de la escena.
+- **Una escena sin su probabilidad de nube queda afuera.** Es lo que hace el join
+  `saveFirst`, igual que en la capa vieja: sin probabilidad no hay máscara.
+- **No se descartan escenas por nubes ni por cobertura** (§8.2 y §8.3).
+- `filterDate` recibe milisegundos, para no depender de cómo `ee` convierte un `datetime`
+  con huso.
+
+**Cómo se prueba una etapa.** Una etapa no se puede ejecutar sin `ee.Initialize()`, y el CI
+no tiene credenciales (`#34`). Por eso hay dos clases de tests:
+- **Los puros, en el CI.** Cada etapa separa lo que decide (qué bandas, qué remuestreo, qué
+  rango) en funciones que no tocan `ee`.
+- **Los marcados `gee`, que corren solo con `pytest --gee`** (`tests/conftest.py`). Le
+  preguntan a GEE de verdad sobre un cuadrado de unos 500 m en el Bajío, que no es la parcela
+  de un cliente. Juntan todo lo que quieren saber en un `ee.Dictionary`, así cada test hace
+  una sola llamada. Se corren en local antes de abrir el PR: son la verificación contra lo
+  real del `WORKFLOW` §6. M.2.6 la completa con parcelas reales.
+
+**Por qué con una opción y no con el `.env`.** Si tener credenciales bastara para que un
+test hable con GEE, sería otra vez el test de `#37`: una suite que sale a la red porque sí.
+Con `--gee`, salir a la red es algo que alguien pide.
+
+**Un test de arquitectura para el borde** (`tests/test_pipeline_borde.py`). Fuera de
+`pipeline/ejecucion.py`, nada en `pipeline/` puede llamar a `getInfo`, `getDownloadURL`,
+`computePixels` ni `ee.data`. Un `getInfo()` suelto en una etapa se saltearía el deadline, la
+traducción de errores y el conteo de llamadas, y nada fallaría. El test lee el texto, así que
+un alias se le escapa, pero agarra el caso que llega por costumbre. Tiene su control
+negativo.
+
+**Controles negativos, contra GEE real:**
+- Sin dividir, el máximo de B8 en el ROI de prueba es 3987, así que el test que exige que
+  quede por debajo de 2 lo rechaza.
+- El azimut solar de una escena es 138,3; después de `divide` es `None`. Sin el `addBands`,
+  la máscara de M.2.2 se quedaría sin azimut.
+
+**Consecuencias:**
+- M.2.2 a M.2.5 siguen el mismo patrón: decisiones puras en el CI, y la expresión verificada
+  con `--gee`.
+- M.2.2 recibe `SCL` intacta, a su resolución de 20 m.
+- La suite pasa de 386 a 400 tests, más 3 que corren con `--gee`.
