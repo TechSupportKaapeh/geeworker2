@@ -72,14 +72,43 @@ def test_el_worker_arranca_aunque_falten_las_credenciales(monkeypatch):
     Cuesta poco sostenerlo porque los handlers llaman a `init_ee()` por su
     cuenta, una vez por step: la del arranque es un precalentamiento. Sin
     credenciales cada invocacion falla por separado y la reintenta Inngest.
+
+    **Y sin tocar la red** (2026-09-15). `_startup()` termina en
+    `registrar_conexiones()`, que importa su propio `init_ee` y verifica el
+    disco, MinIO, `geodata`, GEE e Inngest. Reemplazar solo `app.init_ee` y
+    `app.init_db` no alcanzaba: con el `.env` local, este test le hablaba de
+    verdad a GEE, a la base y a MinIO, y en el CI pasaba solo porque ahi no
+    hay `.env`. El socket saboteado lo vuelve comprobable: una conexion HTTP
+    que se escape (GEE, MinIO, Inngest) queda anotada y el test falla, aunque
+    `_startup()` se trague el error. Control negativo del 2026-09-15: con el
+    test como estaba, anoto 9 intentos, a los puertos 443 y 8288.
+
+    **Lo que el guardia no ve:** la base. psycopg2 se conecta desde libpq, en
+    C, sin pasar por el `socket` de Python; en ese control no aparecio ningun
+    intento a Postgres. Lo que impide llegar a la base es reemplazar
+    `init_db` y `registrar_conexiones`, no el guardia.
     """
+    import socket
+
     import app as modulo
 
     def _revienta():
         raise RuntimeError("Faltan EE_SERVICE_ACCOUNT_EMAIL o EE_SERVICE_ACCOUNT_KEY_JSON")
 
+    conexiones = []
+
+    def _sin_red(_sock, direccion, *_args):
+        conexiones.append(direccion)
+        raise OSError("este test no tiene red")
+
+    reportes = []
+    monkeypatch.setattr(socket.socket, "connect", _sin_red)
     monkeypatch.setattr(modulo, "init_ee", _revienta)
     monkeypatch.setattr(modulo, "init_db", _revienta)
+    monkeypatch.setattr(modulo, "registrar_conexiones", reportes.append)
 
     # No debe propagar: si lo hiciera, uvicorn abortaria el arranque.
     modulo._startup()
+
+    assert len(reportes) == 1, "el arranque tiene que seguir terminando en el reporte de conexiones"
+    assert conexiones == [], f"el arranque intento conectarse a {conexiones}"
