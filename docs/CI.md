@@ -100,6 +100,18 @@ Para cada repo de `TechSupportKaapeh` (`Geocore`, `geeworker2`, `Terra-admin` y
 >
 > Para Geocore las opciones son pasar la cuenta a GitHub Pro, o quedarse solo con
 > el punto 2, que igual frena el deploy.
+>
+> **Verificado otra vez el 2026-09-15**, después de que se diera M.0.6 por hecho:
+> - en los tres repos públicos, `GET …/rulesets` devuelve una lista vacía, y
+>   `GET …/branches/main/protection` sigue en `404 Branch not protected`;
+> - Geocore sigue en `403`.
+>
+> El punto 2, "Wait for CI" en Railway, no se puede ver desde la API de GitHub:
+> lo confirma quien tenga acceso a Railway.
+>
+> Para verificarlo sin hacer un push, desde cualquier terminal con `gh`:
+> `gh api repos/TechSupportKaapeh/<repo>/rules/branches/main`. Con el ruleset activo,
+> la lista trae `pull_request` y `required_status_checks`.
 
 ### 2. Activar "Wait for CI" en Railway, en los cuatro servicios
 

@@ -265,6 +265,16 @@ Lo hace el equipo.
 entidad y periodo. Es lo que impide que el cierre de mes cree dos jobs para lo
 mismo, aunque Geocore corra en dos réplicas.
 
+> **Cómo quedó, 2026-09-15** (M.3.1, `DECISIONS #25` de Geocore):
+> - **El índice único son dos índices parciales**, uno por parcela y otro por rancho. Postgres
+>   cuenta los NULL como distintos, y el job de un rancho lleva `parcela_id` nulo: con un solo
+>   índice, dos jobs del mismo rancho y mes no chocarían.
+> - **La base tiene CHECK** para `periodo` (`AAAA-MM`), `cobertura` (de 0 a 1),
+>   `observaciones` (≥ 0) y `estadisticas` (un objeto JSON), en `measurements` y en `layers`.
+>   El worker escribe sin pasar por el dominio de Geocore, y un valor fuera de rango hace
+>   fallar el insert en vez de guardarse.
+> - **`observaciones` es `double precision`**, porque una mediana puede caer entre dos enteros.
+
 **`rancho_measurements` ya no hace falta.** La métrica del rancho es el promedio
 ponderado por área de sus parcelas, y la calcula Geocore al consultar (Geocore
 `#22`). El punto 1 del pedido a Geocore caduca.
