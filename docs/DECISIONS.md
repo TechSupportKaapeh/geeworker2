@@ -1458,3 +1458,67 @@ negativo.
   con `--gee`.
 - M.2.2 recibe `SCL` intacta, a su resolución de 20 m.
 - La suite pasa de 386 a 400 tests, más 3 que corren con `--gee`.
+
+---
+
+## 39. La máscara se calcula en la proyección de la escena a `escala_m`, y la de hoy descarta de más (2026-09-15)
+
+> Tarea M.2.2. Cumple lo que `#36` le pedía: la distancia de sombra en píxeles, y la
+> máscara en una proyección fija.
+
+**Decisión:** `pipeline/etapas/nubes.py` es la máscara de la capa vieja
+(`mask_s2cloudless_and_shadows`), con tres cambios:
+- los parámetros salen de la receta;
+- el NIR se compara en reflectancia 0-1;
+- las tres capas (`nube`, `sombra`, `descarte`) se calculan con un `reproject` a la
+  proyección del NIR de la escena, a `escala_m`. En el Bajío es EPSG:32614 a 10 m.
+
+`componentes()` devuelve las tres capas por separado, para que los tests y M.2.6 puedan
+medirlas. `enmascarar()` aplica `descarte`.
+
+**Por qué el `reproject`, con números.** `directionalDistanceTransform` mide la sombra en
+píxeles, y `focalMax` resuelve los 50 m de dilatación en píxeles, los dos en la proyección
+del pedido. Sobre una escena del 4 de julio de 2026 con 32 % de nubes, en un cuadrado de 2
+km, la fracción descartada fue:
+
+| | pedida a 10 m | pedida a 60 m |
+|---|---|---|
+| con la proyección fija | 0,949 | 0,952 |
+| sin la proyección fija | 0,949 | **0,353** |
+
+Sin ella, el COG a 10 m y una estadística a 60 m saldrían con máscaras completamente
+distintas. Es el control negativo del test `test_la_mascara_no_depende_de_la_escala_del_pedido`.
+`reproject` suele desaconsejarse porque fuerza la escala del cálculo, y acá eso es justo lo
+que se busca.
+
+**Lo que salió al medir: la máscara de hoy descarta de más.** En esa misma escena, la
+máscara descarta el **95 %** con un 32 % de nubes. Separada por capas, a 10 m:
+
+| Capa | Fracción |
+|---|---|
+| nube (probabilidad > 45) | 0,323 |
+| nube dilatada 50 m | **0,898** |
+| sombra (proyectada y oscura) | 0,102 |
+| descarte | 0,949 |
+| descarte, con una erosión de 2 px de la nube antes de dilatar | **0,503** |
+
+La probabilidad de s2cloudless viene salpicada, y dilatar 50 m cada píxel suelto se come casi
+todo el cuadrado. El tutorial de s2cloudless de GEE erosiona antes de dilatar (`focalMin`)
+justamente por eso. Las sombras están bien acotadas: la proyección cubre el 98 %, pero el
+cruce con los píxeles oscuros las baja al 10 %.
+
+**Por qué M.2.2 no lo cambia:**
+- `ARQUITECTURA` §8.7 decidió que la máscara se queda igual.
+- M.2.6 compara lado a lado con la capa vieja, y con la misma máscara la comparación es entre
+  iguales. Es el mismo criterio que `#36` usó con `bilinear`.
+
+La erosión es un parámetro nuevo de la receta, y cambia la huella. Como v1 todavía no escribió
+filas, se la puede re-fijar sin pasar a v2 (`#36`).
+
+**Consecuencias:**
+- **M.2.6 suma una comparación:** la máscara de hoy contra la de la erosión, en las parcelas
+  reales, mirando cobertura y valores. La decide el usuario antes de M.4.3.
+- Con la máscara de hoy, un mes con varias escenas nubladas va a tener poca cobertura. La
+  compuerta antes de M.4 ("cobertura coherente con la estación") lo va a mostrar.
+- El test de la escena pide `descarte < 1`, que es flojo. Queda así a propósito, hasta que
+  M.2.6 decida la máscara: fijar hoy 0,949 fijaría el sobre-descarte.
