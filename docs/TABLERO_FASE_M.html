@@ -265,7 +265,7 @@
 
   <footer>
     <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
-    <span class="mono">Actualizado 2026-09-14</span>
+    <span class="mono">Actualizado 2026-09-15</span>
   </footer>
 </div>
 
@@ -361,8 +361,11 @@ const SPRINTS = [
     ] }
 ];
 
-// Al 2026-09-14: M.0.1 a M.0.5 hechas; M.0.6 es del equipo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
-const ESTADO = { "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho" };
+// Al 2026-09-15: M.0.1 a M.0.5 y M.1.1 a M.1.5 hechas; M.0.6 es del equipo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
+const ESTADO = {
+  "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho",
+  "M.1.1": "hecho", "M.1.2": "hecho", "M.1.3": "hecho", "M.1.4": "hecho", "M.1.5": "hecho"
+};
 
 const RUTA = [
   ["M.0", "CI en los cuatro repos"], ["M.1", "Núcleo sin GEE"], ["M.3·M.8", "Migración y tests de la API"],
@@ -385,7 +388,9 @@ const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bl
 const estadoDe = id => ESTADO[id] || "pendiente";
 const todas = SPRINTS.flatMap(s => s.tareas.map(t => ({ ...t, sprint: s.id })));
 // La siguiente es la primera sin hacer que no sea del equipo: las del equipo corren en paralelo a las sesiones.
-const siguiente = todas.find(t => estadoDe(t.id) !== "hecho" && !t.equipo);
+// Las marcadas «temprano» van antes que su sprint, como dice el orden sugerido de SPRINTS_FASE_M.md (desde el 2026-09-15).
+const pendienteNuestra = t => estadoDe(t.id) !== "hecho" && !t.equipo;
+const siguiente = todas.find(t => pendienteNuestra(t) && t.temprano) || todas.find(pendienteNuestra);
 
 document.getElementById("st-total").textContent = todas.length;
 document.getElementById("st-hechas").textContent = todas.filter(t => estadoDe(t.id) === "hecho").length;
@@ -393,7 +398,8 @@ document.getElementById("siguiente").innerHTML = siguiente
   ? `<span class="label">Siguiente tarea</span><strong class="mono">${siguiente.id}</strong><span>${siguiente.t}</span>`
   : `<strong>Todas las tareas están hechas.</strong>`;
 
-const sesionProxima = 2;
+// Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
+const sesionProxima = 3;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

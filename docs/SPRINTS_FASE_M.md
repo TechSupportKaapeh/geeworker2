@@ -17,7 +17,9 @@
 >
 > **Este archivo es el tablero.** Al cerrar una sesión se actualiza la columna de
 > estado: ⬜ pendiente · 🟡 en curso · ✅ hecho · ⛔ bloqueado. La sesión siguiente
-> arranca por la primera tarea ⬜ del sprint en curso.
+> arranca por la primera tarea ⬜ del sprint en curso, salvo las que el orden sugerido
+> adelanta: M.3.1 y M.8.2 van "temprano", en la sesión 3, antes de M.2. La página del
+> tablero lo respeta desde el 2026-09-15.
 
 ## Cómo se trabaja un sprint
 
@@ -114,13 +116,27 @@ tests, sin tocar la red.
 
 | | Tarea | T | Aceptación | Estado |
 |---|---|---|---|---|
-| M.1.1 | `pipeline/periodos.py`: `Mes` (`AAAA-MM`, orden, anterior y siguiente), `rango(mes)` semiabierto y `meses_cerrados(hoy, n)` | S | tests: diciembre a enero, bisiestos, "hoy" el día 1; los 24 meses de un alta el 2026-09-12 van de 2024-09 a 2026-08 | ⬜ |
-| M.1.2 | `pipeline/indices.py`. **Las fórmulas son texto** (`"(NIR - RED) / (NIR + RED)"`) sobre bandas con nombre, en reflectancia 0–1. v1: NDVI (vegetación), EVI (vegetación densa), NDRE (clorofila), NDMI (humedad) | M | un evaluador de Python calcula la misma fórmula contra valores de referencia de la literatura; nombres únicos; bandas que existen en S2; rangos coherentes | ⬜ |
-| M.1.3 | `pipeline/estadisticas.py`: mediana, media, mín, máx, p10, p90 y desvío, con el nombre con que GEE devuelve cada una | S | tests de las claves de salida con uno y con varios índices | ⬜ |
-| M.1.4 | `pipeline/receta.py`: `Receta` inmutable y `RECETA_VIGENTE = "s2-mensual-v1"`. v1: los 4 índices, las 7 estadísticas, cobertura mínima 0,3, 24 meses, escala 10 m, `max_prob` 45 y dilatación 50 m. Se valida contra los registros | S | un test fija la huella de la receta: cambiar un parámetro sin subir la versión lo rompe | ⬜ |
-| M.1.5 | Importar `pipeline` no toca la red | S | test que lo importa en un proceso con el socket saboteado (el patrón de `DECISIONS #24`) | ⬜ |
+| M.1.1 | `pipeline/periodos.py`: `Mes` (`AAAA-MM`, orden, anterior y siguiente), `rango(mes)` semiabierto y `meses_cerrados(hoy, n)` | S | tests: diciembre a enero, bisiestos, "hoy" el día 1; los 24 meses de un alta el 2026-09-12 van de 2024-09 a 2026-08 | ✅ 2026-09-14 · geeworker2#4 |
+| M.1.2 | `pipeline/indices.py`. **Las fórmulas son texto** (`"(NIR - RED) / (NIR + RED)"`) sobre bandas con nombre, en reflectancia 0–1. v1: NDVI (vegetación), EVI (vegetación densa), NDRE (clorofila), NDMI (humedad) | M | un evaluador de Python calcula la misma fórmula contra valores de referencia de la literatura; nombres únicos; bandas que existen en S2; rangos coherentes | ✅ 2026-09-14 · geeworker2#5 |
+| M.1.3 | `pipeline/estadisticas.py`: mediana, media, mín, máx, p10, p90 y desvío, con el nombre con que GEE devuelve cada una | S | tests de las claves de salida con uno y con varios índices | ✅ 2026-09-15 · geeworker2#6 |
+| M.1.4 | `pipeline/receta.py`: `Receta` inmutable y `RECETA_VIGENTE = "s2-mensual-v1"`. v1: los 4 índices, las 7 estadísticas, cobertura mínima 0,3, 24 meses, escala 10 m, `max_prob` 45 y dilatación 50 m. Se valida contra los registros | S | un test fija la huella de la receta: cambiar un parámetro sin subir la versión lo rompe | ✅ 2026-09-15 · geeworker2#7 |
+| M.1.5 | Importar `pipeline` no toca la red | S | test que lo importa en un proceso con el socket saboteado (el patrón de `DECISIONS #24`) | ✅ 2026-09-15 · geeworker2#8 |
 
 **Cierre del sprint:** `pytest` verde y `ruff` limpio en `pipeline/`.
+
+**Cierre (2026-09-15):** M.1.1 a M.1.5 están hechas, cada una por PR con el CI en
+verde. La suite pasó de 203 a 352, y el ruff estricto de `pipeline/` quedó limpio
+sin excepciones nuevas. Decisión: `DECISIONS #35`. Crónica:
+[`SESSION_2026-09-15_el_nucleo_del_pipeline.md`](SESSION_2026-09-15_el_nucleo_del_pipeline.md).
+
+Tres cosas que salieron y cambian lo que sigue:
+- **La receta v1 lleva cuatro campos más** que los de M.1.4: los dos parámetros de
+  sombras de la máscara de hoy (NIR oscuro 0,15 y 1000 m) y las dos colecciones.
+  M.2.2 los toma de la receta, no los escribe como constantes.
+- **`ARQUITECTURA` §3.2 estaba mal en la razón.** Los métodos de `ee.Reducer`
+  existen antes de `ee.Initialize()`; lo que falla es llamarlos. Está corregido.
+- **M.2.6 suma dos confirmaciones:** que GEE da 0 al dividir por cero, y la clave
+  de `reduceRegion` con una banda y varias salidas.
 
 ---
 

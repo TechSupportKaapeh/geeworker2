@@ -1243,3 +1243,71 @@ repos públicos (worker, panel y tileserver) se pueden proteger con el plan grat
 y Geocore, que es privado, pide GitHub Pro. Se verificó con la API el 2026-09-14.
 "Wait for CI" en Railway no depende del plan, y alcanza para que un rojo no se
 despliegue.
+
+---
+
+## 35. El núcleo del pipeline: fórmulas que GEE y Python leen igual, registros validados al importar y una huella que cubre los registros (2026-09-15)
+
+> Sprint M.1 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md), PR geeworker2#4 a #8.
+> Crónica: [`SESSION_2026-09-15_el_nucleo_del_pipeline.md`](SESSION_2026-09-15_el_nucleo_del_pipeline.md).
+> Implementa las piezas puras de `#32` (`ARQUITECTURA_PIPELINE.md` §3.2, §3.4 y §4).
+
+**Decisión**, en seis partes:
+
+1. **Las fórmulas son un lenguaje chico, que se lee con `ast` y nunca con `eval`**
+   (`pipeline/formulas.py`). Acepta números, bandas, paréntesis, `+ - * /` y el
+   signo. `#32` quería evaluar la misma fórmula en GEE (`Image.expression`) y en
+   Python para probarla sin red, y eso vale solo si los dos la leen igual.
+   Potencias, `%`, comparaciones, condicionales o funciones pueden leerse
+   distinto, o no existir, en uno de los dos. Se suman cuando un índice los pida,
+   comprobados antes en GEE.
+2. **Un registro es un mapa inmutable por nombre, validado al importar**
+   (`pipeline/registro.py`). Un nombre repetido rompe el import, no el mes 17 de
+   un alta. Los nombres van en minúsculas y dígitos, **sin `_`**. El nombre es
+   banda de GEE, clave del jsonb, segmento de la key del COG y prefijo de la clave
+   de `reduceRegion`. Sin `_`, las claves `{indice}_{sufijo}` no pueden chocar, y
+   en una key no entra `/` ni `..`.
+3. **El `rango` de un índice es la plausibilidad, no la escala de color.** EVI no
+   está acotado para espectros raros, así que un valor fuera de rango marca un
+   dato roto, como una nube que escapó a la máscara. La paleta del mapa se decide
+   cuando haga falta (M.4.5 o M.7).
+4. **Las claves de `reduceRegion` se calculan, no se parsean**
+   (`claves_de_salida`). Con una estadística, la clave es la banda; con varias,
+   `{banda}_{sufijo}`. El sufijo es el nombre de salida de GEE y se busca exacto,
+   así que también fija la fábrica: cambiar `percentile([10])` por `[20]` sin
+   tocar el sufijo hace fallar la reducción, en lugar de pasar en silencio.
+5. **El registro de estadísticas guarda fábricas, y la fábrica puede ser el
+   método mismo.** Esto corrige la razón que daba `ARQUITECTURA` §3.2. Con
+   `earthengine-api` 1.7.41, `ee.Reducer.median` existe antes de `ee.Initialize()`;
+   lo que falla es llamarlo. Lo destapó el ruff estricto (`PLW0108`), se comprobó
+   contra la librería, y un test lo fija en un proceso aparte.
+6. **La huella de la receta cubre también lo que la receta toma de los
+   registros**: la fórmula y las bandas de cada índice, y el sufijo de cada
+   estadística. No incluye la versión, y no depende del orden. `HUELLAS` vive en el
+   test, una línea por versión. Con solo los parámetros, cambiar la fórmula de
+   NDVI en `indices.py` habría cambiado los números sin cambiar la versión, que es
+   justo lo que la huella existe para impedir. **No cubre** el código de las
+   etapas (M.2): eso se revisa en su PR.
+
+**La receta v1 suma cuatro campos que el tablero no listaba:**
+`sombras_nir_oscuro` (0,15, en reflectancia 0-1), `sombras_distancia_m` (1000),
+`coleccion` y `coleccion_nubes`. Los dos primeros son parámetros de la máscara de
+hoy que cambian un número, y §3.4 y §8.7 ya decían que iban a la receta. Si
+quedaban afuera, M.2.2 los escribía como constantes y la huella no los veía.
+
+**Descartado:**
+- Evaluar las fórmulas con `eval`, que es un agujero, o con una librería
+  (`numexpr`, `simpleeval`), que es una dependencia para cuarenta líneas.
+- Guardar la huella en el código, al lado de la receta. Quien cambia un parámetro
+  la actualizaría en el mismo archivo sin pensarlo; en el test es un valor fijado
+  que el PR muestra.
+- Meter las fábricas en la huella hasheando el bytecode de las `lambda`: es frágil
+  entre versiones de Python, y el sufijo ya cumple ese papel.
+
+**Consecuencias:**
+- M.2 arma expresiones desde los registros y la receta, sin constantes propias en
+  las etapas.
+- Queda para M.2.6: confirmar que GEE da 0 al dividir por cero, y la clave de
+  `reduceRegion` con una banda y varias salidas.
+- Un hallazgo fuera de M.1 quedó registrado en el `HANDOFF` §4: en local, la suite
+  le habla a GEE, a la base y a MinIO a través de `test_http_surface`.
