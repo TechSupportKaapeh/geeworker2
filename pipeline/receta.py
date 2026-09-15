@@ -1,4 +1,4 @@
-"""La receta versionada del pipeline (M.1.4, ``ARQUITECTURA_PIPELINE.md`` §3.4).
+"""La receta versionada del pipeline (M.1.4 y M.1.7, ``ARQUITECTURA_PIPELINE.md`` §3.4).
 
 Todo parámetro que cambia un número vive acá, con un nombre de versión. Cada fila
 que se escribe guarda la versión que la produjo. Eso da tres cosas:
@@ -11,11 +11,19 @@ La receta vive en el código, no en variables de entorno: un parámetro que camb
 los datos tiene que quedar en git y pasar por revisión. Un test fija la
 :meth:`Receta.huella` de cada versión, así que cambiar un parámetro sin subir la
 versión lo pone en rojo.
+
+**Lo que la receta no fija, porque es del pedido y no del cálculo:** cada pedido a
+GEE va con ``bestEffort=False`` y un ``maxPixels`` explícito. Con
+``bestEffort=True``, GEE usa una escala mayor que ``escala_m`` cuando hay muchos
+píxeles, y el número cambia sin avisar: la serie vieja lo hacía. Si GEE no puede a
+``escala_m``, el pedido falla, y ``ejecucion.py`` (M.2.5) traduce el error
+(``DECISIONS #36``).
 """
 
 import dataclasses
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 
@@ -25,6 +33,9 @@ from pipeline.indices import BANDAS, INDICES
 # Va en la columna `receta` de cada fila: minúsculas, dígitos y guiones.
 _VERSION = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _PROBABILIDAD_MAXIMA = 100
+# Los métodos de `ee.Image.resample`, más `nearest`, que es lo que GEE hace si no
+# se le pide otro.
+_REMUESTREOS = frozenset({"nearest", "bilinear", "bicubic"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,13 +55,18 @@ class Receta:
         meses_historico: cuántos meses cerrados trae un alta.
         escala_m: el tamaño de píxel. Es uno solo para el compuesto, el mapa y
             las estadísticas (``ARQUITECTURA`` §8.5).
+        remuestreo: cómo se llevan a ``escala_m`` las bandas de 20 m (B5 y B11):
+            ``nearest``, ``bilinear`` o ``bicubic``. Cambia NDRE y NDMI. v1 usa
+            ``nearest``, que es lo que GEE hace si no se le pide otro y lo que
+            hacía la capa vieja; M.2.6 lo compara con ``bilinear``.
         nubes_max_prob: un píxel con probabilidad de nube mayor que esta es nube,
             de 0 a 100.
         nubes_dilatacion_m: cuánto se agranda la máscara de nubes y sombras.
         sombras_nir_oscuro: un píxel con NIR por debajo de esto, en reflectancia
             0-1, es candidato a sombra. La capa vieja comparaba contra
             ``0.15 * 10000`` porque trabajaba con las bandas crudas.
-        sombras_distancia_m: hasta dónde se proyecta la sombra de una nube.
+        sombras_distancia_m: hasta dónde se proyecta la sombra de una nube. La
+            etapa usa :attr:`sombras_distancia_px`.
     """
 
     version: str
@@ -61,6 +77,7 @@ class Receta:
     cobertura_minima: float
     meses_historico: int
     escala_m: int
+    remuestreo: str
     nubes_max_prob: int
     nubes_dilatacion_m: int
     sombras_nir_oscuro: float
@@ -90,6 +107,13 @@ class Receta:
             ),
             (self.escala_m > 0, f"escala_m no positiva: {self.escala_m}"),
             (
+                self.remuestreo in _REMUESTREOS,
+                (
+                    f"remuestreo desconocido: {self.remuestreo!r} "
+                    "(nearest, bilinear o bicubic)"
+                ),
+            ),
+            (
                 0 <= self.nubes_max_prob <= _PROBABILIDAD_MAXIMA,
                 f"nubes_max_prob fuera de [0, 100]: {self.nubes_max_prob}",
             ),
@@ -110,6 +134,20 @@ class Receta:
         if problemas:
             msg = "; ".join(problemas)
             raise ValueError(msg)
+
+    @property
+    def sombras_distancia_px(self) -> int:
+        """La distancia de sombra en píxeles de ``escala_m``, redondeada hacia arriba.
+
+        ``directionalDistanceTransform`` mide en píxeles, y GEE los cuenta en la
+        proyección del pedido. La capa vieja pasaba ``1000 / 10`` fijo: pedida a
+        60 m, como la serie vieja, la sombra se proyectaba hasta 6 km. Además de
+        usar este valor, M.2.2 arma la máscara en una proyección fija a
+        ``escala_m``, para que un pedido a otra escala no la cambie.
+
+        Sale de dos campos que ya están en la huella, así que no suma nada a ella.
+        """
+        return math.ceil(self.sombras_distancia_m / self.escala_m)
 
     def contenido(self) -> dict[str, object]:
         """Todo lo que cambia un número, en tipos de JSON. Sin la versión.
@@ -173,6 +211,7 @@ RECETA_VIGENTE = Receta(
     cobertura_minima=0.3,
     meses_historico=24,
     escala_m=10,
+    remuestreo="nearest",
     nubes_max_prob=45,
     nubes_dilatacion_m=50,
     sombras_nir_oscuro=0.15,
