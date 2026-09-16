@@ -1578,3 +1578,75 @@ argumento más para la decisión de la erosión que M.2.6 tiene que traer.
 - `measurements.observaciones` es la mediana de `n_obs` sobre la parcela.
 - Donde dos teselas se solapan traen los mismos píxeles, así que `mosaic()` elige cualquiera
   de las dos. Si alguna vez difirieran, la diferencia sería del reprocesamiento de ESA.
+
+---
+
+## 41. La reducción: un pedido que no baja la escala solo, y una clave que falta es un error (2026-09-15)
+
+> Tarea M.2.4, la última etapa del pipeline. Cumple lo que `#36` dejó escrito sobre los
+> pedidos a GEE.
+
+**Decisión:** `pipeline/etapas/reduccion.py` convierte el compuesto del mes en los números de
+la parcela:
+- `reductor(receta)` arma **un solo** `ee.Reducer` desde `plan_de_reduccion()`, combinando
+  con `sharedInputs=True`: GEE recorre los píxeles una vez;
+- `cobertura()` promedia la máscara del primer índice, que vale 1 donde hay dato y 0 donde
+  no. Es la fracción de la parcela con al menos una observación limpia en el mes;
+- `observaciones()` es la mediana de `n_obs`;
+- `valores()` junta todo en un `ee.Dictionary`, para que M.2.5 lo pida en una llamada;
+- `leer()` es pura, y es la que valida.
+
+**Todos los pedidos van con `bestEffort=False` y `MAX_PIXELES` explícito.** Con
+`bestEffort=True`, GEE devuelve un número calculado a otra escala sin avisar, que es lo que
+hacía la serie vieja. **Control negativo:** con el tope bajado a 10 píxeles, el pedido
+levanta en vez de responder. `MAX_PIXELES` es 1e8, unos 10.000 km² a 10 m, y no vive en la
+receta porque no cambia ningún número: es el límite de lo que se está dispuesto a calcular.
+
+**Una clave que falta es un error; una clave en `None`, no.**
+- Que falte significa que el pedido no calculó lo que se le pidió: `leer()` levanta con el
+  nombre de las claves que faltan. Tomarlo por un nulo guardaría un mes vacío sin que nadie
+  se entere.
+- Que venga en `None` significa que no hubo un solo píxel con dato, y eso es un mes sin
+  cobertura, que es un resultado válido: la fila se escribe con `valor` nulo
+  (`ARQUITECTURA` §6).
+
+**Dos detalles de construcción:**
+- El método de `ee.Reducer` sale de un dato (`Reductor.metodo`), así que se valida contra una
+  lista blanca antes de llamarlo. Llamar a ciegas un método cuyo nombre viene de datos es el
+  patrón que no hay que dejar entrar, aunque hoy esos datos sean nuestros.
+- Una cobertura que no es un número levanta `TypeError`, y una fuera de [0, 1], `ValueError`.
+  `True` se rechaza: para Python es un `int`, y pasaría por una cobertura de 1.
+
+**Los primeros números reales del pipeline**, sobre el cuadrado de 2 km en el Bajío, julio de
+2026:
+
+| índice | min | p10 | mediana | media | p90 | max | desvío |
+|---|---|---|---|---|---|---|---|
+| ndvi | −0,115 | 0,066 | 0,278 | 0,329 | 0,676 | 0,925 | 0,230 |
+| evi | **−6,447** | 0,093 | 0,218 | 0,258 | 0,468 | **1,622** | 0,172 |
+| ndre | −0,278 | 0,018 | 0,178 | 0,198 | 0,404 | 0,639 | 0,147 |
+| ndmi | −0,462 | −0,080 | 0,037 | 0,051 | 0,209 | 0,496 | 0,113 |
+
+Cobertura del mes: **0,955**. Observaciones: **2**.
+
+**Lo que salió de ahí:**
+1. **EVI se sale de su rango declarado, y es por construcción.** Su denominador
+   (`NIR + 6·RED − 7,5·BLUE + 1`) puede acercarse a cero en píxeles raros —agua, borde de
+   nube, sombra— y el cociente se dispara. Pasa en el **0,012 %** de los píxeles, unos 5 de
+   44.000. La mediana y los percentiles están sanos; los que se van son el mínimo y el
+   máximo, que también se guardan en `estadisticas`. NDVI, NDRE y NDMI están acotados por su
+   fórmula, y ninguno se salió. **No se cambia acá:** lo mide M.2.6 y lo decide el usuario,
+   junto con la erosión (`#39`). Las opciones son acotar EVI al armar el compuesto, o
+   aceptar que su mínimo y su máximo no son informativos.
+2. **La cobertura mensual aguanta el sobre-descarte de la máscara.** Cada escena pierde
+   mucho (`#39`), pero con ocho pasadas el 95,5 % de la parcela tuvo al menos una
+   observación limpia. Lo que queda golpeado es `observaciones`, con mediana 2. Matiza lo que
+   `#40` dejó anotado: el problema de la máscara se ve en cuántas observaciones respaldan
+   cada píxel, no en cuánta parcela queda sin dato.
+
+**Consecuencias:**
+- El test pide el rango del registro a la **mediana**, que es lo que se guarda en `valor`, y
+  a los extremos solo de las diferencias normalizadas. Fijar hoy el mínimo de EVI sería fijar
+  el problema.
+- La regla "si la cobertura no llega al mínimo, `valor` va nulo" no está acá: es de
+  `productos.py` (M.2.5) y de la escritura (M.4.3). Esta etapa devuelve los números.
