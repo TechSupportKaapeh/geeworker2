@@ -1522,3 +1522,59 @@ filas, se la puede re-fijar sin pasar a v2 (`#36`).
   compuerta antes de M.4 ("cobertura coherente con la estación") lo va a mostrar.
 - El test de la escena pide `descarte < 1`, que es flojo. Queda así a propósito, hasta que
   M.2.6 decida la máscara: fijar hoy 0,949 fijaría el sobre-descarte.
+
+---
+
+## 40. El compuesto junta primero las teselas de cada pasada, y recién después promedia (2026-09-15)
+
+> Tarea M.2.3. La decisión de juntar las teselas la tomó el usuario el mismo día, sobre el
+> hallazgo del sondeo de M.2.2.
+
+**Decisión:** `pipeline/etapas/compuesto.py` hace tres cosas, en orden:
+
+1. **Junta las teselas de cada pasada** (`por_pasada`), agrupando por
+   `DATATAKE_IDENTIFIER` y mosaicando.
+2. **Calcula los índices en cada pasada** (`indices_de`), con la fórmula del registro y
+   `Image.expression`.
+3. **Reduce por píxel con la mediana**, y suma la banda `n_obs` con las observaciones
+   limpias de cada píxel.
+
+**Por qué `DATATAKE_IDENTIFIER`.** Sentinel-2 entrega cada toma partida en teselas de 110 km
+que se solapan unos 10 km, y un ROI en esa franja recibe la misma pasada dos veces. Sobre el
+cuadrado de prueba, julio de 2026 trae **16 imágenes que son 8 pasadas**: el datatake es
+idéntico en las teselas `14QKH` y `14QLH` de una toma, y distinto entre pasadas. Se prefirió
+al par fecha + satélite porque es un solo campo y no depende de cómo se redondee la fecha.
+
+**Control negativo, contra GEE real.** La banda `n_obs` sobre el ROI:
+
+| | máximo | mediana |
+|---|---|---|
+| juntando las teselas | 6 | 2 |
+| sin juntarlas | **12** | **4** |
+
+Exactamente el doble, porque en ese ROI todas las pasadas venían duplicadas. Sin esta etapa,
+`measurements.observaciones` diría 4 donde hubo 2.
+
+**El orden es índice por pasada y después mediana** (`ARQUITECTURA` §8.1). El mapa viejo hacía
+la mediana de las bandas y después el índice: un cociente de medianas no es la mediana de los
+cocientes.
+
+**`n_obs` se cuenta sobre el primer índice de la receta.** Todos los índices de una pasada
+comparten su máscara, porque se aplica a la imagen entera (M.2.2).
+
+**Un test compara los dos motores de la fórmula.** El mismo texto lo evalúa GEE con
+`Image.expression` y `pipeline.formulas.evaluar` en Python, sobre las bandas de un píxel real:
+coinciden con 1e-6. Es lo que sostiene que hay una sola fórmula (`#35`).
+- **Detalle del test, aprendido a la mala:** un punto fijo caía en un píxel enmascarado y
+  devolvía todo en `None`, y `sample` con `numPixels=1` no devuelve una muestra sino
+  ninguna, porque el muestreo es probabilístico. Hoy pide 500 y usa la primera.
+
+**Lo que este control deja a la vista.** La mediana de observaciones limpias en julio, que es
+mes de lluvias, es **2 de 8 pasadas**. Es consistente con el sobre-descarte de `#39`, y es un
+argumento más para la decisión de la erosión que M.2.6 tiene que traer.
+
+**Consecuencias:**
+- M.2.4 reduce este compuesto, y la cobertura sale de sus píxeles con dato.
+- `measurements.observaciones` es la mediana de `n_obs` sobre la parcela.
+- Donde dos teselas se solapan traen los mismos píxeles, así que `mosaic()` elige cualquiera
+  de las dos. Si alguna vez difirieran, la diferencia sería del reprocesamiento de ESA.
