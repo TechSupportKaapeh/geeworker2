@@ -112,10 +112,14 @@ arma en una proyección fija.
 Todos los parámetros que cambian un número viven juntos en una `Receta`, con
 nombre de versión:
 - la colección;
-- el umbral de nubes y la dilatación de la máscara;
-- la escala;
+- el umbral de nubes, la erosión y la dilatación de la máscara;
+- la escala y el remuestreo;
 - la cobertura mínima;
-- los índices y las estadísticas.
+- los índices, las estadísticas, y si los índices se acotan a su rango.
+
+Los dos últimos de la máscara y de los índices —`nubes_erosion_px` y `acotar_indices`—
+existen desde el 2026-09-16 con el valor de la capa vieja, para que M.2.6 compare las dos
+variantes cambiando la receta (`DECISIONS #43`, y `#39` y `#41` para los números).
 
 Cada fila que se escribe guarda qué receta la produjo. Eso da tres cosas:
 - **Trazabilidad** (D-1): se sabe con qué parámetros salió cada número.

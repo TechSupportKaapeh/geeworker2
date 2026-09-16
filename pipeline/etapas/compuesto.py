@@ -78,7 +78,14 @@ def indices_de(imagen: ee.Image, receta: Receta) -> ee.Image:
         entradas = {
             banda: imagen.select(BANDAS[banda]) for banda in sorted(indice.bandas)
         }
-        bandas.append(imagen.expression(indice.formula, entradas).rename(nombre))
+        banda = imagen.expression(indice.formula, entradas).rename(nombre)
+        if receta.acotar_indices:
+            # EVI no está acotado por su fórmula: su denominador puede acercarse a
+            # cero y dispara el cociente (`DECISIONS #41`). Recortar mueve el
+            # mínimo y el máximo que se guardan, no la mediana. v1 no lo hace, y
+            # M.2.6 compara las dos.
+            banda = banda.clamp(*indice.rango)
+        bandas.append(banda)
     # `copyProperties` devuelve un `Element`, y `map` sobre una colección exige una
     # `Image`: sin este `ee.Image(...)`, el mapeo falla al armarse.
     return ee.Image(

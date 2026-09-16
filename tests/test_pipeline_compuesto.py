@@ -105,6 +105,30 @@ def test_el_compuesto_del_mes(gee_inicializado):
 
 
 @pytest.mark.gee
+def test_acotar_indices_deja_evi_dentro_de_su_rango(gee_inicializado):
+    # La otra alternativa que M.2.6 tiene que medir (DECISIONS #41). EVI se sale
+    # de [-1, 1] por construcción; v1 no lo acota, y el mínimo y el máximo que se
+    # guardan quedan disparados.
+    import ee
+
+    roi, _, enmascarada = _coleccion(ee)
+    acotada = dataclasses.replace(RECETA_VIGENTE, acotar_indices=True)
+
+    def extremos(receta):
+        return compuesto.compuesto(enmascarada, receta).select(["evi"]).reduceRegion(
+            reducer=ee.Reducer.minMax(), geometry=roi, scale=10,
+            bestEffort=False, maxPixels=1e7,
+        )
+
+    info = ee.Dictionary({"v1": extremos(RECETA_VIGENTE), "acotada": extremos(acotada)}).getInfo()
+
+    minimo, maximo = INDICES["evi"].rango
+    assert info["v1"]["evi_min"] < minimo, "la escena de prueba ya no tiene EVI fuera de rango"
+    assert minimo <= info["acotada"]["evi_min"]
+    assert info["acotada"]["evi_max"] <= maximo
+
+
+@pytest.mark.gee
 def test_el_indice_lo_calcula_gee_igual_que_el_evaluador_de_python(gee_inicializado):
     # La fórmula es una sola (DECISIONS #35): la de `pipeline.indices`. Acá se
     # comprueba que GEE y el evaluador de los tests la leen igual, sobre los

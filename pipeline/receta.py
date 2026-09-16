@@ -67,6 +67,19 @@ class Receta:
             ``0.15 * 10000`` porque trabajaba con las bandas crudas.
         sombras_distancia_m: hasta dónde se proyecta la sombra de una nube. La
             etapa usa :attr:`sombras_distancia_px`.
+        nubes_erosion_px: cuántos píxeles se encoge la máscara de nubes **antes**
+            de dilatarla, para sacar los píxeles sueltos. En píxeles de
+            ``escala_m``, como la sombra. v1 usa 0, que es lo que hace la capa
+            vieja; el tutorial de s2cloudless usa 2. Con 0, la dilatación de un
+            píxel suelto se come un círculo de 50 m: sobre una escena con 32 % de
+            nubes, el descarte pasa de 0,50 a 0,95 (``DECISIONS #39``). M.2.6 lo
+            compara sobre parcelas reales.
+        acotar_indices: si cada índice se recorta a su ``rango`` del registro. v1
+            usa ``False``, que es lo que hace la capa vieja. EVI no está acotado
+            por construcción —su denominador puede acercarse a cero— y se sale de
+            [-1, 1] en el 0,012 % de los píxeles, con mínimos de -6,4
+            (``DECISIONS #41``). Afecta al mínimo y al máximo que se guardan, no a
+            la mediana. M.2.6 lo compara.
     """
 
     version: str
@@ -82,6 +95,8 @@ class Receta:
     nubes_dilatacion_m: int
     sombras_nir_oscuro: float
     sombras_distancia_m: int
+    nubes_erosion_px: int
+    acotar_indices: bool
 
     def __post_init__(self) -> None:
         """Valida la receta contra los registros al armarla, que es al importar."""
@@ -128,6 +143,10 @@ class Receta:
             (
                 self.sombras_distancia_m >= 0,
                 f"sombras_distancia_m negativa: {self.sombras_distancia_m}",
+            ),
+            (
+                self.nubes_erosion_px >= 0,
+                f"nubes_erosion_px negativa: {self.nubes_erosion_px}",
             ),
         )
         problemas = [mensaje for cumple, mensaje in chequeos if not cumple]
@@ -216,4 +235,8 @@ RECETA_VIGENTE = Receta(
     nubes_dilatacion_m=50,
     sombras_nir_oscuro=0.15,
     sombras_distancia_m=1000,
+    # Los dos en el valor de la capa vieja, para que M.2.6 compare entre iguales.
+    # Las dos alternativas están medidas en `DECISIONS #39` y `#41`.
+    nubes_erosion_px=0,
+    acotar_indices=False,
 )
