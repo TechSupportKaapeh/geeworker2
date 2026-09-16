@@ -22,6 +22,10 @@ ignore = [
     # Pide un aviso de copyright al principio de cada archivo. Ningún archivo
     # del repo lo lleva, y el proyecto no definió uno.
     "CPY001",
+    # Pide que una excepción termine en "Error". Los nombres de este paquete están
+    # en castellano, y `ErrorDeGEE` ya dice que es un error: renombrarlo a
+    # `GEEError` lo haría peor de leer que la regla que lo pide (M.2.5).
+    "N818",
 ]
 
 [lint.pydocstyle]

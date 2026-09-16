@@ -1650,3 +1650,63 @@ Cobertura del mes: **0,955**. Observaciones: **2**.
   el problema.
 - La regla "si la cobertura no llega al mínimo, `valor` va nulo" no está acá: es de
   `productos.py` (M.2.5) y de la escritura (M.4.3). Esta etapa devuelve los números.
+
+---
+
+## 42. El borde con GEE: un plazo que necesita cliente, una tabla de errores y un conteo por contexto (2026-09-16)
+
+> Tarea M.2.5, la que cierra el sprint M.2 salvo la validación con parcelas reales.
+
+**Decisión**, en dos módulos:
+
+- **`pipeline/productos.py`** encadena las cuatro etapas y no pide nada:
+  `compuesto_del_mes()` es el tronco, `estadisticas_del_mes()` es la rama de la parcela y
+  `mapa_del_mes()` la del rancho. **Las dos salen del mismo compuesto**, que es lo que cierra
+  B-1 por construcción (`ARQUITECTURA` §2), y un test contra GEE lo comprueba: la mediana del
+  mapa y la de las estadísticas coinciden con 1e-6.
+- **`pipeline/ejecucion.py`** es el único que le pide a GEE que calcule: `traer()` y
+  `url_de_descarga()`. Lo fija el test del borde desde M.2.1.
+
+**El plazo necesita un cliente inicializado.** `ee.data.setDeadline` no guarda un número: 
+reconstruye el cliente HTTP, y sin sesión levanta un `AssertionError` del propio `ee`
+(`_install_cloud_api_resource`). Verificado el 2026-09-16, y es lo que hizo fallar nueve
+tests antes de saberlo. Por eso `plazo()` se saltea si nadie inicializó GEE: ahí no hay
+pedido que limitar, y el `getInfo()` que venga va a fallar solo, con un error que explica lo
+que pasa. Los tests que miran el plazo pasaron a `gee`, porque necesitan cliente.
+
+**La traducción de errores es una tabla de frases**, porque la API no da un código:
+- **no se reintenta** lo que no se arregla repitiendo: memoria, demasiados píxeles, salida
+  demasiado grande;
+- **lo desconocido se reintenta.** Equivocarse hacia el reintento cuesta una llamada;
+  equivocarse hacia el descarte pierde el mes.
+
+`_PASAJEROS` (concurrencia, capacidad, timeout, cortes de red) **no entra en la decisión**,
+porque daría lo mismo que el caso por defecto: preguntarle sería una rama muerta. Queda como
+documentación de lo que se sabe que se recupera, y un test la recorre entera.
+
+**El control que cierra el círculo entre la tabla y GEE.** Un test `gee` fuerza un tope de
+píxeles imposible y comprueba que el error llega como `ErrorDeGEE` con `reintentable=False`.
+Sin él, la tabla sería una lista de frases que nadie confrontó con lo que GEE contesta de
+verdad.
+
+**El error viaja como `ErrorDeGEE` con `reintentable`, y el pipeline no importa Inngest.**
+Quién orquesta no es asunto del pipeline: el handler traduce esa marca a lo que Inngest
+entiende, que es el vocabulario que ya tiene `services/avance_job.py` (`es_definitivo`,
+`NonRetriableError`).
+
+**El conteo de llamadas va en un `ContextVar`**, igual que el job actual de `avance_job.py`:
+dos handlers en paralelo no se pisan, y un pedido que falla **también** cuenta, porque si no
+la bitácora diría que el step no le habló a GEE.
+
+**Un hallazgo para M.4.5.** La imagen de `mapa_del_mes()` no trae una escala útil: su
+proyección por defecto es WGS84 de 1° (111.319 m), porque la aritmética de bandas pierde la
+proyección de la escena. Quien la descargue tiene que pasar `scale` y `crs`, que es lo que ya
+hace `services/ee/gee_download.py` desde `#19`. La máscara sí se calculó a `escala_m`
+(`#39`), así que los píxeles son los mismos que los de las estadísticas.
+
+**Consecuencias:**
+- M.4.4 y M.4.5 llaman a `ejecucion`, no a las etapas, y envuelven el step con `contando()`
+  para dejar el número de llamadas en la bitácora.
+- El handler es quien decide qué hacer con `reintentable`: el pipeline solo lo informa.
+- `PLAZO_MS` son dos minutos. La compuerta antes de M.4 pide que un mes tarde menos de 60 s,
+  así que el plazo está para que un pedido patológico falle, no para recortar uno normal.
