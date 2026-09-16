@@ -98,14 +98,46 @@ Costó dos intentos: un punto fijo caía en un píxel enmascarado y devolvía to
 `sample` con `numPixels=1` no devuelve una muestra sino ninguna, porque el muestreo es
 probabilístico.
 
-## 5. Números
+## 5. M.2.4: la reducción, y los primeros números
 
-- `pytest tests`: **404 verdes, 8 salteados** (los `gee`). Antes de la sesión eran 386.
-- `pytest --gee -m gee`: los 8 verdes contra GEE real.
+`pipeline/etapas/reduccion.py` convierte el compuesto en los números de la parcela: un solo
+reductor combinado desde `plan_de_reduccion()`, la cobertura, las observaciones, y `leer()`,
+que es pura y valida la respuesta.
+
+**Las dos reglas de `DECISIONS #36`, ahora con control:**
+- todos los pedidos van con `bestEffort=False` y un tope de píxeles explícito. Con el tope
+  bajado a 10, GEE levanta en vez de responder a otra escala;
+- una clave que falta es un error; una clave en `None` es un mes sin cobertura, y es válida.
+
+**Los primeros números reales del pipeline**, julio de 2026 sobre el ROI de prueba:
+
+| índice | min | p10 | mediana | media | p90 | max | desvío |
+|---|---|---|---|---|---|---|---|
+| ndvi | −0,115 | 0,066 | 0,278 | 0,329 | 0,676 | 0,925 | 0,230 |
+| evi | −6,447 | 0,093 | 0,218 | 0,258 | 0,468 | 1,622 | 0,172 |
+| ndre | −0,278 | 0,018 | 0,178 | 0,198 | 0,404 | 0,639 | 0,147 |
+| ndmi | −0,462 | −0,080 | 0,037 | 0,051 | 0,209 | 0,496 | 0,113 |
+
+Cobertura **0,955**, observaciones **2**.
+
+Dos cosas salieron de ahí:
+- **EVI se sale de su rango** en el 0,012 % de los píxeles, por construcción: su denominador
+  puede acercarse a cero. La mediana está sana; se disparan el mínimo y el máximo, que
+  también se guardan. Lo decide M.2.6.
+- **La cobertura mensual aguanta el sobre-descarte de la máscara.** Con ocho pasadas, el
+  95,5 % de la parcela tuvo al menos una observación limpia. Lo golpeado es `observaciones`,
+  con mediana 2. Matiza lo de §3: el problema se ve en cuántas observaciones respaldan cada
+  píxel, no en cuánta parcela queda sin dato.
+
+## 6. Números
+
+- `pytest tests`: **417 verdes, 10 salteados** (los `gee`). Antes de la sesión eran 386.
+- `pytest --gee -m gee`: los 10 verdes contra GEE real.
 - `ruff check pipeline/` y `ruff format --check pipeline/` limpios.
-- PRs geeworker2#16, #17 y #20, mergeados detrás de su CI verde.
+- PRs geeworker2#16, #17, #20 y #22, mergeados detrás de su CI verde.
 
-## 6. Lo que sigue
+## 7. Lo que sigue
 
-M.2.4 (la reducción, con `bestEffort=False` y la cobertura) y M.2.5 (productos y el borde con
-GEE). El detalle está en `geocore/docs/PROXIMA_SESION.md`.
+**M.2.5**, el borde con GEE: el tiempo máximo de cada pedido, la traducción de errores y el
+conteo de llamadas. Con eso cierra M.2, salvo M.2.6, que pide las 3 parcelas reales. El
+detalle está en `geocore/docs/PROXIMA_SESION.md`.
