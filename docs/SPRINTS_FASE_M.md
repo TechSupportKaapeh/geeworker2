@@ -188,7 +188,7 @@ de Geocore).
 | | · `measurements`: `valor` nullable, `estadisticas` jsonb, `cobertura`, `observaciones`, `receta` | | | |
 | | · `processing_jobs`: `periodo` y el índice único por tipo, entidad y periodo | | | |
 | | · `layers`: `receta` y `estadisticas` | | | |
-| 👥 M.3.1b | Aplicar la migración en GeoData | S | `pg_indexes` y columnas verificadas | ⬜ |
+| 👥 M.3.1b | Aplicar la migración en GeoData | S | `pg_indexes` y columnas verificadas | ✅ 2026-09-15 · la aplicó el usuario; los cinco CHECK verifican `ok` |
 | M.3.2 | `GET /api/measurements` devuelve estadísticas, cobertura y receta; `parcelaId` acepta una lista; techo para `limit` (A04) | M | tests | ⬜ |
 | M.3.3 | `GET /api/ranchos/{id}/metricas?indice=&desde=&hasta=`: el promedio ponderado por área de las parcelas, más la fracción del área con dato | M | tests con parcelas sin dato en un mes | ⬜ |
 | M.3.4 | `check_schema.py` del worker valida las columnas nuevas: el contrato entre repos | S | corre contra la base real | ⬜ |
