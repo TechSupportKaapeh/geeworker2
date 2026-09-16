@@ -78,7 +78,18 @@ def componentes(escena: ee.Image, receta: Receta) -> ee.Image:
         .mask()
     )
     sombra = proyectada.And(oscuro)
-    descarte = nube.Or(sombra).focalMax(receta.nubes_dilatacion_m, "circle", "meters")
+    # La erosión saca los píxeles de nube sueltos **antes** de dilatar. Sin ella,
+    # cada píxel suelto de s2cloudless se convierte en un círculo de
+    # `nubes_dilatacion_m`: es lo que lleva el descarte de 0,50 a 0,95 en una
+    # escena con 32 % de nubes (`DECISIONS #39`). v1 usa 0, que es lo que hace la
+    # capa vieja. Va en píxeles de `escala_m`, porque la máscara se calcula en la
+    # proyección fija.
+    nube_sola = (
+        nube if receta.nubes_erosion_px == 0 else nube.focalMin(receta.nubes_erosion_px)
+    )
+    descarte = nube_sola.Or(sombra).focalMax(
+        receta.nubes_dilatacion_m, "circle", "meters"
+    )
     return ee.Image.cat(
         nube.rename(BANDA_NUBE),
         sombra.rename(BANDA_SOMBRA),

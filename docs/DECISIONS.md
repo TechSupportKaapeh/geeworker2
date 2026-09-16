@@ -1689,6 +1689,42 @@ píxeles imposible y comprueba que el error llega como `ErrorDeGEE` con `reinten
 Sin él, la tabla sería una lista de frases que nadie confrontó con lo que GEE contesta de
 verdad.
 
+---
+
+## 43. Las dos alternativas pendientes pasan a ser parámetros de la receta, con el valor de hoy (2026-09-16)
+
+> Prepara M.2.6. No decide nada: deja las dos variantes medibles.
+
+**Decisión:** `nubes_erosion_px` y `acotar_indices` entran en la `Receta`, los dos con el
+valor que tiene la capa vieja (`0` y `False`), así que **ningún número cambia hoy**.
+
+- **`nubes_erosion_px`**: cuántos píxeles se encoge la máscara de nubes antes de dilatarla
+  (`#39`). Va en píxeles de `escala_m`, como la sombra, porque la máscara se calcula en la
+  proyección fija.
+- **`acotar_indices`**: si cada índice se recorta a su `rango` del registro (`#41`).
+
+**Por qué parámetros y no arreglos.** M.2.6 compara el pipeline contra la capa vieja sobre
+parcelas reales. Cambiar la máscara o los índices antes de esa comparación la volvería una
+comparación entre cosas distintas, y ya no diría si el pipeline reproduce lo de hoy. Es el
+mismo criterio que `#36` usó con `bilinear`. Como parámetros:
+
+- la comparación se hace cambiando un campo de la receta, no parcheando código en un script;
+- las dos variantes salen en la misma corrida, que es lo que M.2.6 tiene que producir;
+- la decisión sigue siendo del usuario, con los números de parcelas reales, antes de M.4.3.
+
+**La huella de v1 se re-fijó otra vez**, a
+`920554f366bbdc5e45887148702c10a242baa1a0394a29a2830fe78fd2bf751f`. Sumar un campo cambia la
+huella aunque el comportamiento sea idéntico, porque la huella cubre la definición completa,
+no el resultado. Se puede re-fijar porque v1 todavía no escribió ninguna fila (`#36`); desde
+M.4.3 no.
+
+**Lo que fija cada variante**, contra GEE:
+- con `nubes_erosion_px=2` el descarte baja, y la capa `nube` no cambia: lo que cambia es lo
+  que se dilata;
+- con `acotar_indices=True` el mínimo y el máximo de EVI quedan dentro de `[-1, 1]`, y el
+  test verifica primero que sin acotar se salen, para no volverse verde el día que la escena
+  de prueba deje de tener el caso.
+
 **El error viaja como `ErrorDeGEE` con `reintentable`, y el pipeline no importa Inngest.**
 Quién orquesta no es asunto del pipeline: el handler traduce esa marca a lo que Inngest
 entiende, que es el vocabulario que ya tiene `services/avance_job.py` (`es_definitivo`,

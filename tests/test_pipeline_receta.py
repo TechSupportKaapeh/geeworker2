@@ -35,8 +35,13 @@ from pipeline.registro import registro
 #   - M.1.6: 333dedb7ab255d2b98dcf381e993038d7f38107ce07a9dc9addd801e10af767f
 #            (las estadisticas pasaron a ser declarativas: tipo y percentil)
 #   - M.1.7: se sumo `remuestreo`.
+#            8b9790029510baee1447c3647dca6ec7542e451d8d652703857f1261b2cd5b32
+#   - 2026-09-16: se sumaron `nubes_erosion_px` y `acotar_indices`, los dos en el
+#     valor de la capa vieja (0 y False), asi que **ningun numero cambia**. Estan
+#     para que M.2.6 compare las dos variantes cambiando la receta, en vez de
+#     parchear codigo (DECISIONS #39 y #41).
 HUELLAS = {
-    "s2-mensual-v1": "8b9790029510baee1447c3647dca6ec7542e451d8d652703857f1261b2cd5b32",
+    "s2-mensual-v1": "920554f366bbdc5e45887148702c10a242baa1a0394a29a2830fe78fd2bf751f",
 }
 
 # Un cambio por campo de Receta, salvo la version. Si se suma un campo, tiene
@@ -54,6 +59,8 @@ CAMBIOS = {
     "nubes_dilatacion_m": 100,
     "sombras_nir_oscuro": 0.2,
     "sombras_distancia_m": 2000,
+    "nubes_erosion_px": 2,
+    "acotar_indices": True,
 }
 
 
@@ -97,6 +104,10 @@ def test_la_receta_v1_es_la_decidida():
     assert receta.sombras_nir_oscuro == 0.15
     assert receta.sombras_distancia_m == 1000
     assert receta.sombras_distancia_px == 100
+    # Los dos en el valor de la capa vieja: M.2.6 compara entre iguales y despues
+    # el usuario elige (DECISIONS #39 y #41).
+    assert receta.nubes_erosion_px == 0
+    assert receta.acotar_indices is False
 
 
 # --- Controles negativos: que la huella de verdad se mueva ----------------
@@ -204,6 +215,7 @@ def test_los_remuestreos_de_gee_se_aceptan(remuestreo):
     # La escala de la capa vieja (0.15 * 10000): la receta va en reflectancia 0-1.
     ("sombras_nir_oscuro", 1500.0, "sombras_nir_oscuro"),
     ("sombras_distancia_m", -1, "sombras_distancia_m"),
+    ("nubes_erosion_px", -1, "nubes_erosion_px"),
     ("indices", (), "al menos un"),
     ("indices", ("ndvi", "savi"), "fuera del registro"),
     ("estadisticas", ("mediana", "mediana"), "repetid"),

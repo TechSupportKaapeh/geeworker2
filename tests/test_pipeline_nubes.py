@@ -7,6 +7,8 @@ el Bajío. Se eligió con un sondeo del 2026-09-15: tiene nubes, y por lo tanto
 sombras, sin estar tapada.
 """
 
+import dataclasses
+
 import pytest
 
 from pipeline.etapas import fuente, nubes
@@ -79,6 +81,27 @@ def test_la_mascara_de_una_escena_parcialmente_nublada(gee_inicializado):
     assert info["azimut"] is not None
     assert info["crs"].startswith("EPSG:326")
     assert info["escala"] == RECETA_VIGENTE.escala_m
+
+
+@pytest.mark.gee
+def test_la_erosion_de_la_receta_achica_el_descarte(gee_inicializado):
+    # La alternativa que M.2.6 tiene que medir (DECISIONS #39). v1 usa 0, que es
+    # lo que hace la capa vieja; con 2 px, los píxeles de nube sueltos dejan de
+    # convertirse en círculos de 50 m.
+    import ee
+
+    roi, escena = _escena(ee)
+    con_erosion = dataclasses.replace(RECETA_VIGENTE, nubes_erosion_px=2)
+
+    info = ee.Dictionary({
+        "sin": _fracciones(ee, nubes.componentes(escena, RECETA_VIGENTE), roi, 10),
+        "con": _fracciones(ee, nubes.componentes(escena, con_erosion), roi, 10),
+    }).getInfo()
+
+    # La erosión solo puede sacar descarte, nunca sumar.
+    assert info["con"]["descarte"] < info["sin"]["descarte"]
+    # Y no toca las nubes en sí: lo que cambia es lo que se dilata.
+    assert info["con"]["nube"] == info["sin"]["nube"]
 
 
 @pytest.mark.gee
