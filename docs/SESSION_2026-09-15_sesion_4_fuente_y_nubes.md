@@ -129,15 +129,41 @@ Dos cosas salieron de ahí:
   con mediana 2. Matiza lo de §3: el problema se ve en cuántas observaciones respaldan cada
   píxel, no en cuánta parcela queda sin dato.
 
-## 6. Números
+## 6. M.2.5: los productos y el borde
 
-- `pytest tests`: **417 verdes, 10 salteados** (los `gee`). Antes de la sesión eran 386.
-- `pytest --gee -m gee`: los 10 verdes contra GEE real.
+`pipeline/productos.py` encadena las cuatro etapas: `compuesto_del_mes()` es el tronco, y de
+ahí salen las dos ramas. **Un test comprueba que la mediana del mapa y la de las estadísticas
+coinciden con 1e-6**: es B-1 cerrado por construcción, no por cuidado.
+
+`pipeline/ejecucion.py` es el único que pide cálculo. Tiene el plazo por pedido, la
+traducción de errores y el conteo de llamadas en un `ContextVar`. **El pipeline no importa
+Inngest**: informa si conviene reintentar, y el handler traduce eso al vocabulario que ya
+existe en `services/avance_job.py`.
+
+**Dos cosas que solo aparecen probando contra GEE real:**
+- **`setDeadline` exige `ee.Initialize()` hecho.** No guarda un número: reconstruye el
+  cliente HTTP, y sin sesión levanta un `AssertionError` del propio `ee`. Tiró nueve tests
+  abajo hasta entenderlo. Ahora el plazo se saltea si no hay cliente, y los tests que lo
+  miran son `gee`.
+- **La imagen del mapa no trae escala útil:** su proyección por defecto es WGS84 de 1°
+  (111.319 m), porque la aritmética de bandas pierde la de la escena. La escala y el CRS los
+  fija la descarga, que es lo que ya hace `gee_download` desde `DECISIONS #19`.
+
+**Los controles:** un tope de píxeles imposible llega como error **no** reintentable —eso
+confronta la tabla de frases con lo que GEE contesta de verdad— y el mes de una parcela
+cuesta **una** sola llamada.
+
+## 7. Números
+
+- `pytest tests`: **445 verdes, 17 salteados** (los `gee`). Antes de la sesión eran 386.
+- `pytest --gee -m gee`: los 17 verdes contra GEE real.
 - `ruff check pipeline/` y `ruff format --check pipeline/` limpios.
-- PRs geeworker2#16, #17, #20 y #22, mergeados detrás de su CI verde.
+- PRs geeworker2#16, #17, #20, #22 y #24, mergeados detrás de su CI verde.
 
-## 7. Lo que sigue
+## 8. Lo que sigue
 
-**M.2.5**, el borde con GEE: el tiempo máximo de cada pedido, la traducción de errores y el
-conteo de llamadas. Con eso cierra M.2, salvo M.2.6, que pide las 3 parcelas reales. El
-detalle está en `geocore/docs/PROXIMA_SESION.md`.
+**M.2.6**, que es la compuerta antes de M.4 y lo único que le falta al sprint. Pide 3
+parcelas reales (👥), compara el pipeline contra la capa vieja, y trae los números para dos
+decisiones del usuario: la erosión de la máscara (`#39`) y qué hacer con EVI (`#41`). Las dos
+van antes de M.4.3, que es cuando `s2-mensual-v1` se congela. El detalle está en
+`geocore/docs/PROXIMA_SESION.md`.
