@@ -1,8 +1,8 @@
-# Sesión 4 (2026-09-15), primera parte: la fuente y la máscara
+# Sesión 4 (2026-09-15), primera parte: la fuente, la máscara y el compuesto
 
 > La sesión 4 del orden sugerido: M.2, las etapas contra GEE real. Esta parte cubre M.2.1
-> (geeworker2#16, `DECISIONS #38`) y M.2.2 (#17, `DECISIONS #39`). Siguió en el mismo día que
-> la sesión 3, apenas cerrada esa.
+> (geeworker2#16, `DECISIONS #38`), M.2.2 (#17, `#39`) y M.2.3 (#20, `#40`). Siguió en el
+> mismo día que la sesión 3, apenas cerrada esa.
 
 ## 0. Al empezar
 
@@ -70,14 +70,42 @@ La dilatación sobre píxeles de nube sueltos se come casi todo. **No lo cambié
 `ARQUITECTURA` §8.7 decidió que la máscara se queda igual, y M.2.6 compara lado a lado. M.2.6
 suma la comparación con la erosión, y la decide el usuario antes de M.4.3.
 
-## 4. Números
+## 4. M.2.3: el compuesto mensual
 
-- `pytest tests`: **401 verdes, 5 salteados** (los `gee`). Antes de la sesión eran 386.
-- `pytest --gee -m gee`: los 5 verdes contra GEE real.
+`pipeline/etapas/compuesto.py` junta las teselas de cada pasada, calcula los índices en cada
+una y recién después toma la mediana por píxel, más la banda `n_obs`.
+
+**Cómo se agrupa una pasada.** Un sondeo mostró que `DATATAKE_IDENTIFIER` es idéntico en las
+dos teselas de una toma y distinto entre pasadas. Se prefirió a la combinación fecha +
+satélite porque es un solo campo.
+
+**El control negativo**, sobre el mismo ROI:
+
+| | máximo | mediana |
+|---|---|---|
+| juntando las teselas | 6 | 2 |
+| sin juntarlas | **12** | **4** |
+
+Exactamente el doble. Sin la etapa, `measurements.observaciones` diría 4 donde hubo 2.
+
+**Y un dato que no esperaba:** la mediana es de **2 observaciones limpias en todo julio**,
+que es mes de lluvias, sobre 8 pasadas disponibles. Es consistente con el sobre-descarte de
+`#39`, y es otro argumento para la decisión de la erosión que trae M.2.6.
+
+**Un test compara los dos motores de la fórmula:** GEE con `Image.expression` y el evaluador
+de Python de `pipeline.formulas`, sobre las bandas de un píxel real. Coinciden con 1e-6.
+Costó dos intentos: un punto fijo caía en un píxel enmascarado y devolvía todo en `None`, y
+`sample` con `numPixels=1` no devuelve una muestra sino ninguna, porque el muestreo es
+probabilístico.
+
+## 5. Números
+
+- `pytest tests`: **404 verdes, 8 salteados** (los `gee`). Antes de la sesión eran 386.
+- `pytest --gee -m gee`: los 8 verdes contra GEE real.
 - `ruff check pipeline/` y `ruff format --check pipeline/` limpios.
-- PRs geeworker2#16 y #17, mergeados detrás de su CI verde.
+- PRs geeworker2#16, #17 y #20, mergeados detrás de su CI verde.
 
-## 5. Lo que sigue
+## 6. Lo que sigue
 
-M.2.3 (el compuesto, juntando teselas), M.2.4 (la reducción) y M.2.5 (el borde). El detalle
-está en `geocore/docs/PROXIMA_SESION.md`.
+M.2.4 (la reducción, con `bestEffort=False` y la cobertura) y M.2.5 (productos y el borde con
+GEE). El detalle está en `geocore/docs/PROXIMA_SESION.md`.
