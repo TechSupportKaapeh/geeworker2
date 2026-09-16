@@ -1725,6 +1725,50 @@ M.4.3 no.
   test verifica primero que sin acotar se salen, para no volverse verde el día que la escena
   de prueba deje de tener el caso.
 
+---
+
+## 44. Las tres cosas que el pipeline daba por supuestas de GEE, confirmadas (2026-09-16)
+
+> Primer escalón de M.2.6: `scripts/check_pipeline_real.py`. La tarea sigue abierta, porque
+> la compuerta pide parcelas reales.
+
+**Confirmado contra GEE**, y hasta hoy eran supuestos escritos en `#35` y `#36`:
+
+1. **Dividir por cero da 0**, no un error. Las fórmulas del registro no necesitan protegerse:
+   `pipeline/formulas.evaluar` levanta `ZeroDivisionError` en Python, y eso está bien, porque
+   es el evaluador de referencia de los tests, no el del pipeline.
+2. **Una banda con varias salidas sale como `{banda}_{sufijo}`**: `ndvi_min`, `ndvi_mean`,
+   `ndvi_max`. Es lo que `claves_de_salida()` asume desde M.1.3, y lo que hacía que la
+   receta v1, con siete estadísticas, tuviera claves predecibles.
+3. **`minMax` nombra sus salidas `min` y `max`**, que es lo que `_SALIDA` da por sentado en
+   `pipeline/estadisticas.py`.
+
+**Los primeros números del pipeline al lado de la capa vieja**, sobre el cuadrado de prueba
+del Bajío, julio de 2026:
+
+| | pipeline | capa vieja |
+|---|---|---|
+| valor | 0,278 (mediana) | 0,310 (media) |
+| pasadas que usa | 8 | 2 |
+| tiempo | 3,8 s | 17,7 s |
+
+No tienen por qué coincidir, y las razones ya estaban previstas (`ARQUITECTURA` §8): la vieja
+promedia en vez de tomar la mediana, reduce a 60 m con `bestEffort=True`, y **descarta** las
+pasadas con menos del 50 % del ROI limpio, que es por lo que usa 2 de 8. La compuerta pide
+menos de 60 s por mes: 3,8 s deja margen, aunque una parcela real es más grande.
+
+**Dos datos que van a pesar en las decisiones de M.2.6:**
+- **La erosión mejora lo que se guarda, no solo el descarte por escena.** Con
+  `nubes_erosion_px=2`, la cobertura del mes pasó de 0,955 a 1,000 y las observaciones por
+  píxel de 2 a 4. Es el primer dato medido sobre el resultado.
+- **El remuestreo cambia el número.** `nearest` y `bilinear` difieren 0,0039 en la mediana de
+  NDRE y de NDMI: unas 4000 veces la tolerancia de float32. No es un detalle de precisión,
+  es una elección que mueve el dato guardado.
+
+**Lo que falta para cerrar M.2.6:** correr el script sobre 3 parcelas reales y 3 meses, con
+uno de lluvia, y el COG de un rancho (`--cog`). Los números de las tablas los lee una
+persona: la compuerta pide que sean plausibles, no que coincidan con la capa vieja.
+
 **El error viaja como `ErrorDeGEE` con `reintentable`, y el pipeline no importa Inngest.**
 Quién orquesta no es asunto del pipeline: el handler traduce esa marca a lo que Inngest
 entiende, que es el vocabulario que ya tiene `services/avance_job.py` (`es_definitivo`,
