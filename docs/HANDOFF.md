@@ -2,7 +2,16 @@
 
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
-> Última revisión: **2026-09-15, a mitad de la sesión 4**:
+>
+> **Última revisión: 2026-09-17, sesión 6.** La sesión fue sobre todo en Geocore (M.3.2 y
+> M.3.3); de este lado va **M.3.4: `check_schema.py` verifica el contrato del esquema en vez
+> de imprimirlo** y sale con código 1 si falta algo (`DECISIONS #46`). Corrido contra PostGIS
+> con las migraciones de Geocore aplicadas: **43 de 43 en ok**; con la migración anterior, 33
+> de 43. **Correrlo antes de M.4.3**, que es la que escribe la primera fila mensual. Suite:
+> 463 verdes, más 20 con `--gee`. Crónica de la sesión:
+> `geocore/docs/SESSION_2026-09-17_sesion_6_la_api_mensual.md`.
+>
+> Antes: **2026-09-15, a mitad de la sesión 4**:
 > [`SESSION_2026-09-15_sesion_4_fuente_y_nubes.md`](SESSION_2026-09-15_sesion_4_fuente_y_nubes.md).
 > Están M.2.1, la fuente; M.2.2, la máscara en proyección fija; y M.2.3, el compuesto que
 > junta las teselas de cada pasada (`DECISIONS #38`, `#39` y `#40`). Los tests que le hablan
@@ -155,16 +164,22 @@ este despliegue y hoy lo detecta `/health/ready` sin tocar la red.
 Cambiarlos deja de ser trabajo local: no hay compilador que agarre el error.
 
 **Esquema de `geodata` — columnas en snake_case.** Definitivo desde la migración
-`20260817165517_GeoDataSnakeCase`. Verificado contra la DB real el 2026-08-19.
+`20260817165517_GeoDataSnakeCase`. Verificado contra la DB real el 2026-08-19, y **desde el
+2026-09-17 lo verifica `python check_schema.py`**, que compara el esquema contra el contrato
+de abajo y sale con código 1 si falta algo (`DECISIONS #46`). Correrlo después de cada
+migración de Geocore, y antes de M.4.3.
 
 ```
 layers            id, tenant_id, parcela_id, rancho_id, storage_key,
                   product, acquired_ts, bbox, created_at, source
-measurements      parcela_id, indice, fecha, tenant_id, valor, min_val, max_val
+measurements      parcela_id, indice, fecha, tenant_id, valor, min_val, max_val,
+                  estadisticas (jsonb), cobertura, observaciones, receta
                   PK: (parcela_id, indice, fecha)
+                  (las 4 ultimas y `valor` nullable, migracion MedicionesMensuales,
+                   aplicada el 2026-09-15)
 processing_jobs   id, tenant_id, parcela_id, rancho_id, request_type, status,
                   progress, error_message, created_by, created_at,
-                  started_at, finished_at
+                  started_at, finished_at, periodo
 processing_job_events
                   id, job_id, created_at, attempt, stage, level, message, detail
                   (2026-09-12, migracion ProcessingJobEvents; el worker solo inserta)

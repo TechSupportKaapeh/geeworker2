@@ -189,9 +189,9 @@ de Geocore).
 | | · `processing_jobs`: `periodo` y el índice único por tipo, entidad y periodo | | | |
 | | · `layers`: `receta` y `estadisticas` | | | |
 | 👥 M.3.1b | Aplicar la migración en GeoData | S | `pg_indexes` y columnas verificadas | ✅ 2026-09-15 · la aplicó el usuario; los cinco CHECK verifican `ok` |
-| M.3.2 | `GET /api/measurements` devuelve estadísticas, cobertura y receta; `parcelaId` acepta una lista; techo para `limit` (A04) | M | tests | ⬜ |
-| M.3.3 | `GET /api/ranchos/{id}/metricas?indice=&desde=&hasta=`: el promedio ponderado por área de las parcelas, más la fracción del área con dato | M | tests con parcelas sin dato en un mes | ⬜ |
-| M.3.4 | `check_schema.py` del worker valida las columnas nuevas: el contrato entre repos | S | corre contra la base real | ⬜ |
+| M.3.2 | `GET /api/measurements` devuelve estadísticas, cobertura y receta; `parcelaId` acepta una lista; techo para `limit` (A04) | M | tests | ✅ 2026-09-17 · Geocore#15, `DECISIONS #28`. `estadisticas` va como objeto; la lista acepta el parámetro repetido y las comas; techo 5000, con el `limit` aplicado y `truncado` en la respuesta. El mismo techo en `/api/layers` |
+| M.3.3 | `GET /api/ranchos/{id}/metricas?indice=&desde=&hasta=`: el promedio ponderado por área de las parcelas, más la fracción del área con dato | M | tests con parcelas sin dato en un mes | ✅ 2026-09-17 · Geocore#16, `DECISIONS #29`. **El promedio divide por el área con dato, no por la total**, y la fracción va al lado. Rango en meses, tope de 60 |
+| M.3.4 | `check_schema.py` del worker valida las columnas nuevas: el contrato entre repos | S | corre contra la base real | ✅ 2026-09-17 · geeworker2#29, `DECISIONS #46` del worker. **43 de 43 en ok** contra PostGIS con las migraciones aplicadas; 33 de 43 y código 1 con la migración anterior |
 | 👥 M.3.5 | Borrar las filas por pasada de prueba (SQL listo en la sesión) | S | — | ⬜ |
 
 **M.3.1 hecha el 2026-09-15** (sesión 3, Geocore#6, `DECISIONS #25` de Geocore). Tres
@@ -207,6 +207,20 @@ cosas que cambian lo que sigue:
 👥 **M.3.1b:** aplicar `geocore/docs/sql/2026-09-15_MedicionesMensuales.sql` en GeoData y
 correr `…_verificar.sql`, que es de solo lectura. Todas las filas tienen que decir `ok`. Se
 probó contra PostGIS 15 en un contenedor local.
+
+**Cierre del sprint (2026-09-17, sesión 6).** M.3.2, M.3.3 y M.3.4 están hechas, cada una por
+PR con el CI en verde. Queda 👥 M.3.5, que no frena nada. Crónica:
+[`geocore/docs/SESSION_2026-09-17_sesion_6_la_api_mensual.md`](../../geocore/docs/SESSION_2026-09-17_sesion_6_la_api_mensual.md).
+Tres cosas que cambian lo que sigue:
+
+- **La métrica del rancho divide por el área con dato, no por la total** (`DECISIONS #29` de
+  Geocore). M.7.4 dibuja el valor **con** su `fraccionArea` al lado: sin ese número, un mes
+  nublado se lee como un mes malo.
+- **`/api/measurements` devuelve `{ data, limit, truncado }`.** Agrega campos, no cambia los
+  que estaban, y el techo es 5000 (`#28`). M.7.3 mira `truncado` antes de dibujar.
+- **`check_schema.py` es ahora una compuerta**, no un listado: sale con código 1 si falta una
+  columna (`DECISIONS #46` del worker). **Correrlo antes de M.4.3**, que es la tarea que
+  escribe la primera fila mensual.
 
 ---
 
