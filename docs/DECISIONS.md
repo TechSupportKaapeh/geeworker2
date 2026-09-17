@@ -1864,3 +1864,47 @@ hace `services/ee/gee_download.py` desde `#19`. La máscara sí se calculó a `e
 - El handler es quien decide qué hacer con `reintentable`: el pipeline solo lo informa.
 - `PLAZO_MS` son dos minutos. La compuerta antes de M.4 pide que un mes tarde menos de 60 s,
   así que el plazo está para que un pedido patológico falle, no para recortar uno normal.
+
+---
+
+## 46. `check_schema.py` verifica el contrato con Geocore en vez de imprimirlo (2026-09-17)
+
+> Tarea M.3.4 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). El esquema es de Geocore
+> (`DECISIONS #15` de Geocore) y sus columnas nuevas son `#25` de allá.
+
+**Decisión.** El script pasó de **listar** el esquema a **compararlo** contra un contrato
+escrito: cada columna que el worker usa, con su tipo y —donde importa— su nulabilidad, más
+las constraints que necesitan los `ON CONFLICT` y los dos índices únicos parciales del cierre
+de mes. Sale con código 1 si algo no está. El listado de antes quedó bajo `--dump`.
+
+**Por qué ahora.** El esquema es contrato entre repos y no hay compilador que agarre un
+desajuste. Imprimirlo servía cuando lo leía una persona en el momento; con las siete columnas
+nuevas de la FASE M, lo que hace falta es que **el script diga si la base está lista**, antes
+de que M.4.3 escriba la primera fila mensual. El modo de fallo que evita es el feo: el INSERT
+revienta en producción, adentro de un step de Inngest, con el cálculo de GEE ya gastado.
+
+**Qué se verifica, y qué no.**
+- **Lo que el worker usa**, no el esquema entero. Una columna que Geocore agregue y el worker
+  no toque no puede poner esto en rojo: sería un contrato que se rompe solo.
+- **La nulabilidad, solo donde cambia el comportamiento.** El caso es `measurements.valor`:
+  si volviera a ser `NOT NULL`, un mes con cobertura bajo el mínimo **no se podría escribir**,
+  y ese mes quedaría como "nunca procesado" para el cierre de mes.
+- **Los índices, por sus columnas y su filtro, no por su nombre.** El nombre lo elige la
+  migración; las columnas son el contrato. Un índice único **sin** el `WHERE` no cuenta: sin
+  el filtro, Postgres cuenta los NULL como distintos y dos jobs del mismo rancho y mes no
+  chocarían, que es justo lo que los dos índices parciales existen para impedir.
+- **Los CHECK de rango no se repiten acá**: los verifica el script de M.3.1b, del lado de
+  Geocore, que es quien los crea.
+
+**Cómo se probó.** 15 tests sin base sobre las funciones de comparación, que reciben lo que
+devolvió la consulta (así el CI los corre sin Postgres), y **la corrida real contra PostGIS 15
+en un contenedor**, con las migraciones de Geocore aplicadas con `dotnet ef database update`:
+**43 de 43 en ok**.
+- **Control negativo:** con la base llevada a la migración anterior (`ProcessingJobEvents`,
+  que es el estado de producción hasta que se aplicó M.3.1b), el script sale en **33 de 43**,
+  con código 1, y nombra exactamente las siete columnas nuevas, los dos índices y
+  `measurements.valor` como `DISTINTO` por haber vuelto a `NOT NULL`.
+
+**Un detalle que salió de correrlo:** lo que se imprime va **sin acentos**. La consola de
+Windows no siempre está en UTF-8, y la primera corrida real mostró los títulos con
+caracteres rotos. Los comentarios y docstrings siguen con acentos: no se imprimen.
