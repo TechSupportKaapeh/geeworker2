@@ -105,14 +105,14 @@ def test_el_compuesto_del_mes(gee_inicializado):
 
 
 @pytest.mark.gee
-def test_acotar_indices_deja_evi_dentro_de_su_rango(gee_inicializado):
-    # La otra alternativa que M.2.6 tiene que medir (DECISIONS #41). EVI se sale
-    # de [-1, 1] por construcción; v1 no lo acota, y el mínimo y el máximo que se
-    # guardan quedan disparados.
+def test_v1_deja_evi_dentro_de_su_rango(gee_inicializado):
+    # v1 acota los índices desde `DECISIONS #45`. EVI se sale de [-1, 1] por
+    # construcción —su denominador puede acercarse a cero—, así que sin acotar el
+    # mínimo y el máximo que se guardan quedan disparados.
     import ee
 
     roi, _, enmascarada = _coleccion(ee)
-    acotada = dataclasses.replace(RECETA_VIGENTE, acotar_indices=True)
+    sin_acotar = dataclasses.replace(RECETA_VIGENTE, acotar_indices=False)
 
     def extremos(receta):
         return compuesto.compuesto(enmascarada, receta).select(["evi"]).reduceRegion(
@@ -120,12 +120,16 @@ def test_acotar_indices_deja_evi_dentro_de_su_rango(gee_inicializado):
             bestEffort=False, maxPixels=1e7,
         )
 
-    info = ee.Dictionary({"v1": extremos(RECETA_VIGENTE), "acotada": extremos(acotada)}).getInfo()
+    info = ee.Dictionary({"v1": extremos(RECETA_VIGENTE), "sin": extremos(sin_acotar)}).getInfo()
 
     minimo, maximo = INDICES["evi"].rango
-    assert info["v1"]["evi_min"] < minimo, "la escena de prueba ya no tiene EVI fuera de rango"
-    assert minimo <= info["acotada"]["evi_min"]
-    assert info["acotada"]["evi_max"] <= maximo
+    # v1 nunca guarda un valor fuera del rango del registro.
+    assert minimo <= info["v1"]["evi_min"]
+    assert info["v1"]["evi_max"] <= maximo
+    # Y el recorte no es decorativo: sin él, esta escena se sale.
+    assert info["sin"]["evi_min"] < minimo or info["sin"]["evi_max"] > maximo, (
+        "la escena de prueba ya no tiene EVI fuera de rango: el test dejó de probar algo"
+    )
 
 
 @pytest.mark.gee

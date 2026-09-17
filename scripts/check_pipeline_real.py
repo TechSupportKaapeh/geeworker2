@@ -67,7 +67,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # Un cuadrado de ~2 km en el Bajio (Guanajuato). Es el mismo de los tests `gee`:
 # sirve para correr el script sin datos de clientes.
 ROI_DE_PRUEBA = [-100.86, 20.54, -100.84, 20.56]
-MESES_POR_DEFECTO = ("2026-03", "2026-07", "2026-11")
+
+# Cuantos meses corre si no se le pasan. Se calculan **cerrados** desde hoy: una
+# lista fija terminaba pidiendole a GEE un mes que todavia no paso, y eso da una
+# coleccion vacia que parece un error del pipeline.
+#
+# Para la compuerta conviene elegirlos a mano, con estaciones distintas: tres
+# meses seguidos caen todos en la misma, y lo que hay que ver es si la cobertura
+# y el indice se mueven con la estacion.
+MESES_POR_DEFECTO = 3
 
 # La tolerancia de float32, que es lo que GEE devuelve. La de los tests (1e-6
 # absoluto sobre valores de 0 a 1) es mas fina que lo que el tipo puede sostener.
@@ -165,25 +173,39 @@ def escalon_numeros(parcelas, meses, receta, indice):
 
 
 def escalon_variantes(parcelas, meses, receta, indice):
-    """2. Las dos alternativas que el usuario tiene que decidir."""
-    con_erosion = dataclasses.replace(receta, nubes_erosion_px=2)
-    acotada = dataclasses.replace(receta, acotar_indices=True)
+    """2. La receta contra sus dos alternativas **apagadas**.
 
-    print("\n  2. LAS DOS VARIANTES  (DECISIONS #39 y #41)\n")
-    print(f"{_dato}{'parcela':14s} {'mes':8s} {'cob v1':>7s} {'cob eros':>9s} "
-          f"{'obs v1':>7s} {'obs eros':>9s} | {'min evi':>9s} {'min acot':>9s}")
+    Desde `DECISIONS #45` la receta ya erosiona y acota, asi que lo que hay que
+    comparar es lo contrario: que pasaria sin cada una. Antes comparaba contra las
+    variantes prendidas, y desde que se tomo la decision las dos columnas salian
+    identicas.
+    """
+    sin_erosion = dataclasses.replace(receta, nubes_erosion_px=0)
+    sin_acotar = dataclasses.replace(receta, acotar_indices=False)
 
+    print("\n  2. LA RECETA CONTRA SUS ALTERNATIVAS APAGADAS  (DECISIONS #45)\n")
+    print(f"{_dato}{'parcela':14s} {'mes':8s} {'cob v1':>7s} {'sin eros':>9s} "
+          f"{'obs v1':>7s} {'sin eros':>9s} | {'evi min v1':>11s} {'sin acotar':>11s}")
+
+    problemas = []
     for nombre, roi in parcelas:
         for mes in meses:
             base, _, _ = _mes_nuevo(roi, mes, receta)
-            erosion, _, _ = _mes_nuevo(roi, mes, con_erosion)
-            recorte, _, _ = _mes_nuevo(roi, mes, acotada)
+            cruda, _, _ = _mes_nuevo(roi, mes, sin_erosion)
+            suelta, _, _ = _mes_nuevo(roi, mes, sin_acotar)
             print(f"{_dato}{nombre:14.14s} {mes!s:8s} "
-                  f"{_num(base.cobertura):>7s} {_num(erosion.cobertura):>9s} "
-                  f"{_num(base.observaciones, 0):>7s} {_num(erosion.observaciones, 0):>9s} | "
-                  f"{_num(base.estadisticas['evi']['min']):>9s} "
-                  f"{_num(recorte.estadisticas['evi']['min']):>9s}")
-    return []
+                  f"{_num(base.cobertura):>7s} {_num(cruda.cobertura):>9s} "
+                  f"{_num(base.observaciones, 0):>7s} {_num(cruda.observaciones, 0):>9s} | "
+                  f"{_num(base.estadisticas['evi']['min']):>11s} "
+                  f"{_num(suelta.estadisticas['evi']['min']):>11s}")
+
+            # La erosion nunca deberia empeorar la cobertura: si lo hace, la
+            # decision de `#45` habria que revisarla con este dato.
+            if base.cobertura < cruda.cobertura:
+                problemas.append(
+                    f"{nombre} {mes}: la erosion bajo la cobertura "
+                    f"({cruda.cobertura:.3f} -> {base.cobertura:.3f})")
+    return problemas
 
 
 def escalon_remuestreo(parcelas, meses, receta):
@@ -293,20 +315,24 @@ def main():
     parser = argparse.ArgumentParser(description="M.2.6: el pipeline contra la realidad")
     parser.add_argument("--parcelas", type=Path,
                         help="carpeta con GeoJSON, uno por parcela (si no, el ROI de prueba)")
-    parser.add_argument("--meses", nargs="+", default=list(MESES_POR_DEFECTO),
-                        help="meses AAAA-MM; uno deberia ser de lluvias")
+    parser.add_argument("--meses", nargs="+", default=None,
+                        help="meses AAAA-MM; conviene elegirlos de estaciones distintas, "
+                             f"uno de lluvias. Si no se pasan, los ultimos {MESES_POR_DEFECTO} cerrados")
     parser.add_argument("--indice", default="ndvi", help="el indice de la tabla principal")
     parser.add_argument("--cog", action="store_true", help="suma el escalon del COG")
     args = parser.parse_args()
 
     import ee
 
-    from pipeline.periodos import Mes
+    from pipeline.periodos import Mes, hoy_utc, meses_cerrados
     from pipeline.receta import RECETA_VIGENTE
     from services.ee.ee_client import init_ee
 
     init_ee()
-    meses = [Mes.desde_texto(texto) for texto in args.meses]
+    if args.meses:
+        meses = [Mes.desde_texto(texto) for texto in args.meses]
+    else:
+        meses = list(meses_cerrados(hoy_utc(), MESES_POR_DEFECTO))
     if args.parcelas:
         parcelas = _parcelas_desde(args.parcelas)
         if not parcelas:

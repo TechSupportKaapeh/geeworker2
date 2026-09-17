@@ -235,8 +235,8 @@ RECETA_VIGENTE = Receta(
     nubes_dilatacion_m=50,
     sombras_nir_oscuro=0.15,
     sombras_distancia_m=1000,
-    # Los dos en el valor de la capa vieja, para que M.2.6 compare entre iguales.
-    # Las dos alternativas están medidas en `DECISIONS #39` y `#41`.
-    nubes_erosion_px=0,
-    acotar_indices=False,
+    # Los dos los eligió el usuario el 2026-09-16, con los números de M.2.6
+    # (`DECISIONS #45`). Antes valían 0 y False, que era lo de la capa vieja.
+    nubes_erosion_px=2,
+    acotar_indices=True,
 )
