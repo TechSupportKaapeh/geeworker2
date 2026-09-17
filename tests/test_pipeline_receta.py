@@ -37,11 +37,16 @@ from pipeline.registro import registro
 #   - M.1.7: se sumo `remuestreo`.
 #            8b9790029510baee1447c3647dca6ec7542e451d8d652703857f1261b2cd5b32
 #   - 2026-09-16: se sumaron `nubes_erosion_px` y `acotar_indices`, los dos en el
-#     valor de la capa vieja (0 y False), asi que **ningun numero cambia**. Estan
-#     para que M.2.6 compare las dos variantes cambiando la receta, en vez de
+#     valor de la capa vieja (0 y False), asi que ningun numero cambiaba. Estaban
+#     para que M.2.6 comparara las dos variantes cambiando la receta, en vez de
 #     parchear codigo (DECISIONS #39 y #41).
+#     920554f366bbdc5e45887148702c10a242baa1a0394a29a2830fe78fd2bf751f
+#   - 2026-09-17: el usuario eligio con los numeros de M.2.6 (DECISIONS #45):
+#     erosion de 2 px y acotar los indices. **Esta vez los numeros si cambian**, y
+#     aun asi se re-fija v1 en vez de pasar a v2, porque la regla de `#36` es la
+#     primera fila escrita, y M.4.3 todavia no escribio ninguna.
 HUELLAS = {
-    "s2-mensual-v1": "920554f366bbdc5e45887148702c10a242baa1a0394a29a2830fe78fd2bf751f",
+    "s2-mensual-v1": "75dbb738dd2a69a30c89107b7cb55b1192b5bd4030f368b9f5b185099c42a352",
 }
 
 # Un cambio por campo de Receta, salvo la version. Si se suma un campo, tiene
@@ -59,8 +64,9 @@ CAMBIOS = {
     "nubes_dilatacion_m": 100,
     "sombras_nir_oscuro": 0.2,
     "sombras_distancia_m": 2000,
-    "nubes_erosion_px": 2,
-    "acotar_indices": True,
+    # Distintos de los de v1, que desde DECISIONS #45 son 2 y True.
+    "nubes_erosion_px": 3,
+    "acotar_indices": False,
 }
 
 
@@ -104,10 +110,9 @@ def test_la_receta_v1_es_la_decidida():
     assert receta.sombras_nir_oscuro == 0.15
     assert receta.sombras_distancia_m == 1000
     assert receta.sombras_distancia_px == 100
-    # Los dos en el valor de la capa vieja: M.2.6 compara entre iguales y despues
-    # el usuario elige (DECISIONS #39 y #41).
-    assert receta.nubes_erosion_px == 0
-    assert receta.acotar_indices is False
+    # Los dos los eligio el usuario con los numeros de M.2.6 (DECISIONS #45).
+    assert receta.nubes_erosion_px == 2
+    assert receta.acotar_indices is True
 
 
 # --- Controles negativos: que la huella de verdad se mueva ----------------

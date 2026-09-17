@@ -265,7 +265,7 @@
 
   <footer>
     <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
-    <span class="mono">Actualizado 2026-09-15</span>
+    <span class="mono">Actualizado 2026-09-17</span>
   </footer>
 </div>
 
@@ -293,8 +293,8 @@ const SPRINTS = [
       { id: "M.1.7", t: "La receta fija el remuestreo de las bandas de 20 m y la sombra en píxeles desde la escala; bestEffort=False por escrito", repo: "worker", T: "S", ok: "Tests de la receta y DECISIONS" }
     ] },
   { id: "M.2", nombre: "Etapas y borde", objetivo: "El pipeline calcula el mes de una parcela y el COG de un rancho contra GEE real, y los números se validan.", sesiones: "2",
-    aviso: { tipo: "compuerta", texto: "<b>Compuerta antes de M.4:</b> NDVI en [−1, 1], cobertura coherente con la estación y un mes de parcela en menos de ~60 s." },
-    aviso2: { tipo: "equipo", texto: "<b>El equipo prepara:</b> 3 parcelas reales (ids o KML). <b>Y decide antes de M.4.3</b> si la máscara lleva una erosión antes de dilatar: la de hoy descartó el 95 % de una escena con 32 % de nubes; con erosión, el 50 % (DECISIONS #39)." },
+    aviso: { tipo: "compuerta", texto: "<b>Compuerta pasada el 2026-09-17:</b> NDVI 0,30–0,35 en seco y 0,54–0,56 en lluvias, cobertura coherente, y <b>2 a 8 s por mes</b> contra los 60 del límite. En un mes la capa vieja no devolvió nada y el pipeline cubrió el 93,6 %. <b>Falta medir el tiempo con una parcela grande</b>: las tres eran de 101 ha, y es lo que M.5 necesita para la concurrencia." },
+    aviso2: { tipo: "equipo", texto: "<b>Decidido el 2026-09-17 (DECISIONS #45):</b> la máscara lleva una erosión de 2 px antes de dilatar y los índices se acotan a su rango. La erosión no empeoró ningún mes y en los nublados subió la cobertura (0,856 → 0,936) y las observaciones (1 → 2)." },
     tareas: [
       { id: "M.2.1", t: "fuente.py: S2 SR con probabilidad de nubes; bandas ÷ 10000", repo: "worker", T: "S", ok: "Revisado en M.2.6" },
       { id: "M.2.2", t: "nubes.py: s2cloudless con sombras, sin descartar pasadas; sombra en píxeles desde la receta y máscara en proyección fija", repo: "worker", T: "S", ok: "Revisado en M.2.6" },
@@ -364,13 +364,13 @@ const SPRINTS = [
     ] }
 ];
 
-// Al 2026-09-16 (cierre de la sesión 4): M.0.1 a M.0.5, M.1 entero, M.2.1 a M.2.5, M.3.1, M.3.1b y M.8.2 hechas. Queda M.2.6, que es la compuerta y pide 3 parcelas reales; M.0.6 sigue postergada por la demo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
+// Al 2026-09-17 (cierre de la sesión 5): M.0.1 a M.0.5, M.1 entero, M.2 entero, M.3.1, M.3.1b y M.8.2 hechas. El sprint M.2 está cerrado: pasó la compuerta con parcelas reales. Sigue M.3.2; M.0.6 sigue postergada por la demo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
 const ESTADO = {
   "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho",
   "M.1.1": "hecho", "M.1.2": "hecho", "M.1.3": "hecho", "M.1.4": "hecho", "M.1.5": "hecho",
   "M.1.6": "hecho", "M.1.7": "hecho",
   "M.2.1": "hecho", "M.2.2": "hecho", "M.2.3": "hecho", "M.2.4": "hecho", "M.2.5": "hecho",
-  "M.2.6": "curso",
+  "M.2.6": "hecho",
   "M.3.1": "hecho", "M.3.1b": "hecho", "M.8.2": "hecho"
 };
 
@@ -409,7 +409,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 5;
+const sesionProxima = 6;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

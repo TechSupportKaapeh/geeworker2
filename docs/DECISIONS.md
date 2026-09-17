@@ -1769,6 +1769,80 @@ menos de 60 s por mes: 3,8 s deja margen, aunque una parcela real es más grande
 uno de lluvia, y el COG de un rancho (`--cog`). Los números de las tablas los lee una
 persona: la compuerta pide que sean plausibles, no que coincidan con la capa vieja.
 
+---
+
+## 45. La receta v1 lleva erosión de 2 px y acota los índices (2026-09-17)
+
+> **Decisión del usuario**, con los números de M.2.6. Cierra lo que `#39` y `#41` dejaron
+> abierto, y lo que `#43` habia dejado listo para medir.
+
+**Decisión:** `nubes_erosion_px = 2` y `acotar_indices = True` en `s2-mensual-v1`.
+
+**Las parcelas.** Tres cuadrados de 101 ha en la Orinoquía (4,68 N, 69,79 O), los tres
+iguales y en fila. **No cumplen lo que la tarea pedía** —tamaños y regiones distintas— así
+que la compuerta se cruzó midiendo una sola situación tres veces. Lo que sí aportan: es zona
+de mucha nube, que es donde la máscara se pone a prueba. Meses: febrero (seco), abril
+(arranque de lluvias) y julio (lluvias).
+
+**La compuerta pasó:**
+
+| Criterio | Pedido | Medido |
+|---|---|---|
+| NDVI plausible | en [−1, 1] | 0,30–0,35 en seco, 0,55–0,57 en lluvias |
+| Cobertura coherente con la estación | — | 1,000 en seco; 0,86–0,98 en julio |
+| Un mes de parcela | < 60 s | **2 a 3 s** |
+
+**El resultado que más importa:** en una parcela de julio, **la capa vieja no devolvió nada**
+—descartó todas las pasadas por su filtro de cobertura del 50 %— y el pipeline dio 0,553 con
+86 % de cobertura. Es exactamente lo que el compuesto mensual venía a resolver (`#31`).
+
+**Por qué la erosión.** No apareció ningún caso donde empeore:
+- en los siete meses despejados no cambió nada;
+- en los dos nublados subió la cobertura (0,856 → 0,936 y 0,980 → 0,995) y las observaciones
+  (1 → 2 y 2 → 3);
+- en la escena del Bajío baja el descarte de 0,95 a 0,50, y la cobertura del mes sube de
+  0,955 a 1,000 con las observaciones de 2 a 4 (`#39` y `#44`).
+
+**Por qué acotar.** En estas tres parcelas EVI **nunca** se salió del rango: los mínimos
+fueron de 0,057 a 0,224, y acotar no cambió un solo número. El caso feo es del Bajío
+(−6,447), así que depende del terreno y no es sistemático. Se acota igual porque lo que se
+guarda en `estadisticas` se le muestra al usuario, y un mínimo de −6,4 no significa nada para
+quien lo lee. **Y las dos decisiones atacan cosas distintas:** con la erosión puesta, la
+escena del Bajío **sigue** teniendo EVI fuera de rango, así que una no reemplaza a la otra.
+
+**La huella de v1 se re-fijó otra vez**, a
+`75dbb738dd2a69a30c89107b7cb55b1192b5bd4030f368b9f5b185099c42a352`. **Esta vez los números sí
+cambian**, no solo la definición. Se re-fija igual porque la regla de `#36` es la primera fila
+escrita, y M.4.3 todavía no escribió ninguna. Desde esa primera fila, cualquier cambio exige
+v2.
+
+**Los tests cambiaron de lado.** Los que comparaban "v1 contra la variante" ahora comparan la
+variante contra v1: sin erosión el descarte es mayor, y sin acotar la escena del Bajío se
+sale del rango. El de EVI trae su propio control: si algún día la escena de prueba deja de
+tener el caso, falla con ese mensaje en vez de volverse verde por vacío.
+
+**Cómo quedó, corriendo el script otra vez ya con la receta decidida:**
+
+| parcela, julio | cobertura antes | después | observaciones antes | después |
+|---|---|---|---|---|
+| parcela_1 | 0,999 | 1,000 | 2 | 2 |
+| parcela_2 | 0,980 | **0,995** | 2 | **3** |
+| parcela_3 | 0,856 | **0,936** | 1 | **2** |
+
+Los meses secos no se movieron: ya estaban en 1,000. **El NDVI de julio bajó un poco**
+(0,568 → 0,561 y 0,553 → 0,537), y era de esperar: al dejar de descartar píxeles limpios, la
+mediana deja de estar sesgada hacia los que sobrevivían. Los tiempos siguen entre 2 y 8 s.
+
+**El escalón 2 del script se dio vuelta con la decisión.** Comparaba la receta contra las
+variantes *prendidas*; desde que v1 las tiene, las dos columnas salían idénticas. Ahora
+compara contra las alternativas **apagadas**, y marca como problema que la erosión baje la
+cobertura en alguna parcela, que sería el dato que obligaría a revisar esta decisión.
+
+**Lo que esta decisión no cierra:**
+- la compuerta se cruzó con tres parcelas iguales de 101 ha. **El tiempo por mes con una
+  parcela grande sigue sin medirse**, y es lo que fija el límite de concurrencia en M.5;
+- el COG del rancho (`--cog`) todavía no se corrió sobre una parcela real.
+
 **El error viaja como `ErrorDeGEE` con `reintentable`, y el pipeline no importa Inngest.**
 Quién orquesta no es asunto del pipeline: el handler traduce esa marca a lo que Inngest
 entiende, que es el vocabulario que ya tiene `services/avance_job.py` (`es_definitivo`,
