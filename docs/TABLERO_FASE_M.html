@@ -314,6 +314,7 @@ const SPRINTS = [
       { id: "M.3.5", t: "Borrar las filas por pasada de prueba", repo: "GeoData", T: "S", ok: "SQL listo en la sesión", equipo: true }
     ] },
   { id: "M.4", nombre: "Altas", objetivo: "Una parcela nueva trae sus 24 meses; un rancho nuevo, sus 24 mapas.", sesiones: "2",
+    aviso: { tipo: "compuerta", texto: "<b>Sesión 7 (2026-09-17): M.4.1 a M.4.3 hechas.</b> La key es <code>tenants/{t}/ranchos/{r}/{receta}/{índice}/{AAAA-MM}.tif</code>: la receta va adentro porque los tiles se cachean como inmutables (DECISIONS #47). El Dockerfile ya copia <code>pipeline/</code> y <code>handlers/</code>, con un test que lo cuida (#48). La escritura mensual está probada contra PostGIS (#49). <b><code>s2-mensual-v1</code> se congela al mergear M.4.4.</b>" },
     tareas: [
       { id: "M.4.1", t: "La key del COG lleva el tenant, antes de escribir el primer COG mensual", repo: "worker", T: "S", ok: "DECISIONS escrito" },
       { id: "M.4.2", t: "handlers/: sacar el wrapper de jobs y las utilidades sin cambiar comportamiento", repo: "worker", T: "M", ok: "Suite verde sin tocar un test" },
