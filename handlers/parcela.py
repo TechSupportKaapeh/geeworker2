@@ -48,6 +48,7 @@ from handlers.altas import (
     porcentaje,
     requerido,
 )
+from handlers.cierre import cerrar_por_falla
 from handlers.geometria import coords_to_geometry
 from handlers.seguimiento import RETRIES, con_seguimiento
 from handlers.utilidades import entre, ms_desde
@@ -122,6 +123,9 @@ def _procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     fn_id="process-parcela",
     trigger=inngest.TriggerEvent(event="terra/parcela.created"),
     retries=RETRIES,
+    # M.4.7: si Inngest da la corrida por fallida sin que el handler lo vea (el
+    # contenedor murió, el request se cortó), el job no queda en `running`.
+    on_failure=cerrar_por_falla,
 )
 @con_seguimiento
 def process_parcela(

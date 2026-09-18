@@ -70,8 +70,9 @@ def test_app_se_importa_con_solo_lo_que_copia_el_dockerfile(tmp_path):
         env={"PATH": "", "SYSTEMROOT": _systemroot(), "PYTHONPATH": ""},
     )
     assert resultado.returncode == 0, resultado.stderr[-3000:]
-    # 7 desde M.4.5: `register_layer` se borro con el `process_rancho` viejo.
-    assert resultado.stdout.split()[-1] == "7"
+    # 8 desde M.4.7: 7 desde M.4.5 (`register_layer` se borro con el
+    # `process_rancho` viejo), mas `cerrar-altas-canceladas`.
+    assert resultado.stdout.split()[-1] == "8"
 
 
 def test_sin_el_copy_de_handlers_app_no_se_importa(tmp_path):

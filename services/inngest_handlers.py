@@ -32,6 +32,8 @@ from handlers.utilidades import ms_desde as _ms_desde
 # `all_functions`, abajo, hasta que M.6.1 borre este modulo y mude la lista.
 from handlers.parcela import process_parcela
 from handlers.rancho import process_rancho
+# M.4.7: cierra el job de un alta cancelada en Inngest.
+from handlers.cancelaciones import cerrar_altas_canceladas
 
 logger = logging.getLogger("inngest_handlers")
 
@@ -269,6 +271,7 @@ def compute_parcela_stats(ctx: inngest.Context, step: inngest.StepSync, payload:
 all_functions = [
     process_parcela,
     process_rancho,
+    cerrar_altas_canceladas,
     generate_heatmap_on_demand,
     compute_timeseries,
     query_available_dates,

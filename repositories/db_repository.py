@@ -163,6 +163,41 @@ _PAUSA_SIN_TABLA_S = 600
 _sin_tabla_de_eventos_hasta = 0.0
 
 
+def cerrar_job_abierto(job_id: str, error_message: str) -> bool:
+    """Marca `failed` un job **solo si sigue abierto** (`pending` o `running`).
+
+    Es lo que usan los cierres de Inngest (M.4.7, DECISIONS #52): una corrida que
+    Inngest dio por fallida o que se cancelo. Dos razones para la condicion:
+
+    - **No pisa un final que ya se escribio.** Si el handler llego a marcar
+      `completed` o `failed` con su propio motivo, ese queda.
+    - **Es idempotente.** El cierre puede llegar dos veces, y el wrapper puede
+      haber marcado `failed` un instante antes: solo el primero escribe.
+
+    Devuelve si escribio. Nunca levanta, igual que `update_processing_job`.
+    """
+    if not job_id:
+        return False
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE processing_jobs SET status = 'failed', error_message = %s, "
+            "finished_at = now() WHERE id = %s AND status IN ('pending', 'running')",
+            (error_message, job_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    except Exception as e:
+        logger.error("No se pudo cerrar el job %s: %s", job_id, e)
+        _deshacer(conn)
+        return False
+    finally:
+        if conn:
+            release_connection(conn)
+
+
 def registrar_evento_job(job_id: str, attempt: int, stage: str, level: str, message: str,
                          detail: dict | None = None, progress: float | None = None):
     """Una linea en la bitacora del job (`processing_job_events`) y su avance.

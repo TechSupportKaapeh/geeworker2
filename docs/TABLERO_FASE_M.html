@@ -321,7 +321,8 @@ const SPRINTS = [
       { id: "M.4.3", t: "Escritura de la fila mensual y de layers con receta", repo: "worker", T: "S", ok: "Tests con conexión falsa" },
       { id: "M.4.4", t: "process_parcela: plan y 24 steps mes-AAAA-MM, con bitácora", repo: "worker", T: "M", ok: "Tests con el step que imita al SDK" },
       { id: "M.4.5", t: "process_rancho: 24 COG de NDVI", repo: "worker", T: "M", ok: "Tests" },
-      { id: "M.4.6", t: "De punta a punta con un rancho y una parcela reales desde el panel", repo: "worker", T: "S", ok: "Filas, COG por el tileserver y Procesos" }
+      { id: "M.4.6", t: "De punta a punta con un rancho y una parcela reales desde el panel", repo: "worker", T: "S", ok: "Filas, COG por el tileserver y Procesos" },
+      { id: "M.4.7", t: "El job se cierra aunque la corrida se cancele o muera fuera del handler", repo: "worker", T: "S", ok: "Probado contra un Inngest real" }
     ] },
   { id: "M.5", nombre: "Cierre de mes", objetivo: "Cada mes cerrado se procesa solo, disparado por Geocore.", sesiones: "2",
     tareas: [
@@ -378,7 +379,7 @@ const ESTADO = {
   "M.2.1": "hecho", "M.2.2": "hecho", "M.2.3": "hecho", "M.2.4": "hecho", "M.2.5": "hecho",
   "M.2.6": "hecho",
   "M.3.1": "hecho", "M.3.1b": "hecho", "M.3.2": "hecho", "M.3.3": "hecho", "M.3.4": "hecho",
-  "M.4.1": "hecho", "M.4.2": "hecho", "M.4.3": "hecho", "M.4.4": "hecho", "M.4.5": "hecho",
+  "M.4.1": "hecho", "M.4.2": "hecho", "M.4.3": "hecho", "M.4.4": "hecho", "M.4.5": "hecho", "M.4.6": "curso", "M.4.7": "hecho",
   "M.8.2": "hecho"
 };
 

@@ -2271,3 +2271,79 @@ es de la receta: no cambia un número, cambia qué se dibuja, y va en la key.
 - **Sin límite de concurrencia**, como el alta de la parcela (`#50`): va con M.5.3.
 - **`convert_to_cog` deja su carpeta temporal** (`mkdtemp`); se borra el archivo, no la
   carpeta. Ya pasaba con la capa vieja.
+
+## 52. El job se cierra aunque su corrida termine fuera del handler (2026-09-18)
+
+> Tarea M.4.7 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md), sumada en la sesión 8 a pedido del
+> usuario: canceló en Inngest las altas de M.4.6 y el panel las siguió mostrando "en proceso".
+
+**El problema.** El wrapper (`handlers/seguimiento.py`, E.4) marca `failed` cuando **ve** el
+error definitivo. Hay dos casos en que nadie lo ve, y el job quedaba en `running` (o en
+`pending`) para siempre:
+- **la corrida se cancela** desde el dashboard o por la API;
+- **Inngest la da por fallida sin que corra el último intento del handler**: el contenedor
+  muere (OOM, reinicio, deploy) o el request se corta.
+
+Es el origen de los 7 jobs colgados desde el 2026-08-10 (HANDOFF §4).
+
+**Decisión.** Inngest avisa las dos cosas con eventos de sistema, y el worker los escucha:
+- **`inngest/function.failed`** → el `on_failure` de `process_parcela` y `process_rancho`
+  (`handlers/cierre.py:cerrar_por_falla`). El SDK lo registra como una función aparte,
+  `…-failure`, filtrada por `function_id`.
+- **`inngest/function.cancelled`** → `on_failure` **no** lo recibe. Lo escucha una función
+  propia, `cerrar-altas-canceladas` (`handlers/cancelaciones.py`), filtrada con una expresión
+  sobre los ids de las dos altas, que salen de las funciones y no se escriben a mano.
+
+Los dos leen el `JobId` del evento original (viene en `event.data.event.data`) y escriben con
+**`cerrar_job_abierto`**, que hace `UPDATE … WHERE status IN ('pending', 'running')`:
+- **no pisa un final que ya se escribió**: si el wrapper llegó a marcar `completed` o `failed`
+  con su motivo, ese queda;
+- **es idempotente**: solo el primer cierre escribe su línea `fin` en la bitácora.
+
+El estado es `failed`, con el motivo en `error_message` y en la bitácora ("Se canceló la
+corrida en Inngest" o "Inngest dio la corrida por fallida: …"). No se sumó un `cancelled`:
+Geocore y el panel conocen cuatro estados, y un quinto los tocaría a los dos. El error que
+trae Inngest pasa por `resumir_error`, como el del wrapper, porque lo ve el usuario del tenant.
+
+Quedan **8 funciones** registradas.
+
+**Cómo se probó.**
+- 13 tests: los handlers de cierre con el evento de sistema, que no pisan un job cerrado ni
+  filtran secretos; lo que se registra en Inngest (mirado en `get_config`, que es lo que manda
+  el SDK al sincronizar); y el `UPDATE` condicional. La suite: 560 verdes.
+- **Contra un Inngest real** (el dev server del compose del worker, con el worker local y
+  PostGIS local):
+  - una alta de rancho con un id que no es uuid falla sin reintentos. El wrapper la cierra, llega
+    `inngest/function.failed`, el `on_failure` encuentra el job y **no escribe otra línea**;
+  - una alta de parcela real, cancelada por la API (`DELETE /v1/runs/{id}`) en el mes 3: **a
+    los 5 s el job está `failed` con "Se canceló la corrida en Inngest"**.
+  - De paso, un dato para la lentitud de M.4.6: con el dev server orquestando, cada mes tardó
+    unos 6 s. **Lo lento en producción no es el código ni GEE.**
+
+**Lo que no arregla: los jobs que ya están colgados.** Sus eventos de cancelación pasaron
+antes de este deploy. Los cierra el equipo en GeoData (👥), **después de confirmar en
+Inngest que no hay corridas vivas**:
+
+```sql
+-- 1. Ver cuáles son
+SELECT id, request_type, status, created_at
+FROM geodata.processing_jobs
+WHERE status IN ('pending', 'running')
+ORDER BY created_at;
+
+-- 2. Cerrarlos. Solo si en Inngest → Runs no queda ninguna corrida en Running o
+--    Queued: una viva se cerraría acá y después marcaría su propio final encima.
+UPDATE geodata.processing_jobs
+SET status = 'failed',
+    error_message = 'Cerrado a mano: la corrida se canceló o se perdió antes de M.4.7',
+    finished_at = now()
+WHERE status IN ('pending', 'running');
+```
+
+**Registrado, sin hacer:**
+- **Una línea de falla sale dos veces** en la bitácora cuando un step levanta
+  `NonRetriableError`: la escribe `paso()` en el step, y otra vez cuando el SDK reentrega el
+  error. Es ruido, no un dato. Ya pasaba antes de M.4.7.
+- **Un job en `pending` cuyo evento nunca llegó a Inngest** no genera ningún evento de sistema:
+  esto no lo cierra. Es el hueco del outbox (Geocore `#18`); lo cubren el reconciliador (M.5.2)
+  y el reprocesar (M.5.4).
