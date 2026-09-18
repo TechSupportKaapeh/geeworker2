@@ -2196,3 +2196,78 @@ el ROI público de los tests y comprueba que GEE omite la clave.
 - **`observaciones` sale con ruido de float** (`2.9999999999999947`): es la mediana de
   `n_obs` que interpola el histograma. Redondearla cambia un número guardado, así que va con
   una receta nueva si se decide.
+
+## 51. `process_rancho` sobre el pipeline: un COG por mes con dato, y lo enmascarado como nodata (2026-09-18)
+
+> Tarea M.4.5 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). Usa la key de `#47`, el wrapper de
+> `#48`, `insert_layer` de `#49` y las altas de `#50`.
+
+**Decisión.** `handlers/rancho.py:process_rancho` reemplaza al de la capa vieja sobre
+`terra/rancho.created`, con el mismo `fn_id` (`process-rancho`): un step `plan` y un step
+`mes-AAAA-MM` por mes. Cada mes, en **un solo step** (E.3, `#26`):
+1. las estadísticas del rancho con la misma reducción que la parcela (una llamada);
+2. **con cobertura 0 no hay mapa**: nada se baja ni se sube, y queda un aviso en la bitácora
+   (decisión del usuario, 2026-09-18). Con cualquier cobertura mayor, aunque quede bajo el
+   mínimo de la receta, el mapa va: muestra lo que se vio;
+3. `productos.mapa_del_mes(…, "ndvi")` con lo enmascarado relleno con `-9999`, la URL por el
+   borde (`ejecucion.url_de_descarga`, contada y con la traducción de errores), la descarga,
+   el COG y la subida a la key de `claves_cog_mensual`;
+4. `insert_layer(source="mensual", receta=…, estadisticas=…)`. `estadisticas` son las del
+   NDVI más `cobertura` y `observaciones` (D-2).
+
+**Lo común de las dos altas pasa a `handlers/altas.py`**: el step `plan`, los campos
+obligatorios del evento y la traducción de `ErrorDeGEE` a `NonRetriableError`. `parcela.py`
+lo usa sin cambiar de comportamiento: sus 15 tests pasan sin tocar más que dónde se
+reemplaza el reloj.
+
+**Se borraron el `process_rancho` viejo y `register_layer`.** El viejo emitía
+`terra/raster.ingested` para que `register_layer` escribiera la fila; el nuevo la escribe en
+el mismo step, y `register_layer` quedaba escuchando un evento que ya no emite nadie. Desde
+M.4.5 **el worker no emite ningún evento**: los avisos de arranque por `INNGEST_EVENT_KEY`
+lo dicen. Quedan 7 funciones registradas.
+
+**Lo que salió de probarlo contra lo real: el GeoTIFF de GEE no declara nodata.** Una
+descarga real (parcela 1, 2025-06, cobertura 0,62) llegó con `nodata=None` y la máscara
+`all_valid`: los 3.929 píxeles enmascarados de 10.325 (nubes, y lo que queda fuera del
+polígono) venían como `0.0`. **En NDVI, 0 es suelo desnudo**: el COG habría pintado cada nube
+como un lote pelado. La capa vieja tenía el mismo defecto. El arreglo:
+- `mapa_del_mes(…).unmask(-9999, sameFootprint=False)`: el centinela también fuera del
+  polígono. Ningún índice normalizado puede dar −9999;
+- `convert_to_cog(…, nodata=-9999)`: con el `add_mask=True` de siempre, `rio-cogeo` escribe la
+  máscara interna del COG, y el tileserver pinta esos píxeles transparentes. Medido: el
+  mínimo válido pasó de 0 a 0,21 y el COG valida.
+
+**El tope de `getDownloadURL` es un error definitivo.** GEE contesta `Total request size
+(620163765 bytes) must be less than or equal to 50331648 bytes.` (medido con un cuadrado de
+unos 100 km). La frase entró en `_DEFINITIVOS` de `ejecucion.py`: antes se reintentaba cuatro
+veces. Un rancho de más de unas 120.000 ha no entra en una descarga y su alta falla con un
+mensaje claro; partirlo en teselas queda para cuando aparezca uno (`ARQUITECTURA` §10).
+
+**Un id que no es un uuid falla sin reintentos**, antes de pedirle nada a GEE: la key no se
+puede armar, y reintentar no cambia el id.
+
+**La escala del COG sale de la receta**, no de `SCALE_METROS`: la grilla (`crs`, formato) es
+la de `DECISIONS #19`, y el mapa tiene que ser de los mismos píxeles que las estadísticas
+(`ARQUITECTURA` §8.5). Hoy los dos valen 10 m. El índice del mapa (`INDICE_DEL_MAPA`, NDVI) no
+es de la receta: no cambia un número, cambia qué se dibuja, y va en la key.
+
+**Cómo se probó.**
+- 17 tests nuevos. La descarga falsa escribe un GeoTIFF de verdad con el centinela, y
+  `convert_to_cog` corre con `rio-cogeo`: el test ve la máscara del COG que se sube. Control
+  negativo: sin el `nodata`, el COG sale sin píxeles enmascarados y el test da rojo. La suite:
+  547 verdes.
+- **Contra lo real**, con la parcela 1 como polígono del rancho: GEE de verdad, MinIO local y
+  PostGIS local. **23 COG en 226 s** (2026-05, sin dato, quedó sin mapa), los 23 validan con
+  `rio-cogeo` y tienen máscara sin el centinela visible; 23 filas `mensual` con receta,
+  estadísticas y bbox; el job en `completed`; 27 líneas de bitácora con un aviso. Repetir un
+  mes no duplica ni la fila ni el objeto. **Las medianas del rancho son las de la parcela
+  sobre el mismo polígono** (0,474, 0,447, …): B-1 cerrado por construcción, como pedía el
+  diseño.
+
+**Registrado, sin hacer:**
+- **Un mes de rancho cuesta de 5 a 12 s**, contra 3 a 8 s de la parcela: son dos llamadas y
+  una descarga. Con un rancho grande hay que medirlo (el pendiente de M.2, "el COG del
+  rancho").
+- **Sin límite de concurrencia**, como el alta de la parcela (`#50`): va con M.5.3.
+- **`convert_to_cog` deja su carpeta temporal** (`mkdtemp`); se borra el archivo, no la
+  carpeta. Ya pasaba con la capa vieja.

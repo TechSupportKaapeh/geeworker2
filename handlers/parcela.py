@@ -30,56 +30,27 @@ from typing import Any
 
 import inngest
 from pipeline import ejecucion
-from pipeline.ejecucion import ErrorDeGEE, reduccion_del_mes
+from pipeline.ejecucion import reduccion_del_mes
 from pipeline.filas import filas_del_mes
-from pipeline.periodos import Mes, hoy_utc, meses_cerrados
+from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE, Receta
 from repositories.db_repository import upsert_mediciones_mensuales
 from services.avance_job import AVISO, INFO, paso, reportar
 from services.ee.ee_client import init_ee
 from services.inngest_client import inngest_client
 
+from handlers.altas import (
+    PROGRESO_MESES,
+    PROGRESO_PLAN,
+    errores_de_gee,
+    meses_del_plan,
+    planificar,
+    porcentaje,
+    requerido,
+)
 from handlers.geometria import coords_to_geometry
 from handlers.seguimiento import RETRIES, con_seguimiento
 from handlers.utilidades import entre, ms_desde
-
-# La barra: el plan deja 2 y los meses reparten el resto hasta 99. El 100 lo pone
-# el wrapper al marcar `completed`.
-_PROGRESO_PLAN = 2
-_PROGRESO_MESES = 99
-
-
-def _requerido(payload: dict, clave: str) -> Any:  # noqa: ANN401 - lo que traiga el evento
-    """Un campo que el evento tiene que traer.
-
-    Sin él no hay reintento que ayude: se levanta ``NonRetriableError`` para que
-    el job quede ``failed`` al primer intento, en vez de fallar cuatro veces igual.
-    """
-    valor = payload.get(clave)
-    if valor is None or valor == "":
-        msg = f"el evento no trae {clave}"
-        raise inngest.NonRetriableError(msg)
-    return valor
-
-
-def _porcentaje(fraccion: float) -> str:
-    """``0.936`` como ``93,6 %``, que es como lo lee el panel."""
-    return f"{fraccion * 100:.1f} %".replace(".", ",")
-
-
-def _planificar(receta: Receta) -> dict[str, Any]:
-    """El step ``plan``: los meses del alta y la receta con que se calculan."""
-    meses = meses_cerrados(hoy_utc(), receta.meses_historico)
-    reportar(
-        "plan",
-        f"{len(meses)} meses cerrados, de {meses[0]} a {meses[-1]}, "
-        f"con la receta {receta.version}",
-        progreso=_PROGRESO_PLAN,
-        desde=str(meses[0]),
-        hasta=str(meses[-1]),
-        receta=receta.version,
-    )
-    return {"meses": [str(mes) for mes in meses], "receta": receta.version}
 
 
 def _procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
@@ -105,14 +76,8 @@ def _procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     t0 = time.monotonic()
     init_ee()
     roi = coords_to_geometry(coordenadas)
-    try:
-        with ejecucion.contando() as conteo:
-            reduccion = reduccion_del_mes(roi, mes, receta)
-    except ErrorDeGEE as error:
-        if error.reintentable:
-            raise
-        msg = f"GEE no puede calcular {mes} de esta parcela: {error}"
-        raise inngest.NonRetriableError(msg) from error
+    with errores_de_gee(mes, "esta parcela"), ejecucion.contando() as conteo:
+        reduccion = reduccion_del_mes(roi, mes, receta)
 
     filas = filas_del_mes(
         parcela_id=parcela_id,
@@ -125,18 +90,18 @@ def _procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
 
     # Todas las filas del mes comparten la cobertura, y con ella si llevan valor.
     con_valor = all(fila.valor is not None for fila in filas)
-    cobertura = _porcentaje(reduccion.cobertura)
+    cobertura = porcentaje(reduccion.cobertura)
     if con_valor:
         mensaje = f"Mes {posicion} de {total} ({mes}): cobertura {cobertura}"
     else:
         mensaje = (
             f"Mes {posicion} de {total} ({mes}): cobertura {cobertura}, bajo el "
-            f"mínimo de {_porcentaje(receta.cobertura_minima)}: filas sin valor"
+            f"mínimo de {porcentaje(receta.cobertura_minima)}: filas sin valor"
         )
     reportar(
         f"mes-{mes}",
         mensaje,
-        progreso=entre(_PROGRESO_PLAN, _PROGRESO_MESES, posicion, total),
+        progreso=entre(PROGRESO_PLAN, PROGRESO_MESES, posicion, total),
         nivel=INFO if con_valor else AVISO,
         mes=str(mes),
         cobertura=reduccion.cobertura,
@@ -165,13 +130,13 @@ def process_parcela(
     payload: dict,
 ) -> dict[str, Any]:
     """Los meses cerrados de una parcela nueva, un step por mes."""
-    parcela_id = _requerido(payload, "parcelaId")
-    tenant_id = _requerido(payload, "tenantId")
-    coordenadas = _requerido(payload, "coordinates")
+    parcela_id = requerido(payload, "parcelaId")
+    tenant_id = requerido(payload, "tenantId")
+    coordenadas = requerido(payload, "coordinates")
     receta = RECETA_VIGENTE
 
-    plan = paso(step, "plan", lambda: _planificar(receta))
-    meses = [Mes.desde_texto(texto) for texto in plan["meses"]]
+    plan = paso(step, "plan", lambda: planificar(receta))
+    meses = meses_del_plan(plan)
 
     resultados = []
     for posicion, mes in enumerate(meses, start=1):

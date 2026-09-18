@@ -119,8 +119,8 @@ INVENTARIO = (
                  consecuencia="sin firma el SDK rechaza toda peticion a "
                               "/api/inngest: no entra ni un evento"),
         Variable("INNGEST_EVENT_KEY", SECRETO, solo_produccion=True,
-                 consecuencia="no se puede emitir terra/raster.ingested: los "
-                              "COG se suben y la capa nunca se registra"),
+                 consecuencia="no se puede emitir eventos. Desde M.4.5 el "
+                              "worker no emite ninguno"),
         Variable("INNGEST_BASE_URL", PUBLICO, defecto="http://localhost:8288",
                  solo_desarrollo=True,
                  consecuencia="en produccion no se usa: el SDK apunta solo a "

@@ -52,6 +52,9 @@ _DEFINITIVOS: Final = (
     "too many pixels",
     "exceeded max pixels",
     "output of image computation is too large",
+    # El tope de `getDownloadURL` (unos 48 MB por pedido): un rancho más grande
+    # no entra nunca, se reintente lo que se reintente (M.4.5, `DECISIONS #51`).
+    "total request size",
     "must be a descendant",
     "parameter 'element' is required",
 )

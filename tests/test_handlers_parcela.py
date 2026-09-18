@@ -22,7 +22,7 @@ import pytest
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from handlers import parcela
+from handlers import altas, parcela
 from pipeline import ejecucion
 from pipeline.estadisticas import claves_de_salida
 from pipeline.receta import RECETA_VIGENTE
@@ -106,7 +106,7 @@ def mundo(monkeypatch):
     monkeypatch.setattr(ejecucion, "estadisticas_del_mes", _estadisticas_del_mes)
     monkeypatch.setattr(parcela, "init_ee", lambda: None)
     monkeypatch.setattr(parcela, "coords_to_geometry", lambda c: "roi")
-    monkeypatch.setattr(parcela, "hoy_utc", lambda: HOY)
+    monkeypatch.setattr(altas, "hoy_utc", lambda: HOY)
     monkeypatch.setattr(parcela, "upsert_mediciones_mensuales", _upsert)
     monkeypatch.setattr(avance_job, "registrar_evento_job", _registrar)
     monkeypatch.setattr(db_repository, "update_processing_job",
@@ -267,7 +267,7 @@ def test_el_plan_memoizado_manda_aunque_el_run_cruce_el_fin_de_mes(mundo, monkey
     _correr(_Step(memo))
     pedidos = list(mundo["pedidos"])
 
-    monkeypatch.setattr(parcela, "hoy_utc", lambda: date(2026, 10, 2))
+    monkeypatch.setattr(altas, "hoy_utc", lambda: date(2026, 10, 2))
     replay = _Step(memo)
     resultado = _correr(replay)
 
