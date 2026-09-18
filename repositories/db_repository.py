@@ -260,7 +260,8 @@ def init_db():
 def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: str,
                  ingested_ts: str, tenant_id: str, parcela_id: str = None,
                  rancho_id: str = None, bbox: Optional[list] = None,
-                 source: str = 'systematic'):
+                 source: str = 'systematic', receta: str | None = None,
+                 estadisticas: dict | None = None):
     """Registra una capa raster en `geodata.layers` (tabla que administra EF Core).
 
     `natural_key` no se persiste: siembra un UUIDv5 determinista que se usa como
@@ -271,12 +272,20 @@ def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: 
     Una capa es de rancho o de parcela, nunca de las dos: la tabla tiene columnas
     separadas y ambas son nullable. Pasar la que corresponda.
 
-    Nota: `layers` no tiene columnas para las estadisticas del raster (min/max/
-    mean/stddev) ni para sensor, epsg, resolucion o cog_ok. Persistirlas requiere
-    una migracion en Geocore; hasta entonces no hay donde guardarlas.
+    `receta` y `estadisticas` son de la capa mensual (M.4.3, migracion
+    `MedicionesMensuales` de Geocore): la version que la produjo y los numeros
+    del raster (D-2). La capa vieja no los pasa y quedan en NULL, que es lo que
+    ya pasaba antes de que existieran las columnas. `estadisticas` tiene que ser
+    un objeto: la base tiene un CHECK que rechaza cualquier otro JSON.
+
+    Nota: `layers` no tiene columnas para sensor, epsg, resolucion o cog_ok.
     """
     if not parcela_id and not rancho_id:
         raise ValueError("insert_layer requiere parcela_id o rancho_id")
+    if estadisticas is not None and not isinstance(estadisticas, dict):
+        # Mejor aca que en el CHECK de la base: aca el error dice que se paso.
+        raise TypeError(
+            f"estadisticas tiene que ser un dict, no {type(estadisticas).__name__}")
 
     conn = get_connection()
     try:
@@ -293,8 +302,8 @@ def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: 
 
         cur.execute('''
         INSERT INTO layers(id, product, storage_key, acquired_ts, created_at, bbox,
-                           tenant_id, parcela_id, rancho_id, source)
-        VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s, 4326), %s, %s, %s, %s)
+                           tenant_id, parcela_id, rancho_id, source, receta, estadisticas)
+        VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s, 4326), %s, %s, %s, %s, %s, %s)
         ON CONFLICT (id) DO UPDATE SET
             product = EXCLUDED.product,
             storage_key = EXCLUDED.storage_key,
@@ -304,15 +313,100 @@ def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: 
             tenant_id = EXCLUDED.tenant_id,
             parcela_id = EXCLUDED.parcela_id,
             rancho_id = EXCLUDED.rancho_id,
-            source = EXCLUDED.source
+            source = EXCLUDED.source,
+            receta = EXCLUDED.receta,
+            estadisticas = EXCLUDED.estadisticas
         ''', (
             layer_uuid, product, storage_key,
             a_timestamptz(acquired_ts, "acquired_ts"),
             a_timestamptz(ingested_ts, "ingested_ts"),
-            bbox_wkt, tenant_id, parcela_id, rancho_id, source
+            bbox_wkt, tenant_id, parcela_id, rancho_id, source,
+            receta, _json_estricto(estadisticas),
         ))
         conn.commit()
         return layer_uuid
+    except Exception:
+        # Sin esto, la conexion volvia al pool con la transaccion abortada, y la
+        # siguiente consulta que la tomara fallaba con `current transaction is
+        # aborted`. Con los CHECK de `MedicionesMensuales`, un insert rechazado
+        # dejo de ser teorico (M.4.3).
+        _deshacer(conn)
+        raise
+    finally:
+        release_connection(conn)
+
+
+def _json_estricto(objeto):
+    """`Json` de psycopg2 que rechaza `NaN` e infinitos en vez de escribirlos.
+
+    `json.dumps` escribe `NaN` sin quejarse, pero no es JSON: Postgres rechaza el
+    `jsonb` y el insert entero, con un error que no dice que numero fue.
+    """
+    if objeto is None:
+        return None
+    return Json(objeto, dumps=lambda o: json.dumps(o, allow_nan=False))
+
+
+def upsert_mediciones_mensuales(filas) -> int:
+    """Escribe las filas mensuales de `measurements` en una conexion y un round-trip.
+
+    `filas` son `pipeline.filas.FilaMensual` (M.4.3). Devuelve cuantas se
+    escribieron. Es la version mensual de `insert_measurements`, con tres
+    diferencias que importan:
+
+    - **Las filas con `valor` nulo se escriben.** Un mes con cobertura bajo el
+      minimo existe igual: el front dibuja el hueco y el cierre de mes sabe que
+      ese mes ya se proceso (`ARQUITECTURA_PIPELINE.md` §6). La vieja las
+      salteaba porque la columna era NOT NULL.
+    - **Escribe las columnas de `MedicionesMensuales`**: `estadisticas`,
+      `cobertura`, `observaciones` y `receta`. La base tiene CHECK para las tres
+      primeras; un valor fuera de rango hace fallar el lote entero.
+    - **En el conflicto pone `min_val` y `max_val` en NULL.** Lo mensual ya no los
+      escribe, y una fila vieja por pasada del dia 1 cae en la misma PK que la
+      del mes: sin esto, sus `min_val` y `max_val` quedarian colgados en la fila
+      mensual.
+
+    Es atomica: el lote entra entero o no entra nada.
+    """
+    filas = list(filas)
+    if not filas:
+        return 0
+    claves = {(f.parcela_id, f.indice, f.fecha) for f in filas}
+    if len(claves) < len(filas):
+        # Un lote que toca dos veces la misma fila lo rechaza Postgres entero
+        # (`CardinalityViolation`). Las filas de un mes no se repiten por
+        # construccion (`filas_del_mes`): si pasa, es un bug de quien las armo.
+        raise ValueError("upsert_mediciones_mensuales: filas repetidas por (parcela, indice, fecha)")
+
+    valores = [
+        (f.parcela_id, f.indice, a_timestamptz(f.fecha, "fecha"), f.tenant_id,
+         f.valor, _json_estricto(dict(f.estadisticas)), f.cobertura,
+         f.observaciones, f.receta)
+        for f in filas
+    ]
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        execute_values(cur, '''
+        INSERT INTO measurements(parcela_id, indice, fecha, tenant_id, valor,
+                                 estadisticas, cobertura, observaciones, receta)
+        VALUES %s
+        ON CONFLICT (parcela_id, indice, fecha) DO UPDATE SET
+            tenant_id = EXCLUDED.tenant_id,
+            valor = EXCLUDED.valor,
+            estadisticas = EXCLUDED.estadisticas,
+            cobertura = EXCLUDED.cobertura,
+            observaciones = EXCLUDED.observaciones,
+            receta = EXCLUDED.receta,
+            min_val = NULL,
+            max_val = NULL
+        ''', valores)
+        conn.commit()
+        return len(valores)
+    except Exception:
+        _deshacer(conn)
+        raise
     finally:
         release_connection(conn)
 
