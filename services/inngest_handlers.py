@@ -2,7 +2,7 @@ import logging
 import os
 import tempfile
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import inngest
 
@@ -23,7 +23,7 @@ from services.cog_converter import convert_to_cog
 from repositories.db_repository import (update_processing_job, insert_layer,
                                        insert_measurement, insert_measurements,
                                        insert_sentinel2_date)
-from services.avance_job import AVISO, INFO, paso, reportar
+from services.avance_job import paso, reportar
 from utils_pkg.visualization import index_band_and_vis
 # M.4.2: el wrapper de jobs, el ROI y las utilidades viven en `handlers/`, para que
 # los handlers del pipeline mensual no importen este modulo, que es la capa vieja
@@ -32,8 +32,10 @@ from utils_pkg.visualization import index_band_and_vis
 from handlers.geometria import coords_to_geometry, normalizar_coordenadas  # noqa: F401 - la usan los tests
 from handlers.seguimiento import RETRIES, envolver_con_estado
 from handlers.utilidades import borrar_temporales as _borrar_temporales
-from handlers.utilidades import entre as _entre
 from handlers.utilidades import ms_desde as _ms_desde
+# M.4.4: el alta de una parcela ya es del pipeline mensual. Se registra desde
+# `all_functions`, abajo, hasta que M.6.1 borre este modulo y mude la lista.
+from handlers.parcela import process_parcela
 
 logger = logging.getLogger("inngest_handlers")
 
@@ -91,204 +93,12 @@ def _with_job_tracking(func):
     return envolver_con_estado(func, lambda *a, **k: update_processing_job(*a, **k))
 
 
-# El historico de una parcela nueva se procesa **por ventanas**, cada una en su
-# propio step. Antes eran dos llamadas enteras a GEE —730 dias de fechas y 365 de
-# serie— y el panel no tenia forma de saber por donde iba. Por ventanas:
-#
-#   - la bitacora dice que rango de fechas se esta procesando;
-#   - un reintento repite una ventana, no los dos años: Inngest memoiza cada step;
-#   - la serie ya no se trunca. `get_sentinel2_time_series` corta en 30 imagenes
-#     **ordenadas de la mas vieja a la mas nueva**, asi que en un año con mas de
-#     30 pasadas utiles se perdian los ultimos meses — justo los que importan.
-#     Un mes tiene a lo sumo ~12.
-DIAS_HISTORICO = 730
-VENTANAS_HISTORICO = 8  # trimestres
-DIAS_SERIE = 365
-VENTANAS_SERIE = 12  # meses
+# M.4.4: `process_parcela` vive en `handlers/parcela.py`, sobre el pipeline
+# mensual, con el mismo `fn_id`. El de aca procesaba el alta por ventanas de
+# fechas, subia el COG de la parcela y llenaba `sentinel2_dates`; se borro junto
+# con sus ayudantes (`ventanas`, `_escribir_serie`). `all_functions` registra el
+# nuevo.
 
-
-def ventanas(desde: date, hasta: date, n: int) -> list[tuple[str, str]]:
-    """Parte `[desde, hasta)` en `n` ventanas contiguas, como strings ISO.
-
-    Sin huecos ni solapes: el `hasta` de una es el `desde` de la siguiente, y el
-    `filterDate` de GEE es semiabierto —incluye el inicio, excluye el fin—, asi
-    que ninguna imagen cae en dos ventanas ni entre dos.
-    """
-    total = (hasta - desde).days
-    cortes = [desde + timedelta(days=round(total * i / n)) for i in range(n + 1)]
-    return [(cortes[i].isoformat(), cortes[i + 1].isoformat()) for i in range(n)]
-
-
-def _escribir_serie(parcela_id: str, tenant_id: str, puntos) -> int:
-    # E.7: en lote. Una serie anual son ~70 fechas, y de a una eran ~70
-    # conexiones al pool con su commit —o sea su fsync— cada una. Ademas es
-    # atomico: entran todas o ninguna.
-    #
-    # Se cuenta lo escrito, no lo recibido: GEE devuelve fechas sin valor
-    # cuando la nube tapo la parcela y esas no llegan a la tabla.
-    return insert_measurements(
-        {"parcela_id": parcela_id, "indice": "ndvi", "fecha": p["date"],
-         "tenant_id": tenant_id, "valor": p.get("mean")}
-        for p in puntos
-    )
-
-
-@inngest_client.create_function(
-    fn_id="process-parcela",
-    trigger=inngest.TriggerEvent(event="terra/parcela.created"),
-    retries=RETRIES,
-)
-@_with_job_tracking
-def process_parcela(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
-    parcela_id = payload["parcelaId"]
-    # `ranchoId` llega en el evento y no se usa aca a proposito: la capa de una
-    # parcela se registra con `parcela_id`, y meter el rancho fue el bug que
-    # dejo `rancho_id` en NULL en las tres filas del 2026-08-10.
-    tenant_id = payload["tenantId"]
-    coordinates = payload["coordinates"]
-
-    roi = coords_to_geometry(coordinates)
-
-    # 0. "Hoy" se fija en un step. El cuerpo del handler corre de nuevo en cada
-    # request de Inngest, y un `datetime.now()` suelto daria un "hoy" distinto
-    # en cada una: si el run cruza la medianoche —o un reintento espera horas—
-    # las ventanas de los steps que faltan se correrian un dia respecto de las
-    # ya memoizadas, y quedaria un dia sin procesar o uno procesado dos veces.
-    def _planificar():
-        hoy = datetime.now(timezone.utc).date()
-        desde_hist = hoy - timedelta(days=DIAS_HISTORICO)
-        desde_serie = hoy - timedelta(days=DIAS_SERIE)
-        reportar(
-            "plan-historico",
-            f"Histórico de {DIAS_HISTORICO} días ({desde_hist} → {hoy}) en "
-            f"{VENTANAS_HISTORICO} trimestres, y serie NDVI de {DIAS_SERIE} días "
-            f"({desde_serie} → {hoy}) en {VENTANAS_SERIE} meses",
-            progreso=2, desde=desde_hist.isoformat(), hasta=hoy.isoformat(),
-        )
-        return {"hoy": hoy.isoformat()}
-    hoy = date.fromisoformat(paso(step, "plan-historico", _planificar)["hoy"])
-
-    # 1. Fechas con imagen Sentinel-2 de los ultimos dos años, por trimestre.
-    fechas = []
-    ventanas_hist = ventanas(hoy - timedelta(days=DIAS_HISTORICO), hoy, VENTANAS_HISTORICO)
-    for i, (desde, hasta) in enumerate(ventanas_hist, start=1):
-        # Los valores del bucle entran como defaults: una clausura comun veria
-        # los de la ultima vuelta.
-        def _consultar_fechas(i=i, desde=desde, hasta=hasta):
-            etapa, n = f"query-sentinel2-dates-{i}", VENTANAS_HISTORICO
-            reportar(etapa, f"Buscando imágenes Sentinel-2, trimestre {i} de {n}: {desde} → {hasta}",
-                     progreso=_entre(2, 30, i - 1, n), desde=desde, hasta=hasta, ventana=f"{i}/{n}")
-            t0 = time.monotonic()
-            init_ee()
-            encontradas = get_sentinel2_dates(roi, desde, hasta, cloud_pct=100)
-            for d in encontradas:
-                insert_sentinel2_date(
-                    geometry_id=parcela_id,
-                    user_id=tenant_id,
-                    date=d.get("date"),
-                    system_time_start=d.get("system_time_start"),
-                    cloud_cover=d.get("cloud_cover"),
-                    tile_id=d.get("tile_id")
-                )
-            reportar(etapa, f"Trimestre {i} de {n}: {len(encontradas)} imágenes ({desde} → {hasta})",
-                     progreso=_entre(2, 30, i, n), desde=desde, hasta=hasta, ventana=f"{i}/{n}",
-                     imagenes=len(encontradas), ms=_ms_desde(t0))
-            return {"dates": encontradas}
-        fechas.extend(paso(step, f"query-sentinel2-dates-{i}", _consultar_fechas)["dates"])
-
-    # 2. Mapa NDVI de la fecha mas reciente con imagen.
-    def _generate_heatmap():
-        etapa = "generate-recent-heatmap"
-        # Las ventanas van en orden y cada una sale ordenada por fecha: la
-        # ultima fecha de la lista es la mas reciente.
-        if fechas:
-            recent_date = fechas[-1].get("date") if isinstance(fechas[-1], dict) else str(fechas[-1])
-            reportar(etapa, f"Generando el mapa NDVI de la fecha más reciente con imagen: {recent_date}",
-                     progreso=31, fecha=recent_date)
-        else:
-            recent_date = hoy.isoformat()
-            reportar(etapa, f"No hubo imágenes en {DIAS_HISTORICO} días: se intenta el mapa "
-                            f"con la fecha de hoy ({recent_date})",
-                     progreso=31, nivel=AVISO, fecha=recent_date)
-        t0 = time.monotonic()
-        init_ee()
-
-        # Using export_heatmap to get the geotiff directly
-        path, stats = export_heatmap(
-            roi=roi,
-            roi_bounds=None,
-            index="ndvi",
-            start=recent_date,
-            end=recent_date,
-            cloud_pct=30,
-            export_format="geotiff"
-        )
-        cog_path = convert_to_cog(path)
-
-        object_name, natural_key = claves_de_capa("parcela", parcela_id, "ndvi", recent_date)
-        storage_key = get_storage_service().upload_file(object_name, cog_path, "image/tiff")
-
-        # `stats` (min/max/mean/stddev) no se persiste: `layers` no tiene esas
-        # columnas. Requiere migracion en Geocore.
-        insert_layer(
-            natural_key=natural_key,
-            product="ndvi",
-            storage_key=storage_key,
-            acquired_ts=recent_date,
-            ingested_ts=datetime.now(timezone.utc),
-            tenant_id=tenant_id,
-            parcela_id=parcela_id,
-            bbox=None,
-            source='systematic'
-        )
-        _borrar_temporales(path, cog_path)
-        reportar(etapa, f"Mapa NDVI del {recent_date} subido y registrado como capa",
-                 progreso=45, fecha=recent_date, ms=_ms_desde(t0))
-        return {"storage_key": storage_key, "recent_date": recent_date}
-    heatmap_info = paso(step, "generate-recent-heatmap", _generate_heatmap)
-
-    # 3. Serie NDVI de los ultimos 12 meses, mes por mes.
-    total_escritas = 0
-    ventanas_serie = ventanas(hoy - timedelta(days=DIAS_SERIE), hoy, VENTANAS_SERIE)
-    for i, (desde, hasta) in enumerate(ventanas_serie, start=1):
-        def _serie_del_mes(i=i, desde=desde, hasta=hasta):
-            etapa, n = f"compute-time-series-{i}", VENTANAS_SERIE
-            reportar(etapa, f"Serie NDVI, mes {i} de {n}: {desde} → {hasta}",
-                     progreso=_entre(45, 98, i - 1, n), desde=desde, hasta=hasta, ventana=f"{i}/{n}")
-            t0 = time.monotonic()
-            init_ee()
-            # `rescate=False`: aceptar nubes hasta 90 % se decide sobre el año
-            # entero (paso 4), como antes. Mes por mes, cualquier mes nublado
-            # caeria al 90 % y la serie mezclaria dos criterios de calidad.
-            puntos = generate_time_series_data(roi, desde, hasta, "ndvi", cloud_pct=30, rescate=False)
-            escritas = _escribir_serie(parcela_id, tenant_id, puntos)
-            reportar(etapa, f"Mes {i} de {n}: {escritas} fechas con valor ({desde} → {hasta})",
-                     progreso=_entre(45, 98, i, n), desde=desde, hasta=hasta, ventana=f"{i}/{n}",
-                     escritas=escritas, ms=_ms_desde(t0))
-            return {"count": escritas}
-        total_escritas += paso(step, f"compute-time-series-{i}", _serie_del_mes)["count"]
-
-    # 4. El rescate de antes, sobre el año entero: si ningun mes dio un valor
-    # con menos de 30 % de nubes, se acepta hasta 90 %. `limit=100` porque es
-    # un año entero y el tope de 30 lo volveria a truncar.
-    if total_escritas == 0:
-        def _rescate():
-            etapa = "compute-time-series-rescate"
-            desde, hasta = ventanas_serie[0][0], ventanas_serie[-1][1]
-            reportar(etapa, f"Ningún mes tuvo un valor con menos de 30 % de nubes: se reintenta "
-                            f"el año entero ({desde} → {hasta}) aceptando hasta 90 %",
-                     progreso=98, nivel=AVISO, desde=desde, hasta=hasta)
-            t0 = time.monotonic()
-            init_ee()
-            puntos = generate_time_series_data(roi, desde, hasta, "ndvi", cloud_pct=30, limit=100)
-            escritas = _escribir_serie(parcela_id, tenant_id, puntos)
-            reportar(etapa, f"Rescate: {escritas} fechas con valor en el año",
-                     progreso=99, nivel=INFO if escritas else AVISO,
-                     desde=desde, hasta=hasta, escritas=escritas, ms=_ms_desde(t0))
-            return {"count": escritas}
-        total_escritas += paso(step, "compute-time-series-rescate", _rescate)["count"]
-
-    return {"status": "success", "heatmap": heatmap_info, "ts_count": total_escritas}
 
 @inngest_client.create_function(
     fn_id="process-rancho",

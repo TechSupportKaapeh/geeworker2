@@ -63,13 +63,34 @@ def test_tambien_falla_si_falta_la_cobertura_o_las_observaciones(clave):
 
 
 def test_un_mes_sin_un_solo_pixel_con_dato_es_valido():
-    # Cobertura cero: GEE devuelve las claves en None. No es un error: es la fila
-    # con `valor` nulo de ARQUITECTURA §6.
+    # Cobertura cero con las claves en None. No es un error: es la fila con
+    # `valor` nulo de ARQUITECTURA §6.
     leida = reduccion.leer(_respuesta(valor=None, cobertura=0.0, observaciones=None), RECETA_VIGENTE)
 
     assert leida.cobertura == 0.0
     assert leida.observaciones is None
     assert leida.estadisticas["ndvi"]["mediana"] is None
+
+
+def test_con_cobertura_cero_gee_omite_las_claves_y_se_leen_como_nulo():
+    # Lo que contesta GEE de verdad (M.4.4, DECISIONS #50): sin un píxel con dato,
+    # la respuesta trae solo la cobertura. Antes esto era un error, y el step del
+    # mes fallaba en cada reintento.
+    leida = reduccion.leer({reduccion.CLAVE_COBERTURA: 0}, RECETA_VIGENTE)
+
+    assert leida.cobertura == 0.0
+    assert leida.observaciones is None
+    assert set(leida.estadisticas) == set(RECETA_VIGENTE.indices)
+    assert all(v is None for e in leida.estadisticas.values() for v in e.values())
+
+
+def test_con_cobertura_la_clave_que_falta_sigue_siendo_un_error():
+    # La excepción de arriba vale solo para cobertura cero: con un píxel con dato,
+    # una clave que falta es un pedido que no calculó lo que se le pidió.
+    respuesta = {reduccion.CLAVE_COBERTURA: 0.01}
+
+    with pytest.raises(ValueError, match="ndvi_p50"):
+        reduccion.leer(respuesta, RECETA_VIGENTE)
 
 
 @pytest.mark.parametrize("cobertura", [-0.1, 1.5])
@@ -153,6 +174,25 @@ def test_los_numeros_del_mes_de_una_parcela(gee_inicializado):
         minimo, maximo = INDICES[nombre].rango
         assert minimo <= leida.estadisticas[nombre]["min"], nombre
         assert leida.estadisticas[nombre]["max"] <= maximo, nombre
+
+
+@pytest.mark.gee
+def test_un_mes_sin_pixeles_en_gee_omite_las_claves(gee_inicializado):
+    # DECISIONS #50: el control de que `leer` acepta la respuesta de un mes con la
+    # máscara tapándolo todo. Se tapa a mano, porque un mes así depende del clima.
+    import ee
+
+    roi, mes = _compuesto_del_mes(ee)
+    tapado = mes.updateMask(ee.Image.constant(0))
+
+    respuesta = reduccion.valores(tapado, roi, RECETA_VIGENTE).getInfo()
+    leida = reduccion.leer(respuesta, RECETA_VIGENTE)
+
+    # Lo que GEE hace de verdad, y la razón del arreglo: omite, no manda `None`.
+    assert reduccion.CLAVE_OBSERVACIONES not in respuesta
+    assert leida.cobertura == 0
+    assert leida.observaciones is None
+    assert leida.estadisticas["ndvi"]["mediana"] is None
 
 
 @pytest.mark.gee

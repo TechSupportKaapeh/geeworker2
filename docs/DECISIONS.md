@@ -2119,3 +2119,80 @@ la receta v1 queda congelada **al mergear M.4.4**: desde ahí, cambiar un parám
     ninguna fila del lote, y el pool sigue sano después del rechazo;
   - la capa mensual, escrita dos veces, es una sola fila con `receta` y `estadisticas`
     (`jsonb_typeof = object`); una capa vieja deja esas dos columnas en `NULL`.
+
+## 50. `process_parcela` sobre el pipeline, y el mes sin píxeles que GEE contesta sin claves (2026-09-18)
+
+> Tarea M.4.4 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). Usa el wrapper de `#48`, la
+> escritura de `#49` y el borde de `#42`. **Su merge congela `s2-mensual-v1`**: es el
+> primer handler que escribe filas mensuales en producción (confirmado por el usuario al
+> abrir la sesión 8).
+
+**Decisión.** `handlers/parcela.py:process_parcela` reemplaza al de la capa vieja sobre
+`terra/parcela.created`:
+- un step `plan`, que fija "hoy" y devuelve los meses (`meses_cerrados(hoy_utc(), 24)`) y la
+  versión de la receta;
+- un step `mes-AAAA-MM` por mes, del más viejo al más nuevo: `init_ee` → el ROI →
+  `ejecucion.reduccion_del_mes` (una llamada a GEE, contada) → `filas_del_mes` →
+  `upsert_mediciones_mensuales`, con una línea de bitácora y el avance de 2 a 99.
+
+Decorado con `handlers.seguimiento.con_seguimiento`, y **no importa `inngest_handlers.py`**:
+lo fija un test que importa el módulo en un proceso aparte y mira `sys.modules`.
+
+**El mismo `fn_id` (`process-parcela`).** Para Inngest es la misma función con otro código,
+no dos funciones sobre el mismo evento. El `process_parcela` viejo se borró, con sus
+ayudantes (`ventanas`, `_escribir_serie`) y sus tres tests, y `all_functions` registra el
+nuevo hasta que M.6.1 mude la lista. Un run viejo en vuelo durante el deploy no encuentra
+sus steps (tenían otros ids) y corre el alta nueva desde el `plan`: es idempotente.
+
+**Lo que el alta deja de hacer**, a propósito: ya no sube el COG de la parcela (A-5: el
+mapa es del rancho, M.4.5) ni escribe `sentinel2_dates` (`ARQUITECTURA` §9).
+
+**Tres reglas del handler.**
+- **El reloj se lee dentro del step `plan`.** Inngest vuelve a correr el cuerpo en cada
+  request, y un "hoy" leído afuera daría otros meses si el run cruza el fin de mes. Hay un
+  test con el step memoizado y "hoy" corrido al mes siguiente; con el reloj afuera, sale
+  rojo (control negativo hecho).
+- **Un `ErrorDeGEE` no reintentable se traduce a `NonRetriableError`** en el handler, que
+  es quien conoce a Inngest (`#42`). "Sin memoria" corta el alta y marca `failed` al primer
+  intento; "demasiados pedidos concurrentes" se reintenta y el job sigue `running`.
+- **Un evento sin `parcelaId`, `tenantId` o `coordinates` falla sin reintentos.** Antes era
+  un `KeyError`, que Inngest reintentaba tres veces para dar lo mismo.
+
+**Lo que salió de probarlo contra lo real: un mes sin píxeles no trae claves.** El alta de
+la parcela 1 de `scratch/` se cortó en 2026-05. Ese mes tiene 10 escenas y la máscara las
+tapa enteras: cobertura 0. **GEE no devolvió las estadísticas en `None`: las omitió**, y la
+respuesta trajo una sola clave, `cobertura`. `reduccion.leer` (`#41`) trataba la falta como
+error, así que el step habría fallado en los cuatro intentos y **el alta de esa parcela no
+habría terminado nunca**. El supuesto ("sin píxeles, las claves vienen en `None`") estaba
+escrito en el módulo y en un test, pero nadie lo había visto: en M.2.6 no salió ningún mes
+con cobertura cero.
+
+El arreglo, en `leer`: **con cobertura 0, las estadísticas y `observaciones` que falten se
+leen como `None`**; con cobertura mayor que cero, una clave que falta sigue siendo un error.
+La cobertura sigue siendo obligatoria. No cambia ningún número ni la huella de la receta, así
+que no pide una v2. Lo fija un test `--gee` que tapa el compuesto con `updateMask(0)` sobre
+el ROI público de los tests y comprueba que GEE omite la clave.
+
+**Cómo se probó.**
+- 17 tests nuevos (15 del handler y 2 de `leer`, más uno `--gee`); 5 viejos del alta por
+  ventanas se borraron con ella. El step imita al SDK: envuelve el error en un
+  `BaseException` y puede memoizar por id. `estadisticas_del_mes` devuelve una expresión
+  falsa, así que `ejecucion.traer`, `leer` y `filas_del_mes` corren de verdad.
+- **Contra lo real**: el handler entero, con GEE de verdad y PostGIS 15 local con las
+  migraciones de Geocore (`check_schema.py` 43 de 43). Parcela 1: **24 meses en 101 s**
+  (3 a 8 s por mes), 96 filas, 92 con valor (2026-05 sin dato), el job en `completed` al
+  100 %, 27 líneas de bitácora con un aviso y ningún error. Repetir un mes no suma filas. El
+  NDVI sigue la estación: 0,22 a 0,27 en la seca de marzo y abril, 0,56 a 0,58 en lluvias.
+  Las parcelas 2 y 3, después del arreglo: 103 s y 95 s, 96 filas cada una, las dos
+  `completed` y sin errores en la bitácora. **Las tres tenían un mes con cobertura 0**: sin
+  el arreglo de `leer`, ninguna de las tres altas habría terminado.
+
+**Registrado, sin hacer:**
+- **Sin límite de concurrencia.** Un KML de 500 parcelas son 500 altas a la vez contra GEE,
+  como con el handler viejo. Va con M.5.3, que fija el límite de las funciones mensuales:
+  conviene que el alta lo comparta.
+- **`init_ee()` corre en cada step**, como en la capa vieja. Cuesta poco al lado del pedido,
+  pero se podría saltear si el cliente ya está inicializado.
+- **`observaciones` sale con ruido de float** (`2.9999999999999947`): es la mediana de
+  `n_obs` que interpola el histograma. Redondearla cambia un número guardado, así que va con
+  una receta nueva si se decide.
