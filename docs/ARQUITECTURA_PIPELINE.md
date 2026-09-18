@@ -162,8 +162,9 @@ handlers/            M.4.2, DECISIONS #48
   seguimiento.py     el wrapper de jobs (con_seguimiento) y RETRIES (sale de inngest_handlers.py)
   geometria.py       el ROI desde el payload de Geocore
   utilidades.py      temporales, avance y milisegundos
-  parcela.py         alta (24 meses) y mes cerrado
-  rancho.py          alta (24 COG) y mes cerrado
+  altas.py           el step plan, los campos del evento y los errores de GEE  ← M.4.5, #51
+  parcela.py         alta (24 meses) ✅ M.4.4, #50; el mes cerrado es M.5.3
+  rancho.py          alta (hasta 24 COG) ✅ M.4.5, #51; el mes cerrado es M.5.3
   a_demanda.py       mapa de un período e índice cualquiera, con el mismo pipeline
 repositories/, services/storage_service.py, services/cog_converter.py, services/avance_job.py
                      quedan como están

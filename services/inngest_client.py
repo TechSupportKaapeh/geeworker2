@@ -82,8 +82,10 @@ def resolve_client_config(*, is_production, base_url, event_key, signing_key):
         else:
             problemas.append(
                 "falta INNGEST_EVENT_KEY, o quedo con el valor de desarrollo. "
-                "El worker no va a poder emitir terra/raster.ingested, asi que "
-                "los COG se suben y la capa nunca se registra en `layers`"
+                "El worker no va a poder emitir eventos. Desde M.4.5 no emite "
+                "ninguno (el alta del rancho escribe su capa en `layers` sin "
+                "pasar por terra/raster.ingested), pero un handler que lo haga "
+                "va a fallar"
             )
     else:
         kwargs["api_base_url"] = base_url

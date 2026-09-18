@@ -8,8 +8,8 @@ Se prueba lo que se rompe en silencio:
      el `_StepFalso` de `test_inngest_handlers` no (propaga la excepcion tal
      cual), y con el este bug no se podia ver.
   2. Que `NonRetriableError` y `StepError` marquen `failed` en cualquier intento.
-  3. Que un rancho sin imagenes termine `failed` y no `running`. El alta de una
-     parcela, con sus meses y su barra, esta en `test_handlers_parcela.py`.
+  3. (Las altas, con sus meses y su barra, estan en `test_handlers_parcela.py`
+     y `test_handlers_rancho.py`.)
   4. Que el mensaje de error no filtre secretos: termina en `error_message`, que
      ve el usuario del tenant.
   5. Que escribir la bitacora nunca tumbe un procesamiento.
@@ -240,26 +240,10 @@ def test_resumir_error_es_una_linea_acotada():
     assert resumen.startswith("ValueError: a b")
 
 
-# --- 4. Un rancho sin imagenes ----------------------------------------------
+# --- 4. Las altas ------------------------------------------------------------
 #
-# El alta de una parcela ya no va por ventanas de fechas: es del pipeline
-# mensual (M.4.4) y sus tests estan en `test_handlers_parcela.py`.
-
-
-def test_un_rancho_sin_imagenes_termina_failed_y_no_running(monkeypatch, bitacora, estados):
-    monkeypatch.setattr(handlers, "init_ee", lambda: None)
-    monkeypatch.setattr(handlers, "coords_to_geometry", lambda c: "roi")
-    monkeypatch.setattr(handlers, "compute_sentinel2_index", lambda *a, **kw: None)
-
-    with pytest.raises(inngest.NonRetriableError):
-        handlers.process_rancho._handler(
-            _CtxFalso({"jobId": "job-r", "ranchoId": "r", "tenantId": "t", "coordinates": []}),
-            _StepComoElSdk(),
-        )
-
-    assert [s for s, _ in estados] == ["running", "failed"]
-    assert [(l["etapa"], l["nivel"]) for l in bitacora if l["nivel"] == "error"] == [
-        ("ingest-rancho-raster", "error"), ("fin", "error")]
+# Las altas de parcela y de rancho son del pipeline mensual (M.4.4 y M.4.5): sus
+# tests estan en `test_handlers_parcela.py` y `test_handlers_rancho.py`.
 
 
 # --- 5. Escribir la bitacora nunca tumba el procesamiento ------------------

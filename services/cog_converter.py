@@ -4,15 +4,22 @@ import rasterio
 from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 
-def convert_to_cog(input_path: str, output_dir: str = None, profile_name: str = "deflate") -> str:
+def convert_to_cog(input_path: str, output_dir: str = None, profile_name: str = "deflate",
+                   nodata: float | None = None) -> str:
     """
     Convierte un TIFF local en un Cloud Optimized GeoTIFF (COG).
-    
+
     Args:
         input_path: Ruta local del archivo TIFF.
         output_dir: Carpeta destino. Si es None, se usa una temporal.
         profile_name: Nombre de perfil de compresión de rio-cogeo.
-        
+        nodata: el valor que en el TIFF de entrada significa "sin dato". **El
+            GeoTIFF de GEE no lo declara**: lo enmascarado llega como 0, que en
+            un índice es un valor válido (M.4.5, DECISIONS #51). Quien baje de
+            GEE rellena lo enmascarado con un centinela (`unmask`) y lo pasa acá;
+            con `add_mask`, el COG sale con su máscara interna y el tileserver
+            pinta esos píxeles transparentes.
+
     Returns:
         Ruta local del COG generado.
     """
@@ -35,7 +42,8 @@ def convert_to_cog(input_path: str, output_dir: str = None, profile_name: str = 
         in_memory=False,
         quiet=True,
         web_optimized=True,
-        add_mask=True
+        add_mask=True,
+        nodata=nodata,
     )
     
     return output_path

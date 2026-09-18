@@ -63,7 +63,6 @@ def test_hay_una_funcion_registrada_por_evento_esperado():
         "geeworker-query-available-dates",
         "geeworker-export-data",
         "geeworker-compute-parcela-stats",
-        "geeworker-register-layer",
     }
 
 
@@ -524,10 +523,11 @@ def test_dos_periodos_distintos_no_comparten_objeto():
 
 
 def test_la_storage_key_y_la_natural_key_no_pueden_divergir():
-    """El par del rancho es el caso peligroso: `process_rancho` arma la
-    `storage_key` y `register_layer` la `natural_key`, **en otro handler,
-    separados por un evento**. Que salgan de la misma funcion es lo que impide
-    que una convencion se desincronice a traves de esa frontera."""
+    """El par del rancho de la capa vieja era el caso peligroso: `process_rancho`
+    armaba la `storage_key` y `register_layer` la `natural_key`, **en otro
+    handler, separados por un evento**. Que salgan de la misma funcion es lo que
+    impide que una convencion se desincronice a traves de esa frontera. Los dos
+    handlers se borraron en M.4.5; lo mensual usa `pipeline/claves.py`."""
     storage_key, natural_key = handlers.claves_de_capa("rancho", "r-1", "ndvi", "2026-01-01")
 
     assert storage_key == "ranchos/r-1/2026-01-01_ndvi.tif"

@@ -1,15 +1,11 @@
 import logging
-import os
-import tempfile
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import inngest
 
 from services.inngest_client import inngest_client
 from services.ee.ee_client import init_ee, get_sentinel2_dates
-from services.ee.gee_download import descargar_geotiff
-from services.ee.ee_indices import compute_sentinel2_index
 from services.ee_service import generate_heatmap_tiles, generate_time_series_data
 from services.export_service import export_heatmap, export_time_series
 from services.storage_service import get_storage_service
@@ -24,7 +20,6 @@ from repositories.db_repository import (update_processing_job, insert_layer,
                                        insert_measurement, insert_measurements,
                                        insert_sentinel2_date)
 from services.avance_job import paso, reportar
-from utils_pkg.visualization import index_band_and_vis
 # M.4.2: el wrapper de jobs, el ROI y las utilidades viven en `handlers/`, para que
 # los handlers del pipeline mensual no importen este modulo, que es la capa vieja
 # y se borra en M.6.1. Se importan con los nombres de siempre: los handlers de
@@ -33,9 +28,10 @@ from handlers.geometria import coords_to_geometry, normalizar_coordenadas  # noq
 from handlers.seguimiento import RETRIES, envolver_con_estado
 from handlers.utilidades import borrar_temporales as _borrar_temporales
 from handlers.utilidades import ms_desde as _ms_desde
-# M.4.4: el alta de una parcela ya es del pipeline mensual. Se registra desde
+# M.4.4 y M.4.5: las altas ya son del pipeline mensual. Se registran desde
 # `all_functions`, abajo, hasta que M.6.1 borre este modulo y mude la lista.
 from handlers.parcela import process_parcela
+from handlers.rancho import process_rancho
 
 logger = logging.getLogger("inngest_handlers")
 
@@ -100,121 +96,10 @@ def _with_job_tracking(func):
 # nuevo.
 
 
-@inngest_client.create_function(
-    fn_id="process-rancho",
-    trigger=inngest.TriggerEvent(event="terra/rancho.created"),
-    retries=RETRIES,
-)
-@_with_job_tracking
-def process_rancho(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
-    rancho_id = payload["ranchoId"]
-    tenant_id = payload["tenantId"]
-    coordinates = payload["coordinates"]
-    
-    # E.3: descarga, conversion y subida van en **un solo step**.
-    #
-    # Antes eran tres, y `_download_gee` devolvia `temp_raw_path` —una ruta del
-    # disco local— que `_convert_cog` consumia y borraba. Un step de Inngest
-    # memoiza lo que devuelve: si el segundo reintentaba, el primero contestaba
-    # con el JSON guardado y el archivo ya no estaba. Reintento envenenado, y el
-    # unico modo de fallo que `retries=3` no puede resolver.
-    #
-    # La regla que queda: **entre steps solo cruzan referencias durables**
-    # —una key de MinIO, un id— nunca estado del sistema de archivos local. Lo
-    # que sale de aca es la `storage_key`, que sigue existiendo despues de que
-    # el proceso muera.
-    #
-    # El costo: un reintento vuelve a bajar de GEE. Es aceptable —y es lo que ya
-    # pasaba de hecho, porque el reintento no funcionaba— y la alternativa
-    # (subir el crudo a MinIO para pasarlo entre steps) es exactamente el
-    # `_original.tif` que `DECISIONS #19` descarto: no era dato crudo sino el
-    # mismo indice antes de convertirse a COG, nunca se registro en `layers`, y
-    # duplicaba almacenamiento sin aportar nada. Eso cierra E.8.
-    def _ingest_rancho_raster():
-        etapa = "ingest-rancho-raster"
-        init_ee()
-        roi = coords_to_geometry(coordinates)
-        end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        start_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
-        reportar(etapa, f"Buscando el compuesto NDVI de los últimos 30 días: {start_date} → {end_date}",
-                 progreso=10, desde=start_date, hasta=end_date)
-        t0 = time.monotonic()
-
-        index = "ndvi"
-        img = compute_sentinel2_index(roi, start_date, end_date, index, cloud_pct=30)
-        if img is None:
-            raise inngest.NonRetriableError(
-                f"No se encontraron imágenes útiles para el rancho {rancho_id} "
-                f"entre {start_date} y {end_date}.")
-
-        band, _ = index_band_and_vis(index, satellite="sentinel2")
-        layer = img.select(band).clip(roi)
-
-        try:
-            acquired_ms = img.get('system:time_start').getInfo()
-            fecha_captura = datetime.fromtimestamp(acquired_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
-        except Exception:
-            fecha_captura = end_date
-        reportar(etapa, f"Imagen del {fecha_captura}: descargando el GeoTIFF de GEE",
-                 progreso=25, fecha=fecha_captura)
-
-        temp_raw_path = None
-        cog_path = None
-        try:
-            fd, temp_raw_path = tempfile.mkstemp(suffix=".tif")
-            os.close(fd)
-
-            descargar_geotiff(layer, roi, temp_raw_path)
-            megas = round(os.path.getsize(temp_raw_path) / 1_000_000, 2)
-            reportar(etapa, f"GeoTIFF descargado ({megas} MB): convirtiendo a COG y subiendo",
-                     progreso=60, megas=megas)
-
-            import rasterio
-            with rasterio.open(temp_raw_path) as src:
-                bounds = list(src.bounds)
-                crs = src.crs.to_string() if src.crs else "EPSG:4326"
-
-            cog_path = convert_to_cog(temp_raw_path)
-            object_name, _ = claves_de_capa("rancho", rancho_id, index, fecha_captura)
-            storage_key = get_storage_service().upload_file(object_name, cog_path, "image/tiff")
-        finally:
-            # En `finally` para que un fallo a mitad no deje el temporal en
-            # disco: el proceso es de larga vida y los reintentos se acumulan.
-            _borrar_temporales(temp_raw_path, cog_path)
-
-        reportar(etapa, f"Ráster del rancho listo: imagen del {fecha_captura}",
-                 progreso=90, fecha=fecha_captura, ms=_ms_desde(t0))
-        return {"storage_key": storage_key, "fecha_captura": fecha_captura,
-                "bbox": bounds, "crs": crs}
-
-    gee_info = paso(step, "ingest-rancho-raster", _ingest_rancho_raster)
-    upload_info = gee_info
-
-    # E.1: acá había un step `_calculate_measurements` que calculaba NDVI por
-    # parcela. Se borró junto con `services/geocore_client.py`, que era un
-    # simulacro: partía el bbox del rancho en dos mitades e inventaba las
-    # parcelas con ids `{ranchoId}-parcela-A` y `-B`, contra una columna `uuid`.
-    # Reventaba con `invalid input syntax for type uuid` y dejaba a
-    # `process_rancho` sin poder terminar nunca.
-    #
-    # No se reemplazó por la llamada HTTP real a Geocore porque el caso ya está
-    # cubierto: Geocore emite `terra/parcela.created` por cada parcela y
-    # `process_parcela` la procesa con su id y su geometría de verdad. El step
-    # además pedía a GEE un segundo composite del mismo período que el de
-    # arriba, gastando cuota para recalcular lo mismo.
-    #
-    # `process_rancho` queda con una sola responsabilidad: el ráster a nivel
-    # rancho. Las mediciones son por parcela y llegan por su propio evento.
-    
-    step.send_event("emit-raster-ingested", inngest.Event(
-        name="terra/raster.ingested",
-        data={
-            "ranchoId": rancho_id, "tenantId": tenant_id, "cogKey": upload_info["storage_key"],
-            "fecha": gee_info["fecha_captura"], "bbox": gee_info["bbox"], "crs": gee_info["crs"], "index": "ndvi"
-        }
-    ))
-    
-    return {"status": "success", "ranchoId": rancho_id, "cogKey": upload_info["storage_key"]}
+# M.4.5: `process_rancho` vive en `handlers/rancho.py`, sobre el pipeline
+# mensual, con el mismo `fn_id`. El de aca bajaba un compuesto de 30 dias y
+# emitia `terra/raster.ingested` para que `register_layer` escribiera la fila de
+# `layers`; el nuevo la escribe en el mismo step, y los dos se borraron.
 
 @inngest_client.create_function(
     fn_id="generate-heatmap-on-demand",
@@ -381,35 +266,6 @@ def compute_parcela_stats(ctx: inngest.Context, step: inngest.StepSync, payload:
     res = step.run("stats", _stats)
     return res
 
-@inngest_client.create_function(
-    fn_id="register-layer",
-    trigger=inngest.TriggerEvent(event="terra/raster.ingested"),
-    retries=RETRIES,
-)
-@_with_job_tracking
-def register_layer(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
-    def _register_db():
-        # La `natural_key` sale de `claves_de_capa`, la misma funcion que uso
-        # `process_rancho` para la `storage_key`. Estaban armadas a mano en los
-        # dos handlers: iguales por coincidencia, y separadas por un evento —el
-        # peor lugar para que una convencion se desincronice, porque el fallo
-        # seria una fila de `layers` que apunta a un objeto y otra huerfana.
-        _, asset_id = claves_de_capa(
-            "rancho", payload['ranchoId'], payload['index'], payload['fecha'],
-        )
-        # Capa a nivel rancho: va en `rancho_id`, no en `parcela_id`.
-        insert_layer(
-            natural_key=asset_id,
-            product=payload['index'], storage_key=payload['cogKey'],
-            acquired_ts=payload['fecha'],
-            ingested_ts=datetime.now(timezone.utc),
-            tenant_id=payload['tenantId'], rancho_id=payload['ranchoId'],
-            bbox=payload['bbox'], source='systematic'
-        )
-        return {"asset_id": asset_id}
-    res = step.run("register-layer-in-geodata", _register_db)
-    return res
-
 all_functions = [
     process_parcela,
     process_rancho,
@@ -417,6 +273,5 @@ all_functions = [
     compute_timeseries,
     query_available_dates,
     export_data,
-    compute_parcela_stats,
-    register_layer
+    compute_parcela_stats
 ]
