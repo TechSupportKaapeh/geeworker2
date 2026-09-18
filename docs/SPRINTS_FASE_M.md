@@ -230,14 +230,25 @@ Tres cosas que cambian lo que sigue:
 
 | | Tarea | T | Aceptación | Estado |
 |---|---|---|---|---|
-| M.4.1 | **Decidir la forma de la key con el tenant adentro**, por ejemplo `tenants/{tenantId}/ranchos/{id}/{indice}/{AAAA-MM}.tif`, antes de escribir un solo COG nuevo. Es la base para cerrar A01 (M.8.1) sin mover objetos después | S | `DECISIONS` escrito | ⬜ |
-| M.4.2 | `handlers/`: sacar de `inngest_handlers.py` el wrapper de jobs, las claves y las utilidades, **sin cambiar comportamiento** | M | la suite entera verde sin tocar un test | ⬜ |
-| M.4.3 | Escritura: upsert de la fila mensual y `insert_layer` con receta y estadísticas | S | tests con conexión falsa | ⬜ |
+| M.4.1 | **Decidir la forma de la key con el tenant adentro**, por ejemplo `tenants/{tenantId}/ranchos/{id}/{indice}/{AAAA-MM}.tif`, antes de escribir un solo COG nuevo. Es la base para cerrar A01 (M.8.1) sin mover objetos después | S | `DECISIONS` escrito | ✅ 2026-09-17 · geeworker2#31, `DECISIONS #47`. **`tenants/{t}/ranchos/{r}/{receta}/{indice}/{AAAA-MM}.tif`**: la receta va adentro porque el tileserver cachea los tiles como `immutable` por un año. La arma `pipeline/claves.py`, con los uuid canónicos |
+| M.4.2 | `handlers/`: sacar de `inngest_handlers.py` el wrapper de jobs, las claves y las utilidades, **sin cambiar comportamiento** | M | la suite entera verde sin tocar un test | ✅ 2026-09-17 · geeworker2#32, `DECISIONS #48`. Ningún test tocado. `claves_de_capa()` se quedó con la capa vieja (las mensuales están en `pipeline/claves.py`). **El Dockerfile copia `pipeline/` y `handlers/`**, y `test_dockerfile.py` lo cuida; la imagen se construyó y arrancó en local |
+| M.4.3 | Escritura: upsert de la fila mensual y `insert_layer` con receta y estadísticas | S | tests con conexión falsa | ✅ 2026-09-17 · geeworker2#33, `DECISIONS #49`. Las filas sin `valor` se escriben; `estadisticas` va siempre. Probado contra PostGIS con las migraciones: `check_schema` 43/43, upsert idempotente, el CHECK de cobertura rechaza el lote entero |
 | M.4.4 | `process_parcela` sobre el pipeline: el plan y 24 steps `mes-AAAA-MM`, con bitácora y avance | M | tests con el step que imita al SDK | ⬜ |
 | M.4.5 | `process_rancho` sobre el pipeline: 24 COG de NDVI | M | ídem | ⬜ |
 | M.4.6 | De punta a punta: un rancho y una parcela reales desde el panel. Se miran las filas, el COG por el tileserver (`check_prod.py`) y la pestaña Procesos | S | anotado en la sesión | ⬜ |
 
 **Riesgo:** los runs en vuelo durante el deploy rehacen sus steps. Es idempotente.
+
+**Sesión 7 (2026-09-17): M.4.1, M.4.2 y M.4.3 hechas**, cada una por PR con el CI en verde.
+Crónica: [`SESSION_2026-09-17_sesion_7_las_altas_I.md`](SESSION_2026-09-17_sesion_7_las_altas_I.md).
+Tres cosas que cambian lo que sigue:
+
+- **La key lleva la receta** además del tenant (`DECISIONS #47`). M.4.5 arma la key con
+  `claves_cog_mensual()`, nunca a mano. M.8.1 compara `tenants/{tenantId}/` **con la barra**.
+- **El 👥 del Dockerfile ya no hace falta:** copia `pipeline/` y `handlers/` desde M.4.2, y el
+  CI se pone en rojo si un paquete que `app` importa no se copia.
+- **`s2-mensual-v1` se congela al mergear M.4.4**, que es el primer handler que escribe una
+  fila real. Si hay que re-fijarla, es antes de ese merge.
 
 ---
 
@@ -322,6 +333,6 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | `#31` histórico mensual en GEE | M.1 | ✅ 2026-09-12 (opción B) |
 | La receta v1: 4 índices, 7 estadísticas, cobertura 0,3, 24 meses | M.1.4 | ✅ 2026-09-12 |
 | `#33` se reescribe la capa, no el servicio | M.1 | ✅ 2026-09-12 |
-| La forma de la key con tenant | M.4 | M.4.1 |
+| La forma de la key con tenant | M.4 | ✅ 2026-09-17 · `DECISIONS #47` |
 | Los handlers a demanda | M.6.2 | 👥 |
 | La capa satelital en el editor (licencia) | M.7.5 | 👥 |

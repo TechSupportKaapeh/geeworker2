@@ -3,7 +3,17 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
-> **Última revisión: 2026-09-17, sesión 6.** La sesión fue sobre todo en Geocore (M.3.2 y
+> **Última revisión: 2026-09-17, sesión 7:**
+> [`SESSION_2026-09-17_sesion_7_las_altas_I.md`](SESSION_2026-09-17_sesion_7_las_altas_I.md).
+> M.4.1, M.4.2 y M.4.3:
+> - la key del COG mensual lleva el tenant y la receta (`DECISIONS #47`, `pipeline/claves.py`);
+> - el wrapper de jobs y las utilidades están en `handlers/` (`#48`), y **el Dockerfile copia
+>   `pipeline/` y `handlers/`**, con un test que lo cuida;
+> - la escritura mensual (`#49`) está probada contra PostGIS con las migraciones de Geocore.
+>
+> Suite: 518 verdes, más 20 con `--gee`. **`s2-mensual-v1` se congela al mergear M.4.4.**
+>
+> Antes, **2026-09-17, sesión 6.** La sesión fue sobre todo en Geocore (M.3.2 y
 > M.3.3); de este lado va **M.3.4: `check_schema.py` verifica el contrato del esquema en vez
 > de imprimirlo** y sale con código 1 si falta algo (`DECISIONS #46`). Corrido contra PostGIS
 > con las migraciones de Geocore aplicadas: **43 de 43 en ok**; con la migración anterior, 33
