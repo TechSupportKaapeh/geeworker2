@@ -8,15 +8,13 @@ Se prueba lo que se rompe en silencio:
      el `_StepFalso` de `test_inngest_handlers` no (propaga la excepcion tal
      cual), y con el este bug no se podia ver.
   2. Que `NonRetriableError` y `StepError` marquen `failed` en cualquier intento.
-  3. Que el historico de una parcela recorra ventanas contiguas y la barra solo
-     avance.
+  3. Que un rancho sin imagenes termine `failed` y no `running`. El alta de una
+     parcela, con sus meses y su barra, esta en `test_handlers_parcela.py`.
   4. Que el mensaje de error no filtre secretos: termina en `error_message`, que
      ve el usuario del tenant.
   5. Que escribir la bitacora nunca tumbe un procesamiento.
 """
 import sys
-from datetime import date, timedelta
-from itertools import pairwise
 from pathlib import Path
 
 import inngest
@@ -242,107 +240,10 @@ def test_resumir_error_es_una_linea_acotada():
     assert resumen.startswith("ValueError: a b")
 
 
-# --- 4. El historico por ventanas --------------------------------------------
-
-
-@pytest.mark.parametrize("dias,n", [(730, 8), (365, 12), (30, 7)])
-def test_las_ventanas_son_contiguas_y_cubren_el_rango(dias, n):
-    hasta = date(2026, 9, 12)
-    desde = hasta - timedelta(days=dias)
-    vs = handlers.ventanas(desde, hasta, n)
-
-    assert len(vs) == n
-    assert vs[0][0] == desde.isoformat()
-    assert vs[-1][1] == hasta.isoformat()
-    for (_, fin), (inicio, _) in pairwise(vs):
-        assert fin == inicio  # sin huecos ni solapes: filterDate es semiabierto
-
-
-@pytest.fixture
-def parcela_sin_gee(monkeypatch):
-    """Todo lo que `process_parcela` le pide a GEE, MinIO y la base, falso."""
-    llamadas = {"fechas": [], "serie": []}
-    monkeypatch.setattr(handlers, "coords_to_geometry", lambda c: "roi")
-    monkeypatch.setattr(handlers, "init_ee", lambda: None)
-
-    def _fechas(roi, desde, hasta, cloud_pct=100):
-        llamadas["fechas"].append((desde, hasta))
-        return [{"date": desde, "system_time_start": 0}]
-
-    monkeypatch.setattr(handlers, "get_sentinel2_dates", _fechas)
-    monkeypatch.setattr(handlers, "insert_sentinel2_date", lambda **kw: None)
-    monkeypatch.setattr(handlers, "export_heatmap", lambda **kw: ("x.tif", {}))
-    monkeypatch.setattr(handlers, "convert_to_cog", lambda p: p)
-    monkeypatch.setattr(handlers, "get_storage_service",
-                        lambda: type("S", (), {"upload_file": lambda self, n, r, t: n})())
-    monkeypatch.setattr(handlers, "insert_layer", lambda **kw: None)
-    monkeypatch.setattr(handlers, "_borrar_temporales", lambda *r: None)
-    monkeypatch.setattr(handlers, "insert_measurements",
-                        lambda filas: len([f for f in filas if f["valor"] is not None]))
-    llamadas["serie_devuelve"] = lambda desde, rescate: [{"date": desde, "mean": 0.5}]
-
-    def _serie(roi, desde, hasta, indice, cloud_pct=30, limit=30, rescate=True):
-        llamadas["serie"].append((desde, hasta, rescate))
-        return llamadas["serie_devuelve"](desde, rescate)
-
-    monkeypatch.setattr(handlers, "generate_time_series_data", _serie)
-    return llamadas
-
-
-def _correr_parcela(step):
-    return handlers.process_parcela._handler(
-        _CtxFalso({"jobId": "job-p", "parcelaId": "p", "tenantId": "t", "coordinates": []}),
-        step,
-    )
-
-
-def test_el_historico_recorre_ventanas_contiguas_y_la_barra_solo_avanza(
-        parcela_sin_gee, bitacora, estados):
-    step = _StepComoElSdk()
-    resultado = _correr_parcela(step)
-
-    assert step.ejecutados == [
-        "mark-job-running", "plan-historico",
-        *[f"query-sentinel2-dates-{i}" for i in range(1, 9)],
-        "generate-recent-heatmap",
-        *[f"compute-time-series-{i}" for i in range(1, 13)],
-        "mark-job-completed",
-    ]
-
-    hoy = date.fromisoformat(bitacora[1]["detalle"]["hasta"])
-    fechas = parcela_sin_gee["fechas"]
-    assert fechas[0][0] == (hoy - timedelta(days=730)).isoformat()
-    assert fechas[-1][1] == hoy.isoformat()
-    assert all(a[1] == b[0] for a, b in pairwise(fechas))
-
-    serie = parcela_sin_gee["serie"]
-    assert len(serie) == 12
-    assert serie[0][0] == (hoy - timedelta(days=365)).isoformat()
-    assert all(rescate is False for _, _, rescate in serie)
-
-    progresos = [l["progreso"] for l in bitacora if l["progreso"] is not None]
-    assert progresos == sorted(progresos)
-    assert progresos[-1] == 100
-    assert resultado["ts_count"] == 12
-
-    # Lo que pidio el panel: por que ventana va.
-    assert any("trimestre 3 de 8" in l["mensaje"] for l in bitacora)
-    assert any("mes 7 de 12" in l["mensaje"] for l in bitacora)
-
-
-def test_sin_valores_en_ningun_mes_se_rescata_el_anio_entero(parcela_sin_gee, bitacora, estados):
-    """El criterio de antes —aceptar hasta 90 % de nubes— sobre el año, no mes por mes."""
-    parcela_sin_gee["serie_devuelve"] = (
-        lambda desde, rescate: [{"date": desde, "mean": 0.3}] if rescate else [])
-    step = _StepComoElSdk()
-
-    resultado = _correr_parcela(step)
-
-    assert "compute-time-series-rescate" in step.ejecutados
-    assert parcela_sin_gee["serie"][-1][2] is True
-    assert resultado["ts_count"] == 1
-    assert any(l["etapa"] == "compute-time-series-rescate" and l["nivel"] == "warning"
-               for l in bitacora)
+# --- 4. Un rancho sin imagenes ----------------------------------------------
+#
+# El alta de una parcela ya no va por ventanas de fechas: es del pipeline
+# mensual (M.4.4) y sus tests estan en `test_handlers_parcela.py`.
 
 
 def test_un_rancho_sin_imagenes_termina_failed_y_no_running(monkeypatch, bitacora, estados):

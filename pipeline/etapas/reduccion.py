@@ -19,11 +19,20 @@ De la imagen del mes salen tres cosas:
 el pedido falla y M.2.5 traduce el error. Con ``bestEffort=True``, que es lo que
 usaba la serie vieja, GEE devuelve un número calculado a otra escala sin avisar.
 
-**Una clave que falta es un error, no un nulo.** Lo distingue :func:`leer`:
-- que la respuesta no traiga la clave significa que el pedido no calculó lo que
-  se le pidió, y eso se levanta;
-- que la traiga en ``None`` significa que no hubo un solo píxel con dato, y eso
-  es un mes sin cobertura, que es un resultado válido.
+**Una clave que falta es un error, no un nulo**, salvo en un mes sin un solo píxel
+con dato. Lo distingue :func:`leer`:
+- con cobertura mayor que cero, que la respuesta no traiga una clave significa
+  que el pedido no calculó lo que se le pidió, y eso se levanta;
+- con cobertura cero, GEE **no devuelve** las claves de las estadísticas ni la de
+  las observaciones: solo trae la cobertura. Es un mes sin dato, un resultado
+  válido, y se lee como ``None``.
+
+> **Corregido el 2026-09-18** (M.4.4, ``DECISIONS #50``). Hasta entonces este
+> módulo suponía que un mes sin píxeles llegaba con las claves en ``None``. Nadie
+> lo había visto: en M.2.6 no salió ningún mes con cobertura cero. Lo encontró el
+> alta de una parcela real contra GEE: en 2026-05 las 10 escenas quedaban
+> tapadas por la máscara, la respuesta traía una sola clave, y el step habría
+> fallado en cada reintento.
 """
 
 from collections.abc import Mapping
@@ -171,18 +180,15 @@ def leer(respuesta: Mapping[str, object], receta: Receta) -> Reduccion:
         GEE: la clave ``ndvi_p50`` entra como ``estadisticas["ndvi"]["mediana"]``.
 
     Raises:
-        ValueError: si falta una clave, o si la cobertura es un número fuera de
-            [0, 1]. Faltar significa que el pedido no calculó lo que se le pidió;
-            tomarlo por un nulo guardaría un mes vacío sin que nadie se entere.
+        ValueError: si falta la cobertura, si es un número fuera de [0, 1], o si
+            falta cualquier otra clave con cobertura mayor que cero. Faltar ahí
+            significa que el pedido no calculó lo que se le pidió; tomarlo por un
+            nulo guardaría un mes vacío sin que nadie se entere.
         TypeError: si la cobertura no es un número.
     """
-    claves = claves_de_salida(receta.indices, receta.estadisticas)
-    esperadas = {*claves.values(), CLAVE_COBERTURA, CLAVE_OBSERVACIONES}
-    faltan = esperadas - respuesta.keys()
-    if faltan:
-        msg = f"la respuesta de GEE no trae {sorted(faltan)}"
+    if CLAVE_COBERTURA not in respuesta:
+        msg = f"la respuesta de GEE no trae {[CLAVE_COBERTURA]}"
         raise ValueError(msg)
-
     cubierto = respuesta[CLAVE_COBERTURA]
     # `bool` es un `int` para Python: `True` pasaría por una cobertura de 1.
     if not isinstance(cubierto, int | float) or isinstance(cubierto, bool):
@@ -192,11 +198,20 @@ def leer(respuesta: Mapping[str, object], receta: Receta) -> Reduccion:
         msg = f"cobertura fuera de [0, 1]: {cubierto}"
         raise ValueError(msg)
 
+    claves = claves_de_salida(receta.indices, receta.estadisticas)
+    # Sin un píxel con dato, GEE omite las claves en vez de mandarlas en `None`
+    # (ver el módulo). Solo ahí la falta es un nulo.
+    if cubierto > 0:
+        faltan = {*claves.values(), CLAVE_OBSERVACIONES} - respuesta.keys()
+        if faltan:
+            msg = f"la respuesta de GEE no trae {sorted(faltan)}"
+            raise ValueError(msg)
+
     estadisticas: dict[str, dict[str, float | None]] = {}
     for (indice, estadistica), clave in claves.items():
-        estadisticas.setdefault(indice, {})[estadistica] = respuesta[clave]  # type: ignore[assignment]
+        estadisticas.setdefault(indice, {})[estadistica] = respuesta.get(clave)  # type: ignore[assignment]
     return Reduccion(
         estadisticas=estadisticas,
         cobertura=float(cubierto),
-        observaciones=respuesta[CLAVE_OBSERVACIONES],  # type: ignore[arg-type]
+        observaciones=respuesta.get(CLAVE_OBSERVACIONES),  # type: ignore[arg-type]
     )
