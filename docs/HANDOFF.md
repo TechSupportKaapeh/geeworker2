@@ -3,7 +3,21 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
-> **Última revisión: 2026-09-17, sesión 7:**
+> **Última revisión: 2026-09-18, sesión 8:**
+> [`SESSION_2026-09-18_sesion_8_las_altas_II.md`](SESSION_2026-09-18_sesion_8_las_altas_II.md).
+> **M.4.4 y M.4.5: las dos altas corren sobre el pipeline mensual**, y `s2-mensual-v1` quedó
+> congelada:
+> - `handlers/parcela.py` escribe los 24 meses de una parcela nueva (`DECISIONS #50`);
+> - `handlers/rancho.py` sube un COG de NDVI por mes con dato, con su fila `mensual` en
+>   `layers` (`#51`). Un mes sin un píxel limpio no tiene mapa;
+> - **probarlas contra GEE real sacó dos bugs**: con cobertura 0 GEE omite las claves (el alta
+>   no terminaba), y su GeoTIFF no declara nodata (una nube se pintaba como NDVI 0);
+> - `register_layer` se borró con el `process_rancho` viejo: **el worker no emite eventos** y
+>   registra 7 funciones.
+>
+> Suite: 547 verdes, más 21 con `--gee`.
+>
+> Antes, **2026-09-17, sesión 7:**
 > [`SESSION_2026-09-17_sesion_7_las_altas_I.md`](SESSION_2026-09-17_sesion_7_las_altas_I.md).
 > M.4.1, M.4.2 y M.4.3:
 > - la key del COG mensual lleva el tenant y la receta (`DECISIONS #47`, `pipeline/claves.py`);
@@ -11,7 +25,6 @@
 >   `pipeline/` y `handlers/`**, con un test que lo cuida;
 > - la escritura mensual (`#49`) está probada contra PostGIS con las migraciones de Geocore.
 >
-> Suite: 518 verdes, más 20 con `--gee`. **`s2-mensual-v1` se congela al mergear M.4.4.**
 >
 > Antes, **2026-09-17, sesión 6.** La sesión fue sobre todo en Geocore (M.3.2 y
 > M.3.3); de este lado va **M.3.4: `check_schema.py` verifica el contrato del esquema en vez
@@ -122,15 +135,16 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Paridad de permisos en la subida | ✅ 2026-09-01 — la subida emite solo el `PUT`; lo fija `scripts/check_minio_region.py` |
 | Paridad de permisos en el arranque | ✅ 2026-09-02 — `ensure_bucket()` salió del constructor (`DECISIONS #24`) |
 | Config de MinIO ausente o incoherente | ✅ Falla cerrado nombrando la variable (`DECISIONS #24`) |
-| `process_parcela` | 🟡 Debería funcionar; nunca corrió contra MinIO real |
-| `process_rancho` | 🟡 Desbloqueado el 2026-08-30 (E.1). Igual que `process_parcela`: nunca corrió contra MinIO real |
+| `process_parcela` | ✅ 2026-09-18 (M.4.4, `DECISIONS #50`): sobre el pipeline, en `handlers/parcela.py`. Corrido contra GEE real y PostGIS local con las 3 parcelas de prueba: 24 meses en 95–103 s. Falta en producción (M.4.6) |
+| `process_rancho` | ✅ 2026-09-18 (M.4.5, `DECISIONS #51`): sobre el pipeline, en `handlers/rancho.py`. Corrido contra GEE real, MinIO local y PostGIS local: 23 COG válidos en 226 s. Falta contra el MinIO de Railway (M.4.6) |
+| `register_layer` | ✅ **Borrado** el 2026-09-18 (M.4.5): escuchaba `terra/raster.ingested`, que solo emitía el `process_rancho` viejo |
 | Handlers on-demand (heatmap, timeseries, dates, export, stats) | 🟡 Igual que `process_parcela` |
 | `process_kml` | ❌ Handler muerto: su evento fue eliminado en Geocore |
 | Superficie HTTP de lectura (`routes/`, `schemas/`, `auth.py`) | ✅ **Borrada** el 2026-08-30 (`DECISIONS #23`) |
 | Firma de Inngest | ✅ 2026-09-04 — se verifica en modo cloud; 401 sin firma (`DECISIONS #25`, `W-8`) |
 | Criterio de entorno | ✅ Uno solo (`config.IS_PRODUCTION`); lo desconocido cuenta como producción |
 | Correlación en los logs | ✅ 2026-09-07 — `run_id`, `attempt`, `job_id` e ids de entidad en cada línea (F.18) |
-| Despliegue del worker | 🟡 `Dockerfile` escrito el 2026-09-07. **Construido y arrancado en local el 2026-09-17** (M.4.2): `/health` 200 y las 8 funciones registradas. Desde ese día copia `pipeline/` y `handlers/`, y `tests/test_dockerfile.py` pone el CI en rojo si un paquete que `app` importa no se copia (`DECISIONS #48`) |
+| Despliegue del worker | 🟡 `Dockerfile` escrito el 2026-09-07. **Construido y arrancado en local el 2026-09-17** (M.4.2) y otra vez el 2026-09-18 después de M.4.5: `/health` 200 y **7 funciones** registradas. El deploy de geeworker2#32 quedó sano en Railway (confirmado por el usuario el 2026-09-18). Desde ese día copia `pipeline/` y `handlers/`, y `tests/test_dockerfile.py` pone el CI en rojo si un paquete que `app` importa no se copia (`DECISIONS #48`) |
 | **`handlers/`** | ✅ 2026-09-17 (M.4.2, `DECISIONS #48`): el wrapper de jobs (`con_seguimiento`), el ROI y las utilidades, fuera de la capa vieja. Los handlers mensuales usan esto, no `inngest_handlers.py` |
 | TLS contra MinIO | ✅ 2026-09-07 — el default se deduce del host; lo desconocido asume TLS (`W-2`) |
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
@@ -234,6 +248,11 @@ La arma `pipeline/claves.py:claves_cog_mensual()`, con su natural_key
 (`rancho_mensual_{indice}_{ranchoId}_{AAAA-MM}`, sin la receta: una fila por mes). Los
 uuid salen en minúsculas y con guiones, que es como Geocore va a firmar el tenant del token
 en M.8.1. Las keys de arriba son de la capa vieja: no se migran, y las borra M.6.
+
+**El COG mensual lleva máscara interna** (M.4.5, `DECISIONS #51`): el GeoTIFF de GEE no
+declara nodata, así que lo enmascarado se rellena con `-9999` y `convert_to_cog(…, nodata=…)`
+lo convierte en la máscara. El tileserver pinta esos píxeles transparentes. Un mes sin un
+píxel limpio no tiene COG ni fila en `layers`.
 
 ⚠️ Dos cosas que no coinciden con esto y conviene tener presentes:
 
