@@ -155,6 +155,7 @@ pipeline/
     compuesto.py     compuesto(coleccion, receta)           -> Image (índices + n_obs)
     reduccion.py     reductor(receta), cobertura(img, roi)  -> expresiones
   productos.py       estadisticas_del_mes(...) y mapa_del_mes(...): unen etapas, siguen sin I/O
+  claves.py          la key del COG mensual y su natural_key               ← puro, M.4.1
   ejecucion.py       el borde con GEE
 handlers/
   seguimiento.py     _with_job_tracking y claves de capa (sale de inngest_handlers.py)
@@ -261,8 +262,11 @@ Lo hace el equipo.
 
 **`layers`**, el mapa mensual del rancho:
 - `acquired_ts` es el primer día del mes y `source` vale `mensual`;
-- la key es `ranchos/{id}/ndvi/{AAAA-MM}.tif`, la forma que A-7 proponía: "todo el
-  NDVI del rancho" queda como un prefijo;
+- la key es `tenants/{tenantId}/ranchos/{id}/{receta}/ndvi/{AAAA-MM}.tif`
+  (M.4.1, `DECISIONS #47`). El tenant va primero para que TiTiler lo compare con el
+  token (A01, M.8.1), y la receta va adentro porque los tiles se cachean como
+  inmutables: una receta nueva tiene que ser otra URL. "Todo el NDVI del rancho" sigue
+  siendo un prefijo, como proponía A-7. La arma `pipeline/claves.py`;
 - columnas nuevas: `receta` y `estadisticas` (`jsonb`, que es D-2).
 
 **`processing_jobs`**: `periodo` (`AAAA-MM`, nullable) y un índice único por tipo,

@@ -1908,3 +1908,81 @@ en un contenedor**, con las migraciones de Geocore aplicadas con `dotnet ef data
 **Un detalle que salió de correrlo:** lo que se imprime va **sin acentos**. La consola de
 Windows no siempre está en UTF-8, y la primera corrida real mostró los títulos con
 caracteres rotos. Los comentarios y docstrings siguen con acentos: no se imprimen.
+
+## 47. La key del COG mensual lleva el tenant y la receta (2026-09-17)
+
+> Tarea M.4.1 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). Es la base de M.8.1 (A01) y
+> reemplaza, para lo mensual, la forma que proponía `ARQUITECTURA_PIPELINE.md` §6
+> (`ranchos/{id}/ndvi/{AAAA-MM}.tif`). Contesta `PREGUNTAS_ABIERTAS` A-7 para lo que
+> se escribe desde M.4.
+
+**Decisión.** El COG mensual de un rancho va en
+
+```
+tenants/{tenantId}/ranchos/{ranchoId}/{receta}/{indice}/{AAAA-MM}.tif
+tenants/7f3c…/ranchos/a1b2…/s2-mensual-v1/ndvi/2025-09.tif
+```
+
+y la fila de `layers` se identifica con `rancho_mensual_{indice}_{ranchoId}_{AAAA-MM}`,
+**sin la receta**. Las dos salen de `pipeline/claves.py:claves_cog_mensual()`, juntas, como
+pide E.9. Decidido por el usuario el 2026-09-17, entre esta forma y la del tablero (la
+misma sin `{receta}`).
+
+**Por qué el tenant primero.** TiTiler va a comparar el prefijo `tenants/{tenantId}/`
+contra el `tenant_id` del token de mapa (M.8.1). Hoy su validación de ruta es un
+`startswith` (`terra_tiles/security.py`), así que alcanza con que el tenant sea el primer
+segmento. Fijarlo ahora, antes del primer COG mensual, es lo que evita mover objetos
+después. **El tenant de un rancho no cambia:** `Rancho.TenantId` es `private set` y solo se
+asigna en `Create`. La key no puede quedar vieja por eso.
+
+**Por qué la receta en la key.** El tileserver sirve los tiles con
+`Cache-Control: public, max-age=31536000, immutable` (`terra_tiles/caching.py`). Si un
+reproceso con otra receta escribiera sobre la misma key, la URL del tile no cambiaría, y
+el navegador (o un CDN) seguiría mostrando el mapa viejo durante un año. Con la receta
+adentro, una receta nueva es otra key y, por lo tanto, otra URL: el caché se invalida solo.
+Bajar el caché para cubrir el reproceso le cobraría a todos los tiles un caso que pasa una
+vez por receta.
+
+**Por qué la receta no va en la natural_key.** La fila de `layers` es una por rancho,
+índice y mes, igual que la de `measurements`, cuya PK tampoco lleva la receta. Al
+reprocesar, el upsert apunta la fila a la key nueva y actualiza `receta`: el panel
+(M.7.4) no tiene que elegir entre dos filas del mismo mes. El objeto de la receta anterior
+**queda en el bucket**, bajo `…/ranchos/{r}/{receta vieja}/`. Es un prefijo, así que se
+limpia con una regla o con `mc rm --recursive`; hasta entonces, ocupa lugar y no lo lee
+nadie.
+
+**El orden va de lo más estable a lo que más varía** (A-7: S3 solo filtra por prefijo):
+tenant, rancho, receta, índice y mes. Cada pregunta útil es un prefijo: lo de un tenant (A01),
+lo de un rancho, lo de una receta (limpieza) y la serie de un índice.
+
+**Lo que fija el código, y por qué.**
+- **Los uuid salen en forma canónica**, en minúsculas y con guiones. Geocore escribe el
+  `tenant_id` del token con `Guid.ToString()`, y para un `startswith`, `7F3C…` y `7f3c…`
+  son dos tenants distintos: el dueño del COG recibiría 403.
+- **Los ids pasan por `uuid.UUID`**, así que un segmento no puede traer `/` ni `..`. El id
+  llega en un evento, y uno que armara otra ruta escribiría fuera del prefijo de su tenant.
+  **El uuid nulo se rechaza:** es el `Guid.Empty` de un id sin asignar.
+- **`prefijo_de_tenant()` devuelve la barra final.** Sin ella, el prefijo de un tenant sería
+  también el comienzo de cualquier id que empezara igual. Con uuid de largo fijo no pasa,
+  pero la comparación de M.8.1 no debería depender de eso. **M.8.1 compara con la barra.**
+- **Los argumentos van por nombre:** `tenant_id` y `rancho_id` son los dos texto, e
+  intercambiarlos daría una key válida en el lugar equivocado.
+- **El índice tiene que estar en la receta.**
+
+**Lo que no cambia, y lo que queda para después.**
+- **Lo que ya existe en el bucket se queda donde está.** Las keys de la capa vieja
+  (`ranchos/{id}/{fecha}_{indice}.tif`, `parcelas/…`, `exports/…`) y sus filas de `layers` no
+  se migran. Son de prueba o las borra M.6.1.
+- **Los on-demand y los exports todavía no llevan tenant.** Cuando M.8.1 active la
+  comparación, esas keys darán 403. Se resuelve en M.6.2, que decide si esos handlers se
+  borran o se rehacen: si se rehacen, van bajo `tenants/{t}/`.
+- **Para M.8.1:** TerraAdmin y TerraSupport no tienen tenant. Su token tiene que poder
+  leer cualquier `tenants/…`, o llevar el tenant que eligieron con `X-Tenant-ID`. Se decide
+  allá.
+
+**Cómo se probó.** 25 tests en `tests/test_pipeline_claves.py`: la key entera, carácter por
+carácter; el prefijo con la barra; cuatro formas de escribir un uuid que salen iguales; seis
+ids rechazados, incluidos `../otro-tenant` y el nulo; los argumentos por nombre; que otra
+receta cambie la key y no la natural_key; y que la natural_key no choque con la de la capa
+vieja. **Control negativo:** con la canonicalización quitada (el id pasa tal cual), cuatro
+tests salen en rojo.

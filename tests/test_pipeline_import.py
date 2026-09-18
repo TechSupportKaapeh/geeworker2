@@ -49,6 +49,8 @@ def test_importar_cada_modulo_de_pipeline_no_abre_conexiones():
         "pipeline.indices", "pipeline.estadisticas", "pipeline.receta",
         # M.2: la primera etapa que importa `ee`. `import ee` no abre conexiones.
         "pipeline.etapas", "pipeline.etapas.fuente",
+        # M.4.1: la key del COG mensual.
+        "pipeline.claves",
     } <= set(resultado.stdout.split())
 
 
