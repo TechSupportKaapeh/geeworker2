@@ -316,7 +316,7 @@ const SPRINTS = [
   { id: "M.4", nombre: "Altas", objetivo: "Una parcela nueva trae sus 24 meses; un rancho nuevo, sus 24 mapas.", sesiones: "2",
     tareas: [
       { id: "M.4.1", t: "La key del COG lleva el tenant, antes de escribir el primer COG mensual", repo: "worker", T: "S", ok: "DECISIONS escrito" },
-      { id: "M.4.2", t: "handlers/: sacar el wrapper de jobs y las claves sin cambiar comportamiento", repo: "worker", T: "M", ok: "Suite verde sin tocar un test" },
+      { id: "M.4.2", t: "handlers/: sacar el wrapper de jobs y las utilidades sin cambiar comportamiento", repo: "worker", T: "M", ok: "Suite verde sin tocar un test" },
       { id: "M.4.3", t: "Escritura de la fila mensual y de layers con receta", repo: "worker", T: "S", ok: "Tests con conexión falsa" },
       { id: "M.4.4", t: "process_parcela: plan y 24 steps mes-AAAA-MM, con bitácora", repo: "worker", T: "M", ok: "Tests con el step que imita al SDK" },
       { id: "M.4.5", t: "process_rancho: 24 COG de NDVI", repo: "worker", T: "M", ok: "Tests" },
@@ -365,10 +365,10 @@ const SPRINTS = [
     ] }
 ];
 
-// Al 2026-09-17 (cierre de la sesión 6): M.0.1 a M.0.5, M.1 entero, M.2 entero, M.3.1, M.3.1b,
-// M.3.2, M.3.3, M.3.4 y M.8.2 hechas. Geocore ya guarda y sirve lo mensual, y el worker verifica
-// el contrato del esquema. Sigue M.4.1 (la key con el tenant adentro), que abre el sprint de las
-// altas; queda 👥 M.3.5, del equipo. M.0.6 sigue postergada por la demo. Al cerrar cada sesión se
+// Al 2026-09-17 (cierre de la sesión 7): M.0.1 a M.0.5, M.1 entero, M.2 entero, M.3.1 a M.3.4,
+// M.4.1 a M.4.3 y M.8.2 hechas. La key del COG lleva el tenant y la receta, los handlers tienen su
+// paquete y la escritura mensual está probada contra PostGIS. Sigue M.4.4 (process_parcela sobre el
+// pipeline); quedan 👥 M.3.5, del equipo, y M.0.6, postergada por la demo. Al cerrar cada sesión se
 // cambia acá lo que diga SPRINTS_FASE_M.md.
 const ESTADO = {
   "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho",
@@ -377,6 +377,7 @@ const ESTADO = {
   "M.2.1": "hecho", "M.2.2": "hecho", "M.2.3": "hecho", "M.2.4": "hecho", "M.2.5": "hecho",
   "M.2.6": "hecho",
   "M.3.1": "hecho", "M.3.1b": "hecho", "M.3.2": "hecho", "M.3.3": "hecho", "M.3.4": "hecho",
+  "M.4.1": "hecho", "M.4.2": "hecho", "M.4.3": "hecho",
   "M.8.2": "hecho"
 };
 
@@ -392,7 +393,7 @@ const DECISIONES = [
   ["#31 · histórico mensual, compuesto en GEE (opción B)", "M.1", "hecho", "decidida"],
   ["Receta v1: NDVI, EVI, NDRE, NDMI · cobertura 0,3 · 24 meses", "M.1.4", "hecho", "decidida"],
   ["#33 · se reescribe la capa de satélite, no el servicio", "M.1", "hecho", "decidida"],
-  ["La key del COG con el tenant adentro", "M.4", "pendiente", "en M.4.1"],
+  ["La key del COG: tenants/{t}/ranchos/{r}/{receta}/{índice}/{AAAA-MM}.tif (#47)", "M.4.1", "hecho", "decidida"],
   ["Handlers a demanda: ¿los usa el front de tenants?", "M.6.2", "pendiente", "equipo"],
   ["Capa satelital en el editor: licencia", "M.7.5", "pendiente", "equipo"]
 ];
@@ -415,7 +416,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 7;
+const sesionProxima = 8;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>
