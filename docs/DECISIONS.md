@@ -2048,3 +2048,74 @@ de la config de la raíz que en `main`: ninguno nuevo.
   - `/health` responde 200 y las 8 funciones quedan registradas;
   - `handlers` y `pipeline` se importan adentro del contenedor;
   - los únicos `ERROR` son los esperados de GEE y la base sin configurar (`#27`).
+
+## 49. La escritura mensual: una fila por índice, también sin valor (2026-09-17)
+
+> Tarea M.4.3 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). El esquema es la migración
+> `MedicionesMensuales` de Geocore (`#25` de allá), y su contrato lo verifica
+> `check_schema.py` (`#46`).
+
+**Decisión.** Dos piezas:
+- `pipeline/filas.py:filas_del_mes()`, **pura**: de la `Reduccion` de un mes a una
+  `FilaMensual` por índice de la receta;
+- `db_repository.upsert_mediciones_mensuales()`, que las escribe en una conexión y un
+  round-trip.
+
+Y `insert_layer` suma `receta` y `estadisticas`, opcionales.
+
+**Qué lleva cada fila.**
+- `fecha` es el primer instante del mes en UTC, igual para todos los índices. Es la PK, así
+  que tiene que ser la misma en cada reproceso.
+- `valor` es la mediana, **o nulo si la cobertura quedó bajo el mínimo de la receta**
+  (0,3 en v1). En el mínimo exacto, va.
+- **`estadisticas` va siempre, aunque `valor` sea nulo.** Son números que se calcularon y se
+  pagaron, y descartarlos pierde información. Quien los lee filtra por `valor` o por
+  `cobertura`: la métrica del rancho ya lo hace (Geocore `#29`). **M.7.3 tiene que hacer lo
+  mismo** antes de dibujar la banda p10–p90 de un mes nublado.
+- Un mes sin un solo píxel con dato se escribe igual: las estadísticas van con nulos adentro
+  y `observaciones` nula.
+
+**Tres diferencias con el `insert_measurements` viejo, y por qué.**
+- **Las filas con `valor` nulo se escriben.** El mes existe aunque esté nublado: el front
+  dibuja el hueco (B-6), y el cierre de mes (M.5) sabe que ya se procesó. La vieja las
+  salteaba porque la columna era `NOT NULL`.
+- **En el conflicto, `min_val` y `max_val` pasan a `NULL`.** Lo mensual ya no los escribe
+  (`ARQUITECTURA` §6), y una fila vieja por pasada del día 1 cae en la misma PK que la del
+  mes. Sin esto, sus `min_val` y `max_val` quedaban colgados en la fila mensual. Pasa hasta
+  que el equipo haga M.3.5.
+- **Un lote con filas repetidas se rechaza antes de ir a la base.** La vieja se quedaba con
+  la última; las filas de un mes no se repiten por construcción, así que acá es un bug.
+
+**Los `NaN` no llegan a la base.** `json.dumps` escribe `NaN` sin quejarse, pero no es JSON,
+y Postgres rechaza el `jsonb` con el lote entero, sin decir qué número fue. `filas_del_mes`
+los rechaza nombrando el índice y la estadística, y el `Json` del repositorio usa
+`allow_nan=False` como segunda defensa. GEE devuelve `None` cuando no hay píxeles: un `NaN`
+significaría que algo cambió.
+
+**Un arreglo de paso: `insert_layer` no hacía rollback.** Si el insert fallaba, la conexión
+volvía al pool con la transacción abortada, y la siguiente consulta en esa conexión fallaba con
+`current transaction is aborted`. Con los CHECK nuevos, un insert rechazado dejó de ser
+teórico. Ahora usa el `_deshacer` que ya usaban las demás.
+
+**`estadisticas` de una capa tiene que ser un `dict`.** La base tiene un CHECK que rechaza
+cualquier otro JSON; se valida antes para que el error diga qué se pasó. Los llamadores
+viejos no pasan ni `receta` ni `estadisticas`, y quedan en `NULL`, como antes.
+
+**Cuándo se congela `s2-mensual-v1`.** Las filas de la verificación de abajo fueron locales y
+se borraron. **La primera fila real la escribe el handler de M.4.4 en producción**, así que
+la receta v1 queda congelada **al mergear M.4.4**: desde ahí, cambiar un parámetro es una v2.
+
+**Cómo se probó.**
+- 23 tests nuevos: 13 de las filas (puros) y 10 de la escritura, con una conexión falsa que
+  captura el SQL y los valores. La suite: 518 verdes.
+- **La corrida real**, contra PostGIS 15 en un contenedor con las migraciones de Geocore
+  aplicadas. Primero `check_schema.py`: **43 de 43 en ok**. Después la escritura:
+  - dos escrituras del mismo mes dejan 4 filas, con los valores de la segunda;
+  - la fila vieja por pasada del día 1 queda convertida en la mensual, con `min_val` y
+    `max_val` en `NULL`;
+  - un mes con cobertura 0,1 deja 4 filas y ninguna con `valor`;
+  - un mes sin dato deja las estadísticas con nulos adentro y `observaciones` nula;
+  - `cobertura = 73` (un porcentaje) lo rechaza `ck_measurements_cobertura`: no entra
+    ninguna fila del lote, y el pool sigue sano después del rechazo;
+  - la capa mensual, escrita dos veces, es una sola fila con `receta` y `estadisticas`
+    (`jsonb_typeof = object`); una capa vieja deja esas dos columnas en `NULL`.

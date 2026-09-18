@@ -156,6 +156,7 @@ pipeline/
     reduccion.py     reductor(receta), cobertura(img, roi)  -> expresiones
   productos.py       estadisticas_del_mes(...) y mapa_del_mes(...): unen etapas, siguen sin I/O
   claves.py          la key del COG mensual y su natural_key               ← puro, M.4.1
+  filas.py           de la reducción a las filas de measurements           ← puro, M.4.3
   ejecucion.py       el borde con GEE
 handlers/            M.4.2, DECISIONS #48
   seguimiento.py     el wrapper de jobs (con_seguimiento) y RETRIES (sale de inngest_handlers.py)

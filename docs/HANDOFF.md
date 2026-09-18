@@ -257,6 +257,12 @@ el job: en ese caso el worker procesa igual y no reporta.
 publicar dos veces. `layers` usa un UUIDv5 determinista; `measurements`, un
 `ON CONFLICT` sobre su PK.
 
+**Lo mensual se escribe con `upsert_mediciones_mensuales`** (M.4.3, `DECISIONS #49`): una
+fila por índice y mes, **también con `valor` nulo** cuando la cobertura quedó bajo el
+mínimo, con `estadisticas`, `cobertura`, `observaciones` y `receta`. En el conflicto pone
+`min_val` y `max_val` en `NULL`. `insert_layer` acepta `receta` y `estadisticas` (un
+`dict`). Probado contra PostGIS con las migraciones de Geocore el 2026-09-17.
+
 **Tres variables tienen que coincidir entre repos.** Nada las valida al
 desplegar, pero desde el 2026-08-26 `GET /health/ready` del tileserver detecta
 las dos primeras sin necesidad de un tile:

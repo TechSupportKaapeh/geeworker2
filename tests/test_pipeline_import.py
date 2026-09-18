@@ -51,6 +51,8 @@ def test_importar_cada_modulo_de_pipeline_no_abre_conexiones():
         "pipeline.etapas", "pipeline.etapas.fuente",
         # M.4.1: la key del COG mensual.
         "pipeline.claves",
+        # M.4.3: las filas mensuales.
+        "pipeline.filas",
     } <= set(resultado.stdout.split())
 
 
