@@ -120,7 +120,8 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Firma de Inngest | ✅ 2026-09-04 — se verifica en modo cloud; 401 sin firma (`DECISIONS #25`, `W-8`) |
 | Criterio de entorno | ✅ Uno solo (`config.IS_PRODUCTION`); lo desconocido cuenta como producción |
 | Correlación en los logs | ✅ 2026-09-07 — `run_id`, `attempt`, `job_id` e ids de entidad en cada línea (F.18) |
-| Despliegue del worker | 🟡 `Dockerfile` escrito el 2026-09-07, **sin construir** (FASE H) |
+| Despliegue del worker | 🟡 `Dockerfile` escrito el 2026-09-07. **Construido y arrancado en local el 2026-09-17** (M.4.2): `/health` 200 y las 8 funciones registradas. Desde ese día copia `pipeline/` y `handlers/`, y `tests/test_dockerfile.py` pone el CI en rojo si un paquete que `app` importa no se copia (`DECISIONS #48`) |
+| **`handlers/`** | ✅ 2026-09-17 (M.4.2, `DECISIONS #48`): el wrapper de jobs (`con_seguimiento`), el ROI y las utilidades, fuera de la capa vieja. Los handlers mensuales usan esto, no `inngest_handlers.py` |
 | TLS contra MinIO | ✅ 2026-09-07 — el default se deduce del host; lo desconocido asume TLS (`W-2`) |
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |

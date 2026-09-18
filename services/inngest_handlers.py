@@ -4,7 +4,6 @@ import tempfile
 import time
 from datetime import date, datetime, timedelta, timezone
 
-import ee
 import inngest
 
 from services.inngest_client import inngest_client
@@ -24,19 +23,19 @@ from services.cog_converter import convert_to_cog
 from repositories.db_repository import (update_processing_job, insert_layer,
                                        insert_measurement, insert_measurements,
                                        insert_sentinel2_date)
-from services.avance_job import (AVISO, ERROR, INFO, es_definitivo, paso, reportar,
-                                 resumir_error, seguimiento)
-from utils_pkg.logging_config import contexto_de_ejecucion
+from services.avance_job import AVISO, INFO, paso, reportar
 from utils_pkg.visualization import index_band_and_vis
+# M.4.2: el wrapper de jobs, el ROI y las utilidades viven en `handlers/`, para que
+# los handlers del pipeline mensual no importen este modulo, que es la capa vieja
+# y se borra en M.6.1. Se importan con los nombres de siempre: los handlers de
+# abajo los buscan aca, y los tests los reemplazan aca.
+from handlers.geometria import coords_to_geometry, normalizar_coordenadas  # noqa: F401 - la usan los tests
+from handlers.seguimiento import RETRIES, envolver_con_estado
+from handlers.utilidades import borrar_temporales as _borrar_temporales
+from handlers.utilidades import entre as _entre
+from handlers.utilidades import ms_desde as _ms_desde
 
 logger = logging.getLogger("inngest_handlers")
-
-# Reintentos de Inngest, en **un solo lugar**. El wrapper de jobs necesita saber
-# cual es el ultimo intento para no marcar `failed` antes de tiempo (E.4), y si
-# este numero y el de los decoradores se separan, el estado del job vuelve a
-# mentir sin que nada falle. `ctx.attempt` es 0-indexado, asi que el ultimo
-# intento es `attempt == RETRIES`.
-RETRIES = 3
 
 def claves_de_capa(entidad: str, entidad_id: str, indice: str, inicio: str,
                    fin: str | None = None):
@@ -82,162 +81,14 @@ def claves_de_capa(entidad: str, entidad_id: str, indice: str, inicio: str,
             f"{entidad}_{indice}_{entidad_id}_{periodo}")
 
 
-def _borrar_temporales(*rutas):
-    """Borra archivos temporales sin dejar que un fallo al borrar tape el real."""
-    for ruta in rutas:
-        if not ruta:
-            continue
-        try:
-            os.remove(ruta)
-        except OSError as e:
-            # Un temporal que no se pudo borrar es basura en disco, no un fallo
-            # del procesamiento. Se registra para que no sea invisible.
-            logger.warning("No se pudo borrar el temporal %s: %s", ruta, e)
-
-def normalizar_coordenadas(coordinates):
-    """Traduce el payload de Geocore a coordenadas de GeoJSON.
-
-    Devuelve `(coordenadas, es_multipoligono)`. **Funcion pura**: no toca GEE,
-    asi que se puede probar sin autenticarse —construir una `ee.Geometry` exige
-    `ee.Initialize()`, porque las clases de geometria se generan a partir del
-    catalogo de algoritmos del servidor—.
-
-    Esta separada de `coords_to_geometry` porque es **el contrato con Geocore**,
-    y es la parte que se rompe en silencio: Geocore manda `CoordinateDto`, o sea
-    `[{lat, lng}]`, y GeoJSON quiere `[lng, lat]`. Invertir el orden no produce
-    un error, produce un ROI en otro lugar del planeta.
-    """
-    # Lista de diccionarios: el `CoordinateDto` de C#, que puede venir en
-    # camelCase o en PascalCase segun como este configurado el serializador.
-    if isinstance(coordinates, list) and len(coordinates) > 0 and isinstance(coordinates[0], dict):
-        anillo = []
-        for c in coordinates:
-            lng = c.get("lng") if c.get("lng") is not None else c.get("Lng")
-            lat = c.get("lat") if c.get("lat") is not None else c.get("Lat")
-            anillo.append([lng, lat])
-        # GEE rechaza un poligono abierto, y Geocore no garantiza cerrarlo.
-        if len(anillo) > 0 and anillo[0] != anillo[-1]:
-            anillo.append(anillo[0])
-        return [anillo], False
-
-    # Un MultiPolygon tiene un nivel de anidamiento mas que un Polygon.
-    es_multi = (
-        isinstance(coordinates, list) and len(coordinates) > 0
-        and isinstance(coordinates[0], list) and len(coordinates[0]) > 0
-        and isinstance(coordinates[0][0], list) and len(coordinates[0][0]) > 0
-        and isinstance(coordinates[0][0][0], list)
-    )
-    return coordinates, es_multi
-
-
-def coords_to_geometry(coordinates) -> ee.Geometry:
-    """Arma la `ee.Geometry` del ROI. Requiere `ee.Initialize()` previo."""
-    coords, es_multi = normalizar_coordenadas(coordinates)
-    if es_multi:
-        return ee.Geometry.MultiPolygon(coords)
-    return ee.Geometry.Polygon(coords)
-
 def _with_job_tracking(func):
-    def wrapper(ctx: inngest.Context, step: inngest.StepSync) -> dict:
-        # Normalize payload keys (first letter lowercase) to match Python expectations
-        payload = {k[:1].lower() + k[1:] if isinstance(k, str) else k: v for k, v in ctx.event.data.items()}
-        job_id = payload.get("jobId")
+    """El wrapper de jobs de la capa vieja (`handlers/seguimiento.py`).
 
-        # F.18: todo lo que se loguee de aca para adentro lleva con que ejecucion
-        # y con que entidad pasó — incluidos los logs de `storage_service`,
-        # `db_repository` y `gee_download`, que son los que fallan de verdad y
-        # que no tienen forma de conocer este contexto por su cuenta.
-        #
-        # `run_id` es el identificador que asigna Inngest y el unico que permite
-        # juntar los intentos de una misma ejecucion en el panel y en el log.
-        #
-        # `seguimiento` hace lo mismo para la bitacora del job: `reportar()` y
-        # `paso()` saben a que job y en que intento escriben sin que cada
-        # handler tenga que pasarlos (`services/avance_job.py`).
-        with contexto_de_ejecucion(
-            run_id=getattr(ctx, "run_id", None),
-            attempt=ctx.attempt,
-            funcion=func.__name__,
-            job_id=job_id,
-            tenant_id=payload.get("tenantId"),
-            parcela_id=payload.get("parcelaId"),
-            rancho_id=payload.get("ranchoId"),
-        ), seguimiento(job_id, ctx.attempt, RETRIES):
-            return _correr_con_estado(func, ctx, step, payload, job_id)
-
-    wrapper.__name__ = func.__name__
-    return wrapper
-
-
-def _correr_con_estado(func, ctx, step, payload, job_id):
-    """El cuerpo de `_with_job_tracking`, ya dentro del contexto de logging.
-
-    Los eventos `inicio` y `fin` de la bitacora van **dentro** de los steps que
-    cambian el estado: quedan memoizados con el, y se escriben una vez por
-    ejecucion aunque Inngest vuelva a correr este cuerpo en cada request.
+    `update_processing_job` se busca en **este** modulo al llamarla: los tests
+    de los handlers viejos la reemplazan aca. Se va con la capa vieja (M.6.1);
+    los handlers nuevos usan `con_seguimiento`.
     """
-    if job_id:
-        def _mark_running():
-            update_processing_job(job_id, "running", started_at_now=True)
-            reportar("inicio", "El worker tomó el job", progreso=1, funcion=func.__name__)
-        step.run("mark-job-running", _mark_running)
-
-    try:
-        res = func(ctx, step, payload)
-        if job_id:
-            def _mark_completed():
-                update_processing_job(job_id, "completed", progress=100, finished_at_now=True)
-                reportar("fin", "Terminó sin errores", progreso=100)
-            step.run("mark-job-completed", _mark_completed)
-        return res
-    except Exception as e:
-        # El mensaje se captura **ahora**, no dentro de la clausura: Python
-        # borra `e` al salir del bloque `except`, asi que una clausura que
-        # lo referencie funciona solo mientras se llame aca adentro. Hoy es
-        # el caso, pero es una trampa que espera a que alguien mueva la
-        # linea. Ruff lo marcaba como F821/F841.
-        #
-        # Y va resumido: termina en `error_message`, que
-        # `GET /api/processing/jobs/{id}` le devuelve al usuario del tenant, y
-        # el crudo puede traer una URL prefirmada o un host privado. El crudo
-        # va al log.
-        mensaje = resumir_error(e)
-
-        if job_id and es_definitivo(e, ctx.attempt, RETRIES):
-            # E.4: **solo un error definitivo marca `failed`.**
-            #
-            # Antes se marcaba en cada intento, y el reintento lo volvia a
-            # poner en `running`. Con `retries=3` eso significa que el
-            # estado que ve el usuario miente durante toda la ventana de
-            # reintentos: un job que se va a recuperar solo aparece como
-            # fallido, y quien lo mire va a diagnosticar un problema que no
-            # existe. `failed` tiene que significar "no se va a recuperar".
-            #
-            # "Definitivo" no es solo el ultimo intento: ver `es_definitivo`.
-            # Mirar solo `attempt` dejaba en `running` para siempre a un
-            # `NonRetriableError`, que Inngest no reintenta.
-            logger.error("Job %s fallo y no se va a reintentar: %s", job_id, e)
-
-            def _mark_failed():
-                update_processing_job(job_id, "failed", error_message=mensaje,
-                                      finished_at_now=True)
-                reportar("fin", f"Falló y no se va a reintentar: {mensaje}", nivel=ERROR)
-            step.run("mark-job-failed", _mark_failed)
-        elif job_id:
-            logger.warning(
-                "Job %s fallo en el intento %s de %s; Inngest va a "
-                "reintentar, asi que el estado sigue en `running`: %s",
-                job_id, ctx.attempt + 1, RETRIES + 1, e,
-            )
-            # Aca solo llegan errores del cuerpo del handler, fuera de los
-            # steps: los de un step los registra `paso()` desde adentro
-            # (`avance_job`, regla 2). Cada request que falla aca es un intento
-            # real, asi que la linea no se duplica en los replays.
-            reportar("reintento",
-                     f"Falló en el intento {ctx.attempt + 1} de {RETRIES + 1}; "
-                     f"Inngest lo va a reintentar: {mensaje}",
-                     nivel=AVISO)
-        raise
+    return envolver_con_estado(func, lambda *a, **k: update_processing_job(*a, **k))
 
 
 # El historico de una parcela nueva se procesa **por ventanas**, cada una en su
@@ -266,15 +117,6 @@ def ventanas(desde: date, hasta: date, n: int) -> list[tuple[str, str]]:
     total = (hasta - desde).days
     cortes = [desde + timedelta(days=round(total * i / n)) for i in range(n + 1)]
     return [(cortes[i].isoformat(), cortes[i + 1].isoformat()) for i in range(n)]
-
-
-def _entre(inicio: float, fin: float, hechas: int, total: int) -> float:
-    """Avance de la barra cuando `hechas` de las `total` partes de una etapa terminaron."""
-    return inicio + (fin - inicio) * hechas / total
-
-
-def _ms_desde(t0: float) -> int:
-    return int((time.monotonic() - t0) * 1000)
 
 
 def _escribir_serie(parcela_id: str, tenant_id: str, puntos) -> int:
