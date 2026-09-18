@@ -233,11 +233,23 @@ Tres cosas que cambian lo que sigue:
 | M.4.1 | **Decidir la forma de la key con el tenant adentro**, por ejemplo `tenants/{tenantId}/ranchos/{id}/{indice}/{AAAA-MM}.tif`, antes de escribir un solo COG nuevo. Es la base para cerrar A01 (M.8.1) sin mover objetos después | S | `DECISIONS` escrito | ✅ 2026-09-17 · geeworker2#31, `DECISIONS #47`. **`tenants/{t}/ranchos/{r}/{receta}/{indice}/{AAAA-MM}.tif`**: la receta va adentro porque el tileserver cachea los tiles como `immutable` por un año. La arma `pipeline/claves.py`, con los uuid canónicos |
 | M.4.2 | `handlers/`: sacar de `inngest_handlers.py` el wrapper de jobs, las claves y las utilidades, **sin cambiar comportamiento** | M | la suite entera verde sin tocar un test | ✅ 2026-09-17 · geeworker2#32, `DECISIONS #48`. Ningún test tocado. `claves_de_capa()` se quedó con la capa vieja (las mensuales están en `pipeline/claves.py`). **El Dockerfile copia `pipeline/` y `handlers/`**, y `test_dockerfile.py` lo cuida; la imagen se construyó y arrancó en local |
 | M.4.3 | Escritura: upsert de la fila mensual y `insert_layer` con receta y estadísticas | S | tests con conexión falsa | ✅ 2026-09-17 · geeworker2#33, `DECISIONS #49`. Las filas sin `valor` se escriben; `estadisticas` va siempre. Probado contra PostGIS con las migraciones: `check_schema` 43/43, upsert idempotente, el CHECK de cobertura rechaza el lote entero |
-| M.4.4 | `process_parcela` sobre el pipeline: el plan y 24 steps `mes-AAAA-MM`, con bitácora y avance | M | tests con el step que imita al SDK | ⬜ |
-| M.4.5 | `process_rancho` sobre el pipeline: 24 COG de NDVI | M | ídem | ⬜ |
+| M.4.4 | `process_parcela` sobre el pipeline: el plan y 24 steps `mes-AAAA-MM`, con bitácora y avance | M | tests con el step que imita al SDK | ✅ 2026-09-18 · geeworker2#36, `DECISIONS #50`. Mismo `fn_id`; el alta vieja se borró. **Probado contra GEE real: con cobertura 0, GEE omite las claves** y el alta no terminaba nunca; arreglado en `leer`. Las 3 parcelas: 24 meses en 95–103 s. **`s2-mensual-v1` congelada** |
+| M.4.5 | `process_rancho` sobre el pipeline: 24 COG de NDVI | M | ídem | ✅ 2026-09-18 · geeworker2#37, `DECISIONS #51`. Un mes sin un píxel limpio no tiene COG (decisión del usuario). **El GeoTIFF de GEE no declara nodata**: lo enmascarado llegaba como NDVI 0; ahora es la máscara del COG. Se borró `register_layer`. Contra lo real: 23 COG en 226 s, válidos |
 | M.4.6 | De punta a punta: un rancho y una parcela reales desde el panel. Se miran las filas, el COG por el tileserver (`check_prod.py`) y la pestaña Procesos | S | anotado en la sesión | ⬜ |
 
 **Riesgo:** los runs en vuelo durante el deploy rehacen sus steps. Es idempotente.
+
+**Sesión 8 (2026-09-18): M.4.4 y M.4.5 hechas**, cada una por PR con el CI en verde. Crónica:
+[`SESSION_2026-09-18_sesion_8_las_altas_II.md`](SESSION_2026-09-18_sesion_8_las_altas_II.md).
+Tres cosas que cambian lo que sigue:
+
+- **`s2-mensual-v1` está congelada** desde el merge de geeworker2#36: cambiar un parámetro es
+  la v2.
+- **Probar contra GEE real sacó dos bugs que los tests no veían** (`DECISIONS #50` y `#51`):
+  con cobertura 0 GEE **omite** las claves, y su GeoTIFF **no declara nodata**. Los dos
+  estaban en supuestos escritos que nadie había mirado. M.4.6 los vuelve a mirar en producción.
+- **El worker ya no emite eventos** y registra 7 funciones: `register_layer` se fue con el
+  `process_rancho` viejo. Las dos altas no tienen límite de concurrencia: va con M.5.3.
 
 **Sesión 7 (2026-09-17): M.4.1, M.4.2 y M.4.3 hechas**, cada una por PR con el CI en verde.
 Crónica: [`SESSION_2026-09-17_sesion_7_las_altas_I.md`](SESSION_2026-09-17_sesion_7_las_altas_I.md).
