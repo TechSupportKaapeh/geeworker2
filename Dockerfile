@@ -36,6 +36,12 @@ COPY services/ ./services/
 COPY repositories/ ./repositories/
 COPY utils_pkg/ ./utils_pkg/
 COPY scripts/ ./scripts/
+# M.4.2: `services/inngest_handlers.py` importa `handlers/`, y los handlers del
+# pipeline mensual (M.4.4) importan `pipeline/`. Sin estas dos líneas el
+# contenedor muere al arrancar con `ModuleNotFoundError`. Lo cuida
+# `tests/test_dockerfile.py`, que importa `app` con solo lo que se copia acá.
+COPY pipeline/ ./pipeline/
+COPY handlers/ ./handlers/
 
 # `config.py` hace `os.makedirs(BASE_OUTPUT_DIR)` **al importarse**, así que el
 # directorio tiene que existir y ser escribible por el usuario del proceso antes

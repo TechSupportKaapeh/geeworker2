@@ -145,10 +145,11 @@ llegar a producción", aunque la protección del punto 1 no se pueda activar.
 
 - **Ninguno construye la imagen Docker.** La construye Railway. Un Dockerfile
   roto no lo agarra el CI, lo agarra el deploy.
-  - Caso concreto que viene: el Dockerfile del worker copia los directorios uno
-    por uno y **no copia `pipeline/`**. Cuando un handler lo importe (M.4.4), hay
-    que sumar `COPY pipeline/ ./pipeline/`. Si no, el contenedor muere al
-    arrancar: es el mismo bug que tuvo el tileserver.
+  - ✅ **El olvido más probable sí lo cubre desde M.4.2** (`DECISIONS #48`):
+    `tests/test_dockerfile.py` importa `app` con solo lo que copian los `COPY`, así
+    que un paquete nuevo que nadie suma al Dockerfile pone el CI en rojo. El
+    Dockerfile ya copia `pipeline/` y `handlers/`. Lo que sigue sin cubrir es la
+    imagen en sí: la base, las dependencias de sistema y el `pip install`.
 - **El tileserver no audita dependencias**, y varias no tienen pin (`aiofiles`,
   `boto3`, `numpy`).
 - **Los tests del worker que le hablan a GEE** (marcados `gee`, desde M.2.1,

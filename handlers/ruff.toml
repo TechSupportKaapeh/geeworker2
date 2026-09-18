@@ -1,0 +1,3 @@
+# El ruff estricto de pipeline/ (DECISIONS #34), tambien para handlers/: es codigo
+# nuevo del mismo pipeline (M.4.2). Las excepciones y su porque estan alla.
+extend = "../pipeline/ruff.toml"

@@ -1986,3 +1986,65 @@ ids rechazados, incluidos `../otro-tenant` y el nulo; los argumentos por nombre;
 receta cambie la key y no la natural_key; y que la natural_key no choque con la de la capa
 vieja. **Control negativo:** con la canonicalización quitada (el id pasa tal cual), cuatro
 tests salen en rojo.
+
+## 48. `handlers/`: el wrapper de jobs y las utilidades salen de la capa vieja (2026-09-17)
+
+> Tarea M.4.2 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) (`ARQUITECTURA_PIPELINE.md` §4).
+
+**Decisión.** Sale de `services/inngest_handlers.py`, sin cambiar comportamiento, un paquete
+`handlers/` con tres módulos:
+- `seguimiento.py`: `RETRIES` y el wrapper que lleva el estado del job y su bitácora;
+- `geometria.py`: `normalizar_coordenadas` y `coords_to_geometry`;
+- `utilidades.py`: `borrar_temporales`, `entre` y `ms_desde`.
+
+Los handlers del pipeline mensual (M.4.4 y M.4.5) los usan **sin importar la capa vieja**,
+que M.6.1 borra. `inngest_handlers.py` los importa con los nombres de siempre (`_entre`,
+`_borrar_temporales`…), así que sus handlers no cambian una línea.
+
+**El wrapper recibe con qué escribe el estado.** `envolver_con_estado(func, actualizar_job)`.
+Hay dos decoradores encima:
+- `con_seguimiento`, para los handlers nuevos, busca `db_repository.update_processing_job` al
+  llamarla;
+- `_with_job_tracking`, que se queda en `inngest_handlers.py`, busca `update_processing_job`
+  en **ese** módulo, que es donde la reemplazan los tests de los handlers viejos.
+
+El criterio de aceptación era "la suite entera verde sin tocar un test", y dos archivos de
+tests parchean `handlers.update_processing_job`. Si el wrapper hubiera importado la función en
+su módulo nuevo, esos parches habrían dejado de alcanzarlo, y los tests habrían escrito en la
+base de verdad o fallado. Recibirla como parámetro es además lo que corresponde (el wrapper no
+tiene por qué saber de la base); el adaptador de la capa vieja se va con ella.
+
+**Me desvié del tablero en una cosa: `claves_de_capa()` se queda en `inngest_handlers.py`.**
+El tablero decía "sacar las claves". Desde M.4.1 las claves de lo mensual están en
+`pipeline/claves.py` (`#47`). La función vieja arma las keys de la capa vieja, y solo la usan
+sus handlers: mudarla metería en el paquete nuevo código que M.6.1 borra.
+
+**El Dockerfile copia `pipeline/` y `handlers/`.** Sin eso, el merge de este PR habría
+desplegado un contenedor que muere al arrancar con `ModuleNotFoundError: handlers`. Es el
+bug que tuvo el tileserver, y el que `PROXIMA_SESION` tenía anotado como 👥 para `pipeline/`
+antes de M.4.4. Iba en el mismo PR o no iba.
+
+**Y un test que lo cuida, porque el CI no construye la imagen.** `tests/test_dockerfile.py`
+arma en un directorio temporal **solo** lo que copian los `COPY` del Dockerfile, e importa
+`app` ahí, sin el repo en el path y con el socket saboteado.
+- **Control negativo:** con el `COPY handlers/` quitado, el test sale en rojo con
+  `No module named 'handlers'`.
+- Un segundo test controla que el parser vea todos los `COPY`.
+- **No cubre `pipeline/` todavía:** `app` no lo importa. Lo va a cubrir solo desde M.4.4,
+  cuando un handler lo importe.
+
+**Lo único observable que cambia:** las líneas de log del wrapper (`Job … fallo…`) salen
+con el logger `handlers.seguimiento` en vez de `inngest_handlers`.
+
+**`handlers/` tiene el ruff estricto de `pipeline/`** (`handlers/ruff.toml` lo extiende). El
+CI no lo corre, porque el CI no se toca por ahora. Se corre en local:
+`ruff check pipeline/ handlers/`. En `inngest_handlers.py` quedaron los mismos 5 hallazgos
+de la config de la raíz que en `main`: ninguno nuevo.
+
+**Cómo se probó.**
+- La suite: 495 verdes. Son 488 sin tocar ninguno, más 7 nuevos: 3 del Dockerfile y 4 de
+  `con_seguimiento`, incluido que importar `handlers` no abre conexiones.
+- **La imagen construida con Docker y arrancada**, sin credenciales:
+  - `/health` responde 200 y las 8 funciones quedan registradas;
+  - `handlers` y `pipeline` se importan adentro del contenedor;
+  - los únicos `ERROR` son los esperados de GEE y la base sin configurar (`#27`).

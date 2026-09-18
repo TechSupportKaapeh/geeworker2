@@ -157,8 +157,10 @@ pipeline/
   productos.py       estadisticas_del_mes(...) y mapa_del_mes(...): unen etapas, siguen sin I/O
   claves.py          la key del COG mensual y su natural_key               ← puro, M.4.1
   ejecucion.py       el borde con GEE
-handlers/
-  seguimiento.py     _with_job_tracking y claves de capa (sale de inngest_handlers.py)
+handlers/            M.4.2, DECISIONS #48
+  seguimiento.py     el wrapper de jobs (con_seguimiento) y RETRIES (sale de inngest_handlers.py)
+  geometria.py       el ROI desde el payload de Geocore
+  utilidades.py      temporales, avance y milisegundos
   parcela.py         alta (24 meses) y mes cerrado
   rancho.py          alta (24 COG) y mes cerrado
   a_demanda.py       mapa de un período e índice cualquiera, con el mismo pipeline
