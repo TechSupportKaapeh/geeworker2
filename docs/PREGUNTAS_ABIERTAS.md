@@ -510,6 +510,13 @@ Forma candidata, para cuando toque:
 {entidad}/{id}/{indice}/{fecha}.tif      ← "todo el NDVI de X" es un prefijo
 ```
 
+> ✅ **Contestada para lo mensual el 2026-09-17** (M.4.1, `DECISIONS #47`). Es la forma
+> candidata, con dos segmentos más: el tenant primero, para cerrar A01 en M.8.1, y la
+> receta antes del índice, porque los tiles se cachean como inmutables y una receta
+> nueva tiene que ser otra URL:
+> `tenants/{tenantId}/ranchos/{id}/{receta}/{indice}/{AAAA-MM}.tif`. Las keys de la capa
+> vieja no se migran.
+
 ---
 
 # B. Hay que decidirlas antes de migrar a ingesta por pasada (FASE C)

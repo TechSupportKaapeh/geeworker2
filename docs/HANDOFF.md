@@ -212,6 +212,18 @@ exports/{parcelaId}/{fecha}_{indice}.{fmt}    export_data (.tif, .png o .csv)
 `{fecha}` es `YYYY-MM-DD`. **Los cuatro prefijos son planos**: `{entidad}/{id}/`
 y el archivo. No hay subcarpeta por fecha.
 
+**Lo mensual, desde M.4 (`DECISIONS #47`), va en otra forma**, con el tenant primero y
+la receta adentro:
+
+```
+tenants/{tenantId}/ranchos/{ranchoId}/{receta}/{indice}/{AAAA-MM}.tif
+```
+
+La arma `pipeline/claves.py:claves_cog_mensual()`, con su natural_key
+(`rancho_mensual_{indice}_{ranchoId}_{AAAA-MM}`, sin la receta: una fila por mes). Los
+uuid salen en minúsculas y con guiones, que es como Geocore va a firmar el tenant del token
+en M.8.1. Las keys de arriba son de la capa vieja: no se migran, y las borra M.6.
+
 ⚠️ Dos cosas que no coinciden con esto y conviene tener presentes:
 
 - **`ranchos/{id}/{fecha}_original.tif` ya no existe** — se borró con E.8 el
