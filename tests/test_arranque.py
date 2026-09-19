@@ -204,3 +204,54 @@ def test_describir_valor_ausente_sin_defecto_es_problema():
     texto_, problema = describir_valor(v, None)
     assert texto_ == "AUSENTE"
     assert problema is True
+
+
+# --------------------------------------------------------------------------
+# las URLs de Inngest que el SDK lee solo (2026-09-18/19)
+# --------------------------------------------------------------------------
+#
+# `INNGEST_BASE_URL=https://inn.gs` en el worker de produccion hizo que el sync
+# fallara con 404: el SDK la lee por su cuenta aunque el worker no se la pase.
+# Este reporte decia "en produccion no se usa". Ahora es un problema.
+
+_PRODUCCION_COMPLETA = dict(SECRETOS, ENVIRONMENT="production",
+                            MINIO_ENDPOINT="bucket.up.railway.app",
+                            DB_HOST="aws-0-us-east-1.pooler.supabase.com",
+                            DB_USER="postgres.abcdefghijklmnop",
+                            EE_SERVICE_ACCOUNT_EMAIL="w@p.iam.gserviceaccount.com")
+
+
+@pytest.mark.parametrize("nombre,valor", [
+    ("INNGEST_BASE_URL", "https://inn.gs"),
+    ("INNGEST_API_BASE_URL", "https://api.inngest.com"),
+    ("INNGEST_EVENT_API_BASE_URL", "https://inn.gs"),
+    ("INNGEST_DEV", "1"),
+])
+def test_en_produccion_las_urls_de_inngest_son_un_problema(nombre, valor):
+    """Aunque el valor parezca el correcto: el problema es que este definida."""
+    salida = texto(dict(_PRODUCCION_COMPLETA, **{nombre: valor}))
+
+    assert "VAN A FALLAR" in salida
+    assert "NO VA EN PRODUCCION" in salida
+    (linea,) = [l for l in salida.splitlines() if l.startswith("  - " + nombre)]
+    assert "Borrarla" in linea
+
+
+def test_en_produccion_sin_esas_variables_no_hay_problema():
+    assert "VAN A FALLAR" not in texto(_PRODUCCION_COMPLETA)
+
+
+def test_en_desarrollo_la_url_del_dev_server_esta_bien():
+    salida = texto({"ENVIRONMENT": "development",
+                    "INNGEST_BASE_URL": "http://localhost:8288"}, es_produccion=False)
+    assert "NO VA EN PRODUCCION" not in salida
+    assert "VAN A FALLAR" not in salida
+
+
+def test_ya_no_dice_que_en_produccion_no_se_usa():
+    """Era la frase falsa que dejo tranquilo a quien la leyo."""
+    from utils_pkg import arranque
+
+    assert all("no se usa" not in (v.consecuencia or "")
+               for _, variables in arranque.INVENTARIO for v in variables
+               if v.nombre.startswith("INNGEST"))

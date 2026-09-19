@@ -2413,3 +2413,30 @@ de hilos de Starlette (40 por defecto). Con muchas altas a la vez (un KML de cie
 GEE va a empezar a contestar "too many concurrent aggregations": es un error pasajero, y se
 reintenta. El límite que lo ordena es el de concurrencia de Inngest, que va con **M.5.3** y ahora
 tiene que tener en cuenta que el worker sí atiende en paralelo.
+
+## 54. El arranque avisa si hay URLs de Inngest en producción (2026-09-19)
+
+> Tarea M.4.9 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md), sumada después del sync roto del
+> 2026-09-18.
+
+**Qué pasó.** Al arreglar la event key de Geocore, quedó `INNGEST_BASE_URL=https://inn.gs` en el
+**worker**. El sync de la app empezó a fallar: `POST https://inn.gs/fn/register` → 404,
+`registration_failed`. `inn.gs` es el host de eventos de Inngest; el registro va a
+`api.inngest.com`.
+
+**Por qué nadie lo vio venir.** El worker no le pasa URLs al SDK en producción (PLAN F.3), y el
+reporte de arranque decía de `INNGEST_BASE_URL`: "en producción no se usa". **Era falso.** Sin el
+parámetro, el SDK **lee el entorno por su cuenta** (`client_lib/utils.py`): `INNGEST_API_BASE_URL`,
+después `INNGEST_BASE_URL`, después `INNGEST_DEV`, y solo si no hay ninguna usa Cloud. El aviso
+que tenía que alertar dejaba tranquilo a quien lo leía.
+
+**Decisión.** `Variable` suma `prohibida_en_produccion`: en producción, una variable así
+**definida** es un problema, sea cual sea su valor, y sale en "HAY N COSAS QUE VAN A FALLAR" con
+"Borrarla". Las cuatro que lee el SDK: `INNGEST_BASE_URL`, `INNGEST_API_BASE_URL`,
+`INNGEST_EVENT_API_BASE_URL` e `INNGEST_DEV`. En desarrollo siguen siendo lo normal. El comentario
+de `services/inngest_client.py` quedó corregido.
+
+**Cómo se probó.** 7 tests: cada una de las cuatro, en producción, es un problema con su
+consecuencia; sin ellas no hay problema; en desarrollo, la URL del dev server está bien; y ninguna
+consecuencia de `INNGEST_*` vuelve a decir "no se usa". Control negativo: con el `arranque.py`
+anterior, 5 en rojo. La suite: 580 verdes.

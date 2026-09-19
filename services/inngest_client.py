@@ -65,8 +65,15 @@ def resolve_client_config(*, is_production, base_url, event_key, signing_key):
         # `api_base_url` y `event_api_base_url` NO se fijan en produccion
         # (PLAN.md F.3). Forzarlos a INNGEST_BASE_URL, cuyo default es
         # `http://localhost:8288`, hacia que un deploy sin esa variable le
-        # hablara a su propio localhost en vez de a Inngest Cloud. Sin el
-        # parametro, el SDK usa las URLs de Cloud.
+        # hablara a su propio localhost en vez de a Inngest Cloud.
+        #
+        # **Pero no pasarlos no alcanza** (corregido el 2026-09-19): sin el
+        # parametro, el SDK **lee el entorno por su cuenta**
+        # (`client_lib/utils.py`: INNGEST_API_BASE_URL, INNGEST_BASE_URL e
+        # INNGEST_DEV, en ese orden) y solo si no hay ninguna usa Cloud. Con
+        # `INNGEST_BASE_URL=https://inn.gs` en el worker, el sync fallaba con
+        # 404. Por eso el reporte de arranque marca esas variables como
+        # problema si estan en produccion (`utils_pkg/arranque.py`).
         if not signing_key:
             problemas.append(
                 # Solo ASCII en los mensajes de log: los lee una consola de
