@@ -328,7 +328,7 @@ const SPRINTS = [
       { id: "M.4.10", t: "Función de diagnóstico: cuánto espera Inngest entre steps vacíos", repo: "worker", T: "S", ok: "Corrida contra un Inngest real" }
     ] },
   { id: "M.5", nombre: "Cierre de mes", objetivo: "Cada mes cerrado se procesa solo, disparado por Geocore.", sesiones: "2",
-    aviso: { tipo: "equipo", texto: "<b>M.5.1 a M.5.3 hechas el 2026-09-19 (sesión 9)</b>, pero el cierre <b>arranca apagado</b>: falta <code>CierreMensual__Habilitado=true</code> en el Geocore de Railway, y va <b>después</b> de que el worker con M.5.3 esté desplegado. Se hace con M.5.5. De paso quedó verificado contra un Inngest real que un evento reenviado con el mismo id no dispara otra corrida: es lo que hace segura la republicación de un job <code>pending</code>." },
+    aviso: { tipo: "equipo", texto: "<b>Cerrado el 2026-09-19 (sesión 9), en una sesión y no en dos.</b> Verificado en local con los cuatro servicios: 3 jobs en el primer arranque, 0 en los dos siguientes, el <code>pending</code> de 2 h republicado sin duplicar y los jobs borrados a mano recreados; 8 filas con 8 claves distintas. Pero el cierre <b>arranca apagado</b>: falta <code>CierreMensual__Habilitado=true</code> en el Geocore de Railway, y va <b>después</b> de que el worker con M.5.3 esté desplegado. Se hace con M.5.5. De paso quedó verificado contra un Inngest real que un evento reenviado con el mismo id no dispara otra corrida: es lo que hace segura la republicación de un job <code>pending</code>." },
     tareas: [
       { id: "M.5.1", t: "Lógica del reconciliador: día 5, republicar pending de más de 1 h, no reintentar failed", repo: "Geocore", T: "M", ok: "Tests con reloj falso" },
       { id: "M.5.2", t: "CierreMensualService: pagina entidades, crea jobs, publica terra/*.mes.requested", repo: "Geocore", T: "M", ok: "Dos instancias no duplican" },
@@ -371,8 +371,8 @@ const SPRINTS = [
     ] }
 ];
 
-// Al 2026-09-19 (cierre de la sesión 9): M.0.1 a M.0.5, M.1 entero, M.2 entero, M.3 entero,
-// M.4 entero, M.5.1 a M.5.3 y M.8.2 hechas. Sigue M.5.4. El cierre de mes ya está: Geocore crea
+// Al 2026-09-19 (cierre de la sesión 9): M.0.1 a M.0.5, M.1, M.2, M.3, M.4 y M.5 enteros,
+// más M.8.2. El sprint M.5 salió en una sesión y no en dos, así que sigue M.6.1. El cierre de mes ya está: Geocore crea
 // los jobs del último mes cerrado y el worker los procesa, pero el servicio arranca APAGADO
 // (CierreMensual__Habilitado): 👥 lo prende el equipo en Railway, con M.5.5. Queda M.0.6,
 // postergada por la demo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
@@ -384,7 +384,7 @@ const ESTADO = {
   "M.2.6": "hecho",
   "M.3.1": "hecho", "M.3.1b": "hecho", "M.3.2": "hecho", "M.3.3": "hecho", "M.3.4": "hecho", "M.3.5": "hecho",
   "M.4.1": "hecho", "M.4.2": "hecho", "M.4.3": "hecho", "M.4.4": "hecho", "M.4.5": "hecho", "M.4.6": "hecho", "M.4.7": "hecho", "M.4.8": "hecho", "M.4.9": "hecho", "M.4.10": "hecho",
-  "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho",
+  "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho", "M.5.4": "hecho", "M.5.5": "hecho",
   "M.8.2": "hecho"
 };
 
@@ -425,7 +425,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 10;
+const sesionProxima = 11;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

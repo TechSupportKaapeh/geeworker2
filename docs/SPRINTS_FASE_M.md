@@ -291,8 +291,8 @@ Tres cosas que cambian lo que sigue:
 | M.5.1 | La lógica pura del reconciliador: qué publicar dado "hoy", las entidades activas y los jobs existentes. Día 5; republicar un `pending` de más de 1 h; no reintentar un `failed` | Geocore | M | tests con `TimeProvider` falso | ✅ 2026-09-19 · Geocore#23, `DECISIONS #30`. **Antes del día 5 el objetivo es el mes anterior al último**, no "ninguno", y **una entidad creada después del mes se saltea**: su alta ya lo cubrió (decisiones del usuario). El reloj es un parámetro, no un `TimeProvider` |
 | M.5.2 | `CierreMensualService` (`BackgroundService` + `PeriodicTimer`): pagina entidades, crea jobs, publica `terra/*.mes.requested` | Geocore | M | tests; dos instancias no duplican (índice único) | ✅ 2026-09-19 · Geocore#24, `DECISIONS #31`. **Arranca apagado** (`CierreMensual__Habilitado`), publica con el `JobId` como id de evento, y el duplicado lo rechaza el índice. 3 tests contra PostGIS real |
 | M.5.3 | Handlers `terra/parcela.mes.requested` y `terra/rancho.mes.requested`, con límite de concurrencia en Inngest | worker | M | tests | ✅ 2026-09-19 · geeworker2#47, `DECISIONS #56`. Un solo step, reusando `procesar_mes` del alta; el mes sale del evento. **Las cuatro funciones de GEE comparten una cola de 5** (mismo `hash`, verificado contra un Inngest real, igual que la deduplicación por id) |
-| M.5.4 | `POST /api/admin/procesos/reprocesar` (TerraAdmin): republica el alta de un tenant o de una entidad. Sirve para las parcelas que ya existen | Geocore | M | tests de la política | ⬜ |
-| M.5.5 | Verificación: forzar el mes objetivo en desarrollo y reiniciar Geocore dos veces | todos | S | sin duplicados, sin meses perdidos | ⬜ |
+| M.5.4 | `POST /api/admin/procesos/reprocesar` (TerraAdmin): republica el alta de un tenant o de una entidad. Sirve para las parcelas que ya existen | Geocore | M | tests de la política | ✅ 2026-09-19 · Geocore#26, `DECISIONS #32`. Alcance entidad, rancho (con sus parcelas) o tenant; **saltea lo que ya tiene un alta viva** y **rechaza el pedido entero pasadas 200 entidades**. Si el evento no sale, el job queda `failed` para no tapar el reintento |
+| M.5.5 | Verificación: forzar el mes objetivo en desarrollo y reiniciar Geocore dos veces | todos | S | sin duplicados, sin meses perdidos | ✅ 2026-09-19 · en local, con Geocore, el worker, Inngest y PostGIS: 3 jobs en el primer arranque, **0 en los dos siguientes**, el `pending` de 2 h republicado sin duplicar, y los jobs borrados a mano recreados. 8 filas con 8 claves distintas. **Las dos republicaciones no dispararon ninguna corrida.** 👥 Falta prenderlo en Railway |
 
 **Sesión 9 (2026-09-19): M.5.1, M.5.2 y M.5.3 hechas**, cada una por PR con el CI en verde.
 Crónica: [`geocore/docs/SESSION_2026-09-19_sesion_9_el_cierre_de_mes.md`](../../geocore/docs/SESSION_2026-09-19_sesion_9_el_cierre_de_mes.md).
@@ -306,6 +306,20 @@ Tres cosas que cambian lo que sigue:
   `pending`. Se verificó contra el dev server; en Cloud lo mira M.5.5.
 - **M.5.4 se adelanta a M.5.5** si hay que reprocesar algo a mano: reprocesar desde el panel es la
   forma de reintentar un alta cancelada o fallida sin entrar a Inngest.
+
+**El sprint M.5 quedó cerrado el mismo 2026-09-19, en una sesión y no en dos**, con M.5.4
+(Geocore#26) y M.5.5. Lo que queda es del equipo, y es lo único que separa al cierre de mes de
+estar andando en producción:
+
+- 👥 **`CierreMensual__Habilitado=true` en el Geocore de Railway**, después de que el worker con
+  M.5.3 esté desplegado. El reporte de arranque dice en qué estado quedó.
+- 👥 Con eso prendido, mirar en **Inngest Cloud** que un evento con id repetido tampoco dispare
+  una corrida. En el dev server ya se vio: de tres envíos del mismo evento, corrió uno.
+
+Y una limitación que conviene tener escrita: **republicar un `pending` sólo ayuda si el evento
+nunca llegó a Inngest**, que es el agujero de dual-write que `DECISIONS #23` quería cerrar. Si el
+evento llegó y la corrida murió, lo que cierra el job es `on_failure` (M.4.7), no la
+republicación.
 
 ---
 
