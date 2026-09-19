@@ -3,7 +3,21 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
-> **Última revisión: 2026-09-18, sesión 8:**
+> **Última revisión: 2026-09-19, sesión 8, segunda parte:**
+> [`SESSION_2026-09-19_sesion_8_las_altas_en_produccion.md`](SESSION_2026-09-19_sesion_8_las_altas_en_produccion.md).
+> **El sprint M.4 está cerrado: las altas corren en producción**, verificadas de punta a punta
+> (M.4.6). Salieron cuatro tareas:
+> - M.4.7 (`#52`): el job se cierra si su corrida se cancela o muere (`on_failure` y
+>   `cerrar-altas-canceladas`);
+> - M.4.8 (`#53`): **el worker atiende en paralelo**. Antes, de a un step por vez: el SDK
+>   corría los handlers dentro del event loop. La ruta la monta `services/inngest_serve.py`;
+> - M.4.9 (`#54`): el arranque marca `INNGEST_BASE_URL` y las otras URLs que lee el SDK si están
+>   en producción;
+> - M.4.10 (`#55`): `diagnostico-latencia`. **La espera de ~50 s entre steps es de Inngest Cloud.**
+>
+> 9 funciones registradas. Suite: 591 verdes, más 21 con `--gee`.
+>
+> Antes, **2026-09-18, sesión 8:**
 > [`SESSION_2026-09-18_sesion_8_las_altas_II.md`](SESSION_2026-09-18_sesion_8_las_altas_II.md).
 > **M.4.4 y M.4.5: las dos altas corren sobre el pipeline mensual**, y `s2-mensual-v1` quedó
 > congelada:
@@ -135,9 +149,12 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Paridad de permisos en la subida | ✅ 2026-09-01 — la subida emite solo el `PUT`; lo fija `scripts/check_minio_region.py` |
 | Paridad de permisos en el arranque | ✅ 2026-09-02 — `ensure_bucket()` salió del constructor (`DECISIONS #24`) |
 | Config de MinIO ausente o incoherente | ✅ Falla cerrado nombrando la variable (`DECISIONS #24`) |
-| `process_parcela` | ✅ 2026-09-18 (M.4.4, `DECISIONS #50`): sobre el pipeline, en `handlers/parcela.py`. Corrido contra GEE real y PostGIS local con las 3 parcelas de prueba: 24 meses en 95–103 s. Falta en producción (M.4.6) |
-| `process_rancho` | ✅ 2026-09-18 (M.4.5, `DECISIONS #51`): sobre el pipeline, en `handlers/rancho.py`. Corrido contra GEE real, MinIO local y PostGIS local: 23 COG válidos en 226 s. Falta contra el MinIO de Railway (M.4.6) |
+| `process_parcela` | ✅ 2026-09-18 (M.4.4, `DECISIONS #50`): sobre el pipeline, en `handlers/parcela.py`. **Verificado en producción el 2026-09-19** (M.4.6): 96 filas con `s2-mensual-v1` |
+| `process_rancho` | ✅ 2026-09-18 (M.4.5, `DECISIONS #51`): sobre el pipeline, en `handlers/rancho.py`. **Verificado en producción el 2026-09-19** (M.4.6): 24 capas `mensual`, `check_prod.py` 7 de 7 y la máscara (`nodata_type: Mask`) en el tileserver |
 | `register_layer` | ✅ **Borrado** el 2026-09-18 (M.4.5): escuchaba `terra/raster.ingested`, que solo emitía el `process_rancho` viejo |
+| **Cierre de jobs fuera del handler** | ✅ 2026-09-19 (M.4.7, `DECISIONS #52`): `on_failure` de las altas y `cerrar-altas-canceladas`. Probado contra un Inngest real |
+| **Concurrencia del worker** | ✅ 2026-09-19 (M.4.8, `DECISIONS #53`): `/api/inngest` en el pool de hilos (`services/inngest_serve.py`), `ThreadedConnectionPool` y plazo de GEE contado por hilos. **Corrige `#26`** |
+| **Inngest Cloud** | 🟡 Plan Hobby: 5 steps a la vez, 50.000 ejecuciones al mes (un alta ≈ 27). Esperas de 38 a 75 s entre steps, de la plataforma (`#55`). 👥 Soporte de Inngest, o piloto autohosteado |
 | Handlers on-demand (heatmap, timeseries, dates, export, stats) | 🟡 Igual que `process_parcela` |
 | `process_kml` | ❌ Handler muerto: su evento fue eliminado en Geocore |
 | Superficie HTTP de lectura (`routes/`, `schemas/`, `auth.py`) | ✅ **Borrada** el 2026-08-30 (`DECISIONS #23`) |
