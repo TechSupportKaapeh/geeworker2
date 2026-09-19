@@ -2440,3 +2440,37 @@ de `services/inngest_client.py` quedó corregido.
 consecuencia; sin ellas no hay problema; en desarrollo, la URL del dev server está bien; y ninguna
 consecuencia de `INNGEST_*` vuelve a decir "no se usa". Control negativo: con el `arranque.py`
 anterior, 5 en rojo. La suite: 580 verdes.
+
+## 55. Una función para medir la espera de Inngest entre steps (2026-09-19)
+
+> Tarea M.4.10 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). Sigue a `#53`.
+
+**Qué queda sin explicar después de M.4.8.** Con el worker atendiendo en paralelo, un alta sola
+en producción sigue esperando **de 40 a 70 s en la cola de Inngest** antes de cada mes, que el
+worker después resuelve en 5 a 10 s. Contra el Inngest local, el mismo código no espera. Ya se
+descartó:
+- **el worker**: con una sola alta no hay nada compitiendo;
+- **el límite del plan Hobby** (5 steps a la vez en la cuenta): una alta usa uno;
+- **una pérdida de datos por ir más rápido.** La parcela 1, corrida el 2026-09-18 y otra vez hoy
+  con el código de hoy, dio **las mismas 96 filas y las mismas 672 estadísticas, con diferencia
+  máxima 0**. Nada de M.4.8 ni de M.4.9 toca lo que se calcula, y la huella de la receta lo fija.
+
+Queda por saber si la espera es de **la plataforma** o si la provoca **algo de nuestros steps**:
+lo que tardan, lo que devuelven, o el modo en que Cloud los despacha (en una captura, la
+*Discovery* tardó 34 ms y la ejecución llegó 52 s después).
+
+**Decisión.** `handlers/diagnostico.py:diagnostico_latencia`: una función con N steps que **no
+hacen nada** (ni GEE, ni base, ni bitácora). Cada uno devuelve la hora a la que el worker lo
+ejecutó, y la función devuelve los huecos entre steps. Se dispara a mano: *Send event*
+`terra/diagnostico.latencia`, con `{"steps": N}` opcional, entre 1 y 10 para no gastar la cuota
+(cada step es una ejecución del plan). No toca ningún dato ni ningún job.
+
+**Cómo leerla.**
+- **Línea de base, contra el Inngest local: huecos de 0,12 a 0,20 s**, y 0,62 s los 5 steps.
+- Si en producción los huecos entre steps vacíos son de decenas de segundos, la espera es de
+  Inngest Cloud, y esta corrida es el caso mínimo para su soporte.
+- Si son de milisegundos, la espera la provoca algo de los steps reales, y se sigue por ahí.
+
+**Cómo se probó.** 12 tests: los huecos, el tope de steps, que no toca GEE ni la base, y el
+registro. Y la función corrida de punta a punta contra el Inngest local. La suite: 591 verdes.
+Quedan 9 funciones registradas.

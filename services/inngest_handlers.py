@@ -34,6 +34,8 @@ from handlers.parcela import process_parcela
 from handlers.rancho import process_rancho
 # M.4.7: cierra el job de un alta cancelada en Inngest.
 from handlers.cancelaciones import cerrar_altas_canceladas
+# M.4.10: mide la espera de Inngest entre steps vacios. Se dispara a mano.
+from handlers.diagnostico import diagnostico_latencia
 
 logger = logging.getLogger("inngest_handlers")
 
@@ -272,6 +274,7 @@ all_functions = [
     process_parcela,
     process_rancho,
     cerrar_altas_canceladas,
+    diagnostico_latencia,
     generate_heatmap_on_demand,
     compute_timeseries,
     query_available_dates,
