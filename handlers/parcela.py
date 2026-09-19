@@ -40,6 +40,7 @@ from services.ee.ee_client import init_ee
 from services.inngest_client import inngest_client
 
 from handlers.altas import (
+    CONCURRENCIA_GEE,
     PROGRESO_MESES,
     PROGRESO_PLAN,
     errores_de_gee,
@@ -54,7 +55,7 @@ from handlers.seguimiento import RETRIES, con_seguimiento
 from handlers.utilidades import entre, ms_desde
 
 
-def _procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
+def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     *,
     parcela_id: str,
     tenant_id: str,
@@ -123,6 +124,9 @@ def _procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     fn_id="process-parcela",
     trigger=inngest.TriggerEvent(event="terra/parcela.created"),
     retries=RETRIES,
+    # M.5.3: la misma cola virtual que el cierre de mes, para no pasarse de la
+    # cuota de GEE ni del plan de Inngest.
+    concurrency=CONCURRENCIA_GEE,
     # M.4.7: si Inngest da la corrida por fallida sin que el handler lo vea (el
     # contenedor murió, el request se cortó), el job no queda en `running`.
     on_failure=cerrar_por_falla,
@@ -150,7 +154,7 @@ def process_parcela(
                 f"mes-{mes}",
                 # Los valores del bucle entran como defaults: una clausura común
                 # vería los de la última vuelta.
-                lambda mes=mes, posicion=posicion: _procesar_mes(
+                lambda mes=mes, posicion=posicion: procesar_mes(
                     parcela_id=parcela_id,
                     tenant_id=tenant_id,
                     coordenadas=coordenadas,

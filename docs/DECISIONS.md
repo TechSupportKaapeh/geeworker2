@@ -2496,3 +2496,57 @@ arreglar en el worker ni en el pipeline**: la demora la agrega la plataforma al 
    entidad.
 3. Si el soporte no lo resuelve, un piloto de Inngest autohosteado en Railway: el dev server local
    no tuvo esperas. Va con su propia decisión, porque suma un servicio que operar.
+
+---
+
+## 56. El cierre de mes reusa el mes del alta, y las cuatro funciones de GEE comparten una cola de 5 (2026-09-19)
+
+> Tarea M.5.3 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md). Del otro lado están `DECISIONS #30` y
+> `#31` de Geocore, que publican los eventos.
+
+**`handlers/mes.py`** registra dos funciones: `process-parcela-mes`
+(`terra/parcela.mes.requested`) y `process-rancho-mes` (`terra/rancho.mes.requested`). Son 11
+funciones registradas.
+
+**Cada una es un solo step, y reusa el mes del alta.** `handlers.parcela.procesar_mes` y
+`handlers.rancho.procesar_mes` dejaron de ser privadas y se llaman desde acá tal cual. No es sólo
+ahorrar código: **si el cierre de mes calculara distinto que el alta, el mes 25 de una parcela no
+sería comparable con los 24 que trajo su alta**, y no habría forma de notarlo mirando los
+números. El único cambio es que `posicion` y `total` valen 1, así que la barra va del 0 al 99 de
+un salto.
+
+**El mes lo manda el evento, en `periodo`; acá no se lee el reloj.** El reconciliador ya decidió
+qué mes cierra, y con el día 5 de por medio no siempre es el anterior a "hoy" (`#30` de Geocore).
+Un `periodo` que no es `AAAA-MM` —o que falta— es `NonRetriableError`: reintentarlo da el mismo
+error. Un test cambia `hoy_utc` por algo que tira, para que el día que alguien meta un reloj acá,
+se entere.
+
+**Las cuatro funciones que le piden a GEE comparten una cola de concurrencia de 5**: las dos
+altas y los dos meses, con `scope="account"` y `key="'gee'"` (una expresión, de ahí las comillas
+adentro). Sin la key el límite sería de 5 **por función**, o sea 20. El número es el techo del
+plan Hobby (`#55`), y el límite se declara igual para que el cierre de mes no se coma la cuota
+con la que un alta tiene que terminar, y para que el día que el plan cambie, este número siga
+siendo el que manda sobre GEE.
+
+**Cómo se probó.** 17 tests nuevos sin GEE ni base (el mes del evento, un solo step, las filas y
+el mapa, el mes sin cobertura, los periodos inválidos, los campos que faltan, la cola compartida
+y el registro), y la suite pasó de 591 a 608.
+
+**Y contra un Inngest de verdad** (el dev server local), que es donde se ven las dos cosas que un
+test no prueba:
+
+- **la cola es una sola**: sincronizadas las 11 funciones, las cuatro de GEE quedaron con el
+  mismo `hash` de concurrencia (`38zepdro2fz7m`) en la config que devuelve el server. Si la key
+  faltara, cada una tendría el suyo;
+- **la deduplicación por id de evento existe**: `terra/parcela.mes.requested` con
+  `id = job-mes-verificacion-1` corrió y escribió sus 4 filas de 2026-06 (NDVI 0,52, cobertura
+  0,71, contra una parcela real y GEE real, en una base local con las migraciones). **El mismo
+  evento reenviado con el mismo id no disparó ninguna corrida** (`/v1/events/{id}/runs` devuelve
+  `[]`). Es el supuesto sobre el que se apoya la republicación de un `pending` de Geocore
+  (`#30` y `#31` de Geocore), y ahora está verificado y no supuesto.
+
+**Lo que queda abierto:**
+- **La deduplicación se verificó en el dev server, no en Inngest Cloud.** Va con M.5.5, que es
+  donde el cierre corre de verdad.
+- **Hasta que el equipo prenda `CierreMensual__Habilitado` en Geocore** (M.5.5), estas dos
+  funciones están registradas y nunca reciben un evento.
