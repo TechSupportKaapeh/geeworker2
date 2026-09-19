@@ -192,7 +192,7 @@ de Geocore).
 | M.3.2 | `GET /api/measurements` devuelve estadísticas, cobertura y receta; `parcelaId` acepta una lista; techo para `limit` (A04) | M | tests | ✅ 2026-09-17 · Geocore#15, `DECISIONS #28`. `estadisticas` va como objeto; la lista acepta el parámetro repetido y las comas; techo 5000, con el `limit` aplicado y `truncado` en la respuesta. El mismo techo en `/api/layers` |
 | M.3.3 | `GET /api/ranchos/{id}/metricas?indice=&desde=&hasta=`: el promedio ponderado por área de las parcelas, más la fracción del área con dato | M | tests con parcelas sin dato en un mes | ✅ 2026-09-17 · Geocore#16, `DECISIONS #29`. **El promedio divide por el área con dato, no por la total**, y la fracción va al lado. Rango en meses, tope de 60 |
 | M.3.4 | `check_schema.py` del worker valida las columnas nuevas: el contrato entre repos | S | corre contra la base real | ✅ 2026-09-17 · geeworker2#29, `DECISIONS #46` del worker. **43 de 43 en ok** contra PostGIS con las migraciones aplicadas; 33 de 43 y código 1 con la migración anterior |
-| 👥 M.3.5 | Borrar las filas por pasada de prueba (SQL listo en la sesión) | S | — | ⬜ |
+| 👥 M.3.5 | Borrar las filas por pasada de prueba (SQL listo en la sesión) | S | — | ✅ 2026-09-19 · lo hizo el usuario con `DELETE FROM geodata.measurements WHERE receta IS NULL`: el pipeline siempre escribe `receta`, así que eso son exactamente las filas viejas (12 visibles, de 2024). Quedan las altas mensuales, de 96 filas cada una |
 
 **M.3.1 hecha el 2026-09-15** (sesión 3, Geocore#6, `DECISIONS #25` de Geocore). Tres
 cosas que cambian lo que sigue:
