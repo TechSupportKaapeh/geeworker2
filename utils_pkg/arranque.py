@@ -92,18 +92,29 @@ class Variable:
     esta, y `PORT` lo inyecta Railway. Sin esta distincion el reporte gritaba
     por dos cosas que estaban perfectas, y un reporte que da falsos positivos
     deja de leerse — que es justo el problema que vino a resolver.
+
+    `prohibida_en_produccion` es un cuarto caso, del 2026-09-18: una variable
+    que en produccion **no tiene que estar**, porque el SDK de Inngest la lee
+    por su cuenta aunque el worker no se la pase. Definida ahi es un problema,
+    y el reporte lo dice aunque el valor parezca razonable.
     """
 
     def __init__(self, nombre, clase, defecto=None, consecuencia=None,
-                 solo_produccion=False, solo_desarrollo=False, opcional=False):
+                 solo_produccion=False, solo_desarrollo=False, opcional=False,
+                 prohibida_en_produccion=False):
         self.nombre = nombre
         self.clase = clase
+        self.prohibida_en_produccion = prohibida_en_produccion
         self.defecto = defecto
         self.consecuencia = consecuencia
         self.solo_produccion = solo_produccion
         self.solo_desarrollo = solo_desarrollo
         self.opcional = opcional
 
+
+_CONSECUENCIA_URL_DE_INNGEST = (
+    "el SDK la lee solo y registra y llama ahi en vez de en Inngest Cloud: el "
+    "sync falla (404 si es inn.gs) y no entra ningun evento. Borrarla")
 
 INVENTARIO = (
     ("ENTORNO", (
@@ -121,10 +132,26 @@ INVENTARIO = (
         Variable("INNGEST_EVENT_KEY", SECRETO, solo_produccion=True,
                  consecuencia="no se puede emitir eventos. Desde M.4.5 el "
                               "worker no emite ninguno"),
+        # Las cuatro de abajo, en produccion, **no tienen que existir**. El
+        # worker no se las pasa al SDK, pero el SDK las lee solo
+        # (`inngest/_internal/client_lib/utils.py`), y con cualquiera de las
+        # tres URLs registra y llama ahi en vez de en Inngest Cloud. Paso el
+        # 2026-09-18: `INNGEST_BASE_URL=https://inn.gs` en el worker, y el sync
+        # fallaba con 404 contra `inn.gs/fn/register`. Este reporte decia que
+        # "en produccion no se usa", que era falso.
         Variable("INNGEST_BASE_URL", PUBLICO, defecto="http://localhost:8288",
-                 solo_desarrollo=True,
-                 consecuencia="en produccion no se usa: el SDK apunta solo a "
-                              "Inngest Cloud"),
+                 solo_desarrollo=True, prohibida_en_produccion=True,
+                 consecuencia=_CONSECUENCIA_URL_DE_INNGEST),
+        Variable("INNGEST_API_BASE_URL", PUBLICO, opcional=True,
+                 solo_desarrollo=True, prohibida_en_produccion=True,
+                 consecuencia=_CONSECUENCIA_URL_DE_INNGEST),
+        Variable("INNGEST_EVENT_API_BASE_URL", PUBLICO, opcional=True,
+                 solo_desarrollo=True, prohibida_en_produccion=True,
+                 consecuencia=_CONSECUENCIA_URL_DE_INNGEST),
+        Variable("INNGEST_DEV", PUBLICO, opcional=True,
+                 solo_desarrollo=True, prohibida_en_produccion=True,
+                 consecuencia="el SDK la lee y pasa a modo dev: le habla a un "
+                              "dev server en vez de a Inngest Cloud. Borrarla"),
     )),
     ("MINIO", (
         Variable("MINIO_ENDPOINT", PUBLICO, defecto="localhost:9000"),
@@ -239,6 +266,11 @@ def reporte_de_arranque(entorno, es_produccion):
                 or (v.solo_desarrollo and es_produccion)
             )
             texto, hay_problema = describir_valor(v, entorno.get(v.nombre))
+            if (es_produccion and v.prohibida_en_produccion
+                    and entorno.get(v.nombre) is not None):
+                # Definida en produccion es el problema, sea cual sea el valor.
+                texto, hay_problema, aplica = (
+                    texto + "  NO VA EN PRODUCCION", True, True)
             marca = " " if (aplica or not hay_problema) else "."
             lineas.append("  %s %-28s %s" % (marca, v.nombre, texto))
             if hay_problema and aplica:

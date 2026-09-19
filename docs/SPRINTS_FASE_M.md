@@ -238,6 +238,7 @@ Tres cosas que cambian lo que sigue:
 | M.4.6 | De punta a punta: un rancho y una parcela reales desde el panel. Se miran las filas, el COG por el tileserver (`check_prod.py`) y la pestaña Procesos | S | anotado en la sesión | 🟡 2026-09-18 · las altas corren en producción (arreglada la `Inngest__EventKey` de Geocore), pero **tardaban cerca de un minuto por mes**: el worker atendía de a un step por vez (arreglado en M.4.8). Falta la verificación de filas y COG en producción |
 | M.4.7 | 🆕 El job se cierra aunque la corrida termine fuera del handler: `on_failure` y las cancelaciones de Inngest | S | tests; probado contra un Inngest real | ✅ 2026-09-18 · `DECISIONS #52`. Cancelada una alta a mano, a los 5 s el job está `failed`. Los jobs ya colgados los cierra el equipo con el SQL de #52 (👥) |
 | M.4.8 | 🆕 El worker atiende varios steps a la vez: la ruta de Inngest en un pool de hilos, el pool de conexiones y el plazo de GEE seguros entre hilos | S | tres altas a la vez contra un Inngest real | ✅ 2026-09-19 · `DECISIONS #53`. **3 altas a la vez: 66 s → 23 s.** El SDK corría los handlers síncronos dentro del event loop (corrige `#26`) |
+| M.4.9 | 🆕 El arranque avisa si `INNGEST_BASE_URL` (o las otras URLs que lee el SDK) está en producción | S | tests con control negativo | ✅ 2026-09-19 · `DECISIONS #54`. Fue lo que rompió el sync del 2026-09-18; el reporte decía "en producción no se usa" |
 
 **Riesgo:** los runs en vuelo durante el deploy rehacen sus steps. Es idempotente.
 
