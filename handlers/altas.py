@@ -26,6 +26,18 @@ from services.avance_job import reportar
 PROGRESO_PLAN = 2
 PROGRESO_MESES = 99
 
+# M.5.3. El plan Hobby de Inngest da **5 steps a la vez en toda la cuenta**. El
+# límite se declara igual, y compartido por las cuatro funciones que le piden a
+# GEE —las dos altas y los dos meses—, por dos razones: que el cierre de mes no se
+# coma la cuota con la que un alta tiene que terminar, y que el día que el plan
+# cambie, este número siga siendo el que manda sobre GEE.
+#
+# `scope="account"` con una `key` fija pone a las cuatro en la **misma** cola
+# virtual: sin la key, el límite sería de 5 por función, o sea 20 en total. La key
+# es una expresión, así que la constante va entre comillas simples adentro.
+LIMITE_GEE = 5
+CONCURRENCIA_GEE = [inngest.Concurrency(key="'gee'", limit=LIMITE_GEE, scope="account")]
+
 
 def requerido(payload: dict, clave: str) -> Any:  # noqa: ANN401 - lo que traiga el evento
     """Un campo que el evento tiene que traer.

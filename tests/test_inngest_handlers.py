@@ -58,6 +58,8 @@ def test_hay_una_funcion_registrada_por_evento_esperado():
     assert ids == {
         "geeworker-process-parcela",
         "geeworker-process-rancho",
+        "geeworker-process-parcela-mes",
+        "geeworker-process-rancho-mes",
         "geeworker-cerrar-altas-canceladas",
         "geeworker-diagnostico-latencia",
         "geeworker-generate-heatmap-on-demand",

@@ -49,6 +49,7 @@ from services.inngest_client import inngest_client
 from services.storage_service import get_storage_service
 
 from handlers.altas import (
+    CONCURRENCIA_GEE,
     PROGRESO_MESES,
     PROGRESO_PLAN,
     errores_de_gee,
@@ -116,7 +117,7 @@ def _subir_cog(url: str, storage_key: str) -> tuple[list[float], float]:
     return bbox, megas
 
 
-def _procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
+def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     *,
     rancho_id: str,
     tenant_id: str,
@@ -211,6 +212,9 @@ def _procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     fn_id="process-rancho",
     trigger=inngest.TriggerEvent(event="terra/rancho.created"),
     retries=RETRIES,
+    # M.5.3: la misma cola virtual que el cierre de mes, para no pasarse de la
+    # cuota de GEE ni del plan de Inngest.
+    concurrency=CONCURRENCIA_GEE,
     # M.4.7: si Inngest da la corrida por fallida sin que el handler lo vea (el
     # contenedor murió, el request se cortó), el job no queda en `running`.
     on_failure=cerrar_por_falla,
@@ -236,7 +240,7 @@ def process_rancho(
             f"mes-{mes}",
             # Los valores del bucle entran como defaults: una clausura común
             # vería los de la última vuelta.
-            lambda mes=mes, posicion=posicion: _procesar_mes(
+            lambda mes=mes, posicion=posicion: procesar_mes(
                 rancho_id=rancho_id,
                 tenant_id=tenant_id,
                 coordenadas=coordenadas,

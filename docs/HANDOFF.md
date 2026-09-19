@@ -3,7 +3,23 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
-> **Última revisión: 2026-09-19, sesión 8, segunda parte:**
+> **Última revisión: 2026-09-19, sesión 9: M.5.3, el cierre de mes**
+> (`DECISIONS #56`). `handlers/mes.py` registra `process-parcela-mes` y `process-rancho-mes`,
+> que atienden `terra/parcela.mes.requested` y `terra/rancho.mes.requested` de Geocore: **un
+> solo step, con el mes que manda el evento en `periodo`**, y reusando `procesar_mes` de las
+> altas (que dejó de ser privada) para que el mes 25 se calcule igual que los 24 del alta.
+> **Las cuatro funciones que le piden a GEE comparten una cola de concurrencia de 5**
+> (`handlers.altas.CONCURRENCIA_GEE`), que es el techo del plan Hobby. **11 funciones
+> registradas.** Suite: 608 verdes, más 21 con `--gee`.
+>
+> Verificado contra un Inngest local: las cuatro comparten el mismo `hash` de cola, una corrida
+> real escribió las 4 filas de un mes, y **un evento reenviado con el mismo id no dispara otra
+> corrida** — que es de lo que depende la republicación de Geocore.
+>
+> 👥 Falta que el equipo prenda `CierreMensual__Habilitado` en Geocore (M.5.5): hasta entonces
+> estas dos funciones no reciben ningún evento.
+>
+> Antes, **2026-09-19, sesión 8, segunda parte:**
 > [`SESSION_2026-09-19_sesion_8_las_altas_en_produccion.md`](SESSION_2026-09-19_sesion_8_las_altas_en_produccion.md).
 > **El sprint M.4 está cerrado: las altas corren en producción**, verificadas de punta a punta
 > (M.4.6). Salieron cuatro tareas:
