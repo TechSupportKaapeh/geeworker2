@@ -235,7 +235,7 @@ Tres cosas que cambian lo que sigue:
 | M.4.3 | Escritura: upsert de la fila mensual y `insert_layer` con receta y estadísticas | S | tests con conexión falsa | ✅ 2026-09-17 · geeworker2#33, `DECISIONS #49`. Las filas sin `valor` se escriben; `estadisticas` va siempre. Probado contra PostGIS con las migraciones: `check_schema` 43/43, upsert idempotente, el CHECK de cobertura rechaza el lote entero |
 | M.4.4 | `process_parcela` sobre el pipeline: el plan y 24 steps `mes-AAAA-MM`, con bitácora y avance | M | tests con el step que imita al SDK | ✅ 2026-09-18 · geeworker2#36, `DECISIONS #50`. Mismo `fn_id`; el alta vieja se borró. **Probado contra GEE real: con cobertura 0, GEE omite las claves** y el alta no terminaba nunca; arreglado en `leer`. Las 3 parcelas: 24 meses en 95–103 s. **`s2-mensual-v1` congelada** |
 | M.4.5 | `process_rancho` sobre el pipeline: 24 COG de NDVI | M | ídem | ✅ 2026-09-18 · geeworker2#37, `DECISIONS #51`. Un mes sin un píxel limpio no tiene COG (decisión del usuario). **El GeoTIFF de GEE no declara nodata**: lo enmascarado llegaba como NDVI 0; ahora es la máscara del COG. Se borró `register_layer`. Contra lo real: 23 COG en 226 s, válidos |
-| M.4.6 | De punta a punta: un rancho y una parcela reales desde el panel. Se miran las filas, el COG por el tileserver (`check_prod.py`) y la pestaña Procesos | S | anotado en la sesión | 🟡 2026-09-18 · las altas corren en producción (arreglada la `Inngest__EventKey` de Geocore), pero **tardaban cerca de un minuto por mes**: el worker atendía de a un step por vez (arreglado en M.4.8). Falta la verificación de filas y COG en producción |
+| M.4.6 | De punta a punta: un rancho y una parcela reales desde el panel. Se miran las filas, el COG por el tileserver (`check_prod.py`) y la pestaña Procesos | S | anotado en la sesión | ✅ 2026-09-19 · en producción: jobs `completed`, 96 filas con `s2-mensual-v1`, 24 capas `mensual` con la key del tenant, `check_prod.py` 7 de 7 y **`nodata_type: Mask`** en el tileserver (el arreglo de `#51` visto en producción). Salieron dos arreglos de configuración (`Inngest__EventKey` de Geocore e `INNGEST_BASE_URL` del worker) y cuatro tareas: M.4.7 a M.4.10 |
 | M.4.7 | 🆕 El job se cierra aunque la corrida termine fuera del handler: `on_failure` y las cancelaciones de Inngest | S | tests; probado contra un Inngest real | ✅ 2026-09-18 · `DECISIONS #52`. Cancelada una alta a mano, a los 5 s el job está `failed`. Los jobs ya colgados los cierra el equipo con el SQL de #52 (👥) |
 | M.4.8 | 🆕 El worker atiende varios steps a la vez: la ruta de Inngest en un pool de hilos, el pool de conexiones y el plazo de GEE seguros entre hilos | S | tres altas a la vez contra un Inngest real | ✅ 2026-09-19 · `DECISIONS #53`. **3 altas a la vez: 66 s → 23 s.** El SDK corría los handlers síncronos dentro del event loop (corrige `#26`) |
 | M.4.9 | 🆕 El arranque avisa si `INNGEST_BASE_URL` (o las otras URLs que lee el SDK) está en producción | S | tests con control negativo | ✅ 2026-09-19 · `DECISIONS #54`. Fue lo que rompió el sync del 2026-09-18; el reporte decía "en producción no se usa" |
@@ -254,6 +254,20 @@ Tres cosas que cambian lo que sigue:
   estaban en supuestos escritos que nadie había mirado. M.4.6 los vuelve a mirar en producción.
 - **El worker ya no emite eventos** y registra 7 funciones: `register_layer` se fue con el
   `process_rancho` viejo. Las dos altas no tienen límite de concurrencia: va con M.5.3.
+
+**Sesión 8, segunda parte (2026-09-18 y 19): M.4.6 a M.4.10. El sprint M.4 queda cerrado.**
+Las altas corren en producción con los datos verificados de punta a punta. Lo que cambia lo que
+sigue:
+
+- **La espera entre steps es de Inngest Cloud** (`DECISIONS #55`): steps vacíos esperan de 38 a
+  75 s al azar, en local 0,1 a 0,2 s. No afecta los datos. 👥 Escribirle a su soporte; si no se
+  resuelve, un piloto de Inngest autohosteado.
+- **El plan Hobby de Inngest**: 5 steps a la vez en toda la cuenta y 50.000 ejecuciones al mes (un
+  alta son ~27). **M.5.3 fija la concurrencia en 5 o menos**.
+- **El worker atiende en paralelo** desde M.4.8 (`#53`): antes, de a un step por vez.
+- **Un job ya no queda colgado** si su corrida se cancela o muere (`#52`). 👥 Los que ya estaban
+  colgados se cierran con el SQL de `#52`.
+- **`GET /api/layers` no filtra por rancho**: M.7.4 lo va a necesitar.
 
 **Sesión 7 (2026-09-17): M.4.1, M.4.2 y M.4.3 hechas**, cada una por PR con el CI en verde.
 Crónica: [`SESSION_2026-09-17_sesion_7_las_altas_I.md`](SESSION_2026-09-17_sesion_7_las_altas_I.md).
