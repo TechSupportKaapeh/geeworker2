@@ -6,6 +6,9 @@ traducción de errores. Contra GEE va un solo test, el que comprueba que el mes 
 una parcela cuesta **una** llamada.
 """
 
+import threading
+import time
+
 import pytest
 
 from pipeline import ejecucion
@@ -136,6 +139,86 @@ def test_el_plazo_se_restaura_aunque_el_pedido_falle(gee_inicializado):
         ejecucion.traer(_Expresion(error=RuntimeError("Backend error.")))
 
     assert _plazo_actual() == antes
+
+
+# ---- El plazo con varios hilos (M.4.8) ---------------------------------------------
+#
+# Desde que el worker atiende steps en paralelo, dos hilos entran a `plazo()` a la
+# vez. `setDeadline` es del cliente, no del pedido: el que sale primero no puede
+# sacarle el plazo al que sigue trabajando. Se prueba sobre `_PlazoCompartido`,
+# que es la pieza pura, con un doble de `ee.data`: el de verdad pide cliente y no
+# corre en el CI.
+
+
+class _ClienteFalso:
+    """`ee.data` de mentira: recuerda el plazo puesto."""
+
+    def __init__(self, inicial=0):
+        self.deadline_ms = inicial
+        self.puestos = []
+
+    def _get_state(self):
+        return self
+
+    def setDeadline(self, ms):  # noqa: N802 - el nombre de ee
+        self.deadline_ms = ms
+        self.puestos.append(ms)
+
+
+@pytest.fixture
+def cliente_falso(monkeypatch):
+    falso = _ClienteFalso(inicial=3000)
+    monkeypatch.setattr(ejecucion.ee, "data", falso)
+    return falso
+
+
+def test_el_ultimo_hilo_que_sale_restaura_el_plazo(cliente_falso):
+    compartido = ejecucion._PlazoCompartido()
+
+    compartido.entrar(9000)
+    compartido.entrar(9000)
+    compartido.salir()
+    # El primero salió, pero el segundo sigue trabajando: el plazo tiene que seguir.
+    assert cliente_falso.deadline_ms == 9000
+
+    compartido.salir()
+    assert cliente_falso.deadline_ms == 3000
+
+
+def test_el_plazo_se_pone_una_sola_vez_aunque_entren_muchos(cliente_falso):
+    """`setDeadline` reconstruye el cliente HTTP: llamarlo de más es cambiarle
+    el piso a un pedido en vuelo de otro hilo."""
+    compartido = ejecucion._PlazoCompartido()
+
+    for _ in range(5):
+        compartido.entrar(9000)
+    for _ in range(5):
+        compartido.salir()
+
+    assert cliente_falso.puestos == [9000, 3000]
+
+
+def test_muchos_hilos_a_la_vez_dejan_el_plazo_como_estaba(cliente_falso):
+    compartido = ejecucion._PlazoCompartido()
+    arranquen = threading.Event()
+
+    def _usar():
+        arranquen.wait()
+        compartido.entrar(9000)
+        time.sleep(0.01)
+        compartido.salir()
+
+    hilos = [threading.Thread(target=_usar) for _ in range(12)]
+    for hilo in hilos:
+        hilo.start()
+    arranquen.set()
+    for hilo in hilos:
+        hilo.join()
+
+    assert cliente_falso.deadline_ms == 3000
+    # Mientras hubo hilos adentro, el plazo nunca volvió al anterior.
+    assert cliente_falso.puestos[-1] == 3000
+    assert cliente_falso.puestos.count(3000) == 1
 
 
 # ---- El conteo ---------------------------------------------------------------------

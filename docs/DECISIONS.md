@@ -2347,3 +2347,69 @@ WHERE status IN ('pending', 'running');
 - **Un job en `pending` cuyo evento nunca llegó a Inngest** no genera ningún evento de sistema:
   esto no lo cierra. Es el hueco del outbox (Geocore `#18`); lo cubren el reconciliador (M.5.2)
   y el reprocesar (M.5.4).
+
+## 53. El worker atiende varios steps a la vez (2026-09-19)
+
+> Tarea M.4.8 de [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md), sumada al diagnosticar la lentitud de
+> M.4.6. **Corrige a `#26`**, que decía que el SDK corría los handlers síncronos en un pool de
+> hilos: con `inngest.fast_api` no era cierto.
+
+**El síntoma.** En producción, las altas de M.4.6 tardaban cerca de un minuto por mes. La vista de
+Inngest separaba el tiempo en dos: **"Your server" de 4,6 a 9,9 s** (el trabajo real del mes) e
+**"Inngest" de 1,6 a 55 s**, variable, de espera antes de llamar al worker. Solo corrían tres
+altas: un rancho y dos parcelas.
+
+**La causa.** `inngest.fast_api.serve()` declara `/api/inngest` como `async`, y la ejecución del
+SDK llama a los handlers síncronos **directo, dentro del event loop**
+(`_internal/execution_lib/v0.py`: `output = handler(...)`, sin hilo). Mientras un step esperaba a
+GEE, el proceso entero quedaba congelado: los steps de las otras corridas, y hasta `/health`,
+esperaban su turno. **El worker atendía de a un step por vez**, y la espera de cada uno dependía de
+cuántos tuviera delante. Con una sola alta no se notaba, y por eso nadie lo vio hasta M.4.6.
+
+**Decisión.** `services/inngest_serve.py` reemplaza a `inngest.fast_api.serve`. Monta la misma ruta
+con los mismos métodos, pero usa la **variante síncrona del mismo manejador del SDK**
+(`post_sync`, `get_sync`, `put_sync`) y la manda al pool de hilos de Starlette
+(`run_in_threadpool`). La ruta sigue siendo `async` solo para leer el cuerpo; el step corre en un
+hilo. Todo lo que ya garantizaba el SDK (la firma, el registro, las cabeceras) sigue siendo suyo.
+
+**Lo que dejó de ser seguro al pasar a hilos, y se arregló en la misma tarea:**
+- **El pool de conexiones era `SimpleConnectionPool`**, que psycopg2 documenta como **no seguro
+  entre hilos**. Pasó a `ThreadedConnectionPool`, creado bajo candado: sin el candado, dos hilos
+  que llegan juntos crean dos pools.
+- **El plazo de GEE** (`ejecucion.plazo()`) es estado del cliente, no del pedido. Con hilos, el que
+  salía primero le sacaba el plazo al que seguía, y `setDeadline` **reconstruye el cliente HTTP**
+  mientras otro hilo tiene un pedido en vuelo. Ahora `_PlazoCompartido` cuenta los hilos: el
+  primero lo pone y el último lo restaura.
+- Ya eran seguros: el cliente de MinIO (comparte el pool de urllib3) y los `ContextVar` de la
+  bitácora y del conteo, que son uno por contexto.
+
+**Un bug que agarró la prueba, y que la primera versión del test tapaba.** El `framework` que el
+SDK pone en sus cabeceras tiene que ser su enum (`server_lib.Framework.FAST_API`), no el texto
+`"fast_api"`: con un `str`, armar la respuesta tira `AttributeError` y **cada pedido sale 500**. La
+primera versión de `test_inngest_serve.py` reemplazaba el endpoint por uno propio, así que medía
+el reemplazo y no el `serve`: pasaba igual. Se rehizo para **invocar la ruta de verdad**, con el
+cuerpo que manda el executor de Inngest, y ahí apareció el 500.
+
+**Cómo se probó.**
+- 13 tests: dos invocaciones reales se atienden en paralelo, cada una en su hilo, con el `serve`
+  del SDK como **control negativo** (el mismo test, en serie); `/health` contesta mientras corre
+  un step; las cabeceras son las del SDK; el plazo compartido con muchos hilos; un solo pool
+  aunque lleguen muchos a la vez. El test del 401 sin firma (W-8) pasó a montar esta ruta: la
+  garantía ahora es nuestra. La suite: 573 verdes.
+- **Contra un Inngest real** (el dev server, con PostGIS local y GEE de verdad), **tres altas de
+  parcela a la vez**, de 6 meses cada una:
+
+  | | Total | Cada alta |
+  |---|---|---|
+  | Sin el arreglo (`main`, como en producción) | **66 s** | 64–65 s |
+  | Con el arreglo | **23 s** | 21–22 s |
+
+  Tres veces más rápido con tres corridas: lo que da un worker que atendía de a un step. Las 72
+  filas (3 × 6 × 4) quedaron escritas en los dos casos. El registro (`put_sync`) también se probó
+  ahí.
+
+**Lo que esto no resuelve.** El techo ahora es cuántos pedidos concurrentes acepta GEE y el pool
+de hilos de Starlette (40 por defecto). Con muchas altas a la vez (un KML de cientos de parcelas),
+GEE va a empezar a contestar "too many concurrent aggregations": es un error pasajero, y se
+reintenta. El límite que lo ordena es el de concurrencia de Inngest, que va con **M.5.3** y ahora
+tiene que tener en cuenta que el worker sí atiende en paralelo.

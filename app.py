@@ -4,7 +4,7 @@ El worker **se dispara por eventos de Inngest, no por HTTP de negocio**. Su
 superficie HTTP es deliberadamente mínima:
 
     GET  /health        sonda de vida para el orquestador
-    *    /api/inngest   lo monta `inngest.fast_api.serve`
+    *    /api/inngest   lo monta `services/inngest_serve.py`
 
 No expone API de lectura. Las lecturas las sirve Geocore, que es el dueño del
 catálogo y el único que aplica aislamiento de tenant. Ver `DECISIONS #23`
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # El reporte de configuración va **acá, al importar**, y no en el evento de
 # startup donde estaba.
 #
-# El motivo lo dio un deploy real: `inngest.fast_api.serve()`, al final de este
+# El motivo lo dio un deploy real: el `serve()` de Inngest, al final de este
 # archivo, levantó por falta de `INNGEST_SIGNING_KEY`. Como eso ocurre durante
 # el import, el evento `startup` nunca se dispara y el reporte —escrito
 # justamente para explicar qué variable falta— no llegó a imprimirse. Salió el
@@ -128,8 +128,10 @@ def health():
     }
 
 
-import inngest.fast_api
-
+# M.4.8: el `serve` propio, no el de `inngest.fast_api`. El del SDK corre los
+# handlers sincronicos dentro del event loop, asi que el worker atendia un step
+# por vez y los demas hacian cola en Inngest (`DECISIONS #53`).
+from services import inngest_serve
 from services.inngest_client import inngest_client
 from services.inngest_handlers import all_functions
 
@@ -154,7 +156,7 @@ from services.inngest_handlers import all_functions
 # para poder decir por qué.
 _ERROR_AL_MONTAR_INNGEST = None
 try:
-    inngest.fast_api.serve(
+    inngest_serve.serve(
         app,
         inngest_client,
         all_functions,

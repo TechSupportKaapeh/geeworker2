@@ -23,6 +23,7 @@ Concentra tres cosas:
 
 import contextlib
 import logging
+import threading
 from collections.abc import Iterator
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -96,6 +97,40 @@ class Conteo:
 _conteo: ContextVar[Conteo | None] = ContextVar("conteo_de_llamadas", default=None)
 
 
+class _PlazoCompartido:
+    """El plazo de GEE, que es del cliente y no del pedido (M.4.8).
+
+    Como es estado de todo el proceso, con varios hilos no alcanza con poner y
+    restaurar: se cuenta cuántos lo están usando, el primero lo pone y el último
+    lo deja como estaba. No va en un ``ContextVar``, que es justo lo contrario:
+    uno por contexto.
+    """
+
+    def __init__(self) -> None:
+        """Arranca sin hilos adentro."""
+        self._candado = threading.Lock()
+        self._hilos = 0
+        self._anterior: int | None = None
+
+    def entrar(self, milisegundos: int) -> None:
+        """Pone el plazo si es el primer hilo que entra."""
+        with self._candado:
+            if self._hilos == 0:
+                self._anterior = ee.data._get_state().deadline_ms  # noqa: SLF001 - el cliente no lo expone
+                ee.data.setDeadline(milisegundos)
+            self._hilos += 1
+
+    def salir(self) -> None:
+        """Restaura el plazo si es el último hilo que sale."""
+        with self._candado:
+            self._hilos -= 1
+            if self._hilos == 0:
+                ee.data.setDeadline(self._anterior or _SIN_PLAZO)
+
+
+_plazo_compartido = _PlazoCompartido()
+
+
 def es_reintentable(error: BaseException) -> bool:
     """Si conviene volver a intentar el pedido que levantó este error.
 
@@ -138,16 +173,22 @@ def plazo(milisegundos: int = PLAZO_MS) -> Iterator[None]:
     limitar, y el ``getInfo()`` que venga después va a fallar por su cuenta con
     un error que dice justamente eso. Poner el plazo ahí solo cambiaría ese error
     por un ``AssertionError`` del cliente, que no explica nada.
+
+    **Con varios hilos, el primero lo pone y el último lo restaura** (M.4.8).
+    Desde que el worker atiende steps en paralelo, dos hilos entran acá a la vez,
+    y sin contarlos el que salía primero le sacaba el plazo al que seguía
+    trabajando. Peor todavía: ``setDeadline`` **reconstruye el cliente HTTP**, así
+    que llamarlo mientras otro hilo tiene un pedido en vuelo es cambiarle el
+    piso. El contador evita las dos cosas, porque todos piden el mismo plazo.
     """
     if not _hay_cliente():
         yield
         return
-    anterior = ee.data._get_state().deadline_ms  # noqa: SLF001 - el cliente no lo expone
-    ee.data.setDeadline(milisegundos)
+    _plazo_compartido.entrar(milisegundos)
     try:
         yield
     finally:
-        ee.data.setDeadline(anterior or _SIN_PLAZO)
+        _plazo_compartido.salir()
 
 
 @contextlib.contextmanager
