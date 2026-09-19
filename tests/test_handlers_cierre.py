@@ -217,3 +217,68 @@ def test_cerrar_nunca_levanta_y_devuelve_la_conexion_limpia(monkeypatch):
 
     assert db_repository.cerrar_job_abierto(JOB, "motivo") is False
     assert conn.rollbacks == 1
+
+
+# --- 4. El pool de conexiones con varios hilos (M.4.8) --------------------------
+#
+# `SimpleConnectionPool` **no se puede compartir entre hilos** (psycopg2), y
+# desde M.4.8 los handlers corren en el pool de hilos de FastAPI.
+
+
+def test_el_pool_es_el_de_varios_hilos(monkeypatch):
+    import psycopg2.pool
+
+    creados = []
+
+    class _PoolFalso:
+        def __init__(self, *a, **kw):
+            creados.append(type(self).__name__)
+
+        def getconn(self):
+            return "conexion"
+
+    monkeypatch.setattr(db_repository, "_pool", None)
+    monkeypatch.setattr(psycopg2.pool, "ThreadedConnectionPool", _PoolFalso)
+    # Si alguien volviera al simple, este doble lo delata.
+    monkeypatch.setattr(psycopg2.pool, "SimpleConnectionPool",
+                        lambda *a, **kw: pytest.fail("el pool simple no sirve con hilos"))
+
+    assert db_repository.get_connection() == "conexion"
+    assert creados == ["_PoolFalso"]
+
+
+def test_muchos_hilos_crean_un_solo_pool(monkeypatch):
+    """Sin candado, dos hilos que llegan juntos crean dos pools, y las
+    conexiones del que queda descartado no vuelven a ningun `putconn`."""
+    import threading
+    import time
+
+    import psycopg2.pool
+
+    creados = []
+
+    class _PoolLento:
+        def __init__(self, *a, **kw):
+            time.sleep(0.05)  # la ventana que el candado tiene que cerrar
+            creados.append(1)
+
+        def getconn(self):
+            return "conexion"
+
+    monkeypatch.setattr(db_repository, "_pool", None)
+    monkeypatch.setattr(psycopg2.pool, "ThreadedConnectionPool", _PoolLento)
+
+    arranquen = threading.Event()
+
+    def _pedir():
+        arranquen.wait()
+        db_repository.get_connection()
+
+    hilos = [threading.Thread(target=_pedir) for _ in range(8)]
+    for hilo in hilos:
+        hilo.start()
+    arranquen.set()
+    for hilo in hilos:
+        hilo.join()
+
+    assert len(creados) == 1

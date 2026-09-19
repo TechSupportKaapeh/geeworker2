@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 from datetime import date, datetime, timezone
@@ -11,26 +12,44 @@ logger = logging.getLogger(__name__)
 
 _pool = None
 
+# El pool se crea al primer uso, y desde M.4.8 el worker atiende varios steps a
+# la vez: sin este candado, dos hilos que llegan juntos crean dos pools y el
+# segundo pisa al primero, dejando sus conexiones fuera de cualquier `putconn`.
+_candado_del_pool = threading.Lock()
+
+
 def get_connection():
     global _pool
     if _pool is None:
-        db_host = os.getenv("DB_HOST", "localhost")
-        db_port = os.getenv("DB_PORT", "5432")
-        db_name = os.getenv("DB_NAME", "terra")
-        db_user = os.getenv("DB_USER", "postgres")
-        db_password = os.getenv("DB_PASSWORD", "postgres")
-        
-        from psycopg2.pool import SimpleConnectionPool
-        _pool = SimpleConnectionPool(
-            1, 20,
-            host=db_host,
-            port=db_port,
-            database=db_name,
-            user=db_user,
-            password=db_password,
-            options="-c search_path=geodata,public"
-        )
+        with _candado_del_pool:
+            # Se vuelve a mirar adentro del candado: el que esperaba puede
+            # encontrarlo ya creado por el que entro primero.
+            if _pool is None:
+                _pool = _crear_pool()
     return _pool.getconn()
+
+
+def _crear_pool():
+    db_host = os.getenv("DB_HOST", "localhost")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("DB_NAME", "terra")
+    db_user = os.getenv("DB_USER", "postgres")
+    db_password = os.getenv("DB_PASSWORD", "postgres")
+
+    # `ThreadedConnectionPool`, no `SimpleConnectionPool`: el simple **no se
+    # puede compartir entre hilos** (psycopg2, `pool.py`), y desde M.4.8 los
+    # handlers corren en el pool de hilos de FastAPI. Sin esto, dos steps en
+    # paralelo pueden recibir la misma conexion y mezclar sus transacciones.
+    from psycopg2.pool import ThreadedConnectionPool
+    return ThreadedConnectionPool(
+        1, 20,
+        host=db_host,
+        port=db_port,
+        database=db_name,
+        user=db_user,
+        password=db_password,
+        options="-c search_path=geodata,public"
+    )
 
 def release_connection(conn):
     if _pool and conn:

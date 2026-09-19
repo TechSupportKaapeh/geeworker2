@@ -34,7 +34,6 @@ como AUSENTE y no como definida.
 
 import importlib
 
-import inngest.fast_api
 import pytest
 from fastapi.testclient import TestClient
 from inngest._internal import errors
@@ -46,7 +45,9 @@ def app_sin_inngest(monkeypatch):
     def serve_que_levanta(*_a, **_k):
         raise errors.SigningKeyMissingError()
 
-    monkeypatch.setattr(inngest.fast_api, "serve", serve_que_levanta)
+    from services import inngest_serve
+
+    monkeypatch.setattr(inngest_serve, "serve", serve_que_levanta)
 
     import app as modulo
     yield importlib.reload(modulo)

@@ -158,8 +158,9 @@ def _montar_endpoint(is_production):
     """Monta /api/inngest en una app nueva, con una funcion que no hace nada."""
     import fastapi
     import inngest
-    import inngest.fast_api
     from fastapi.testclient import TestClient
+
+    from services import inngest_serve
 
     cliente = inngest.Inngest(
         app_id="test-firma",
@@ -176,7 +177,9 @@ def _montar_endpoint(is_production):
         return "no deberia ejecutarse en el caso cloud"
 
     app = fastapi.FastAPI()
-    inngest.fast_api.serve(app, cliente, [noop])
+    # El `serve` del worker (M.4.8), no el del SDK: la garantia de la firma
+    # es de la ruta que montamos nosotros.
+    inngest_serve.serve(app, cliente, [noop])
     return TestClient(app, raise_server_exceptions=False)
 
 
