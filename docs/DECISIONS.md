@@ -2474,3 +2474,25 @@ ejecutó, y la función devuelve los huecos entre steps. Se dispara a mano: *Sen
 **Cómo se probó.** 12 tests: los huecos, el tope de steps, que no toca GEE ni la base, y el
 registro. Y la función corrida de punta a punta contra el Inngest local. La suite: 591 verdes.
 Quedan 9 funciones registradas.
+
+**Resultado en producción (2026-09-19): la espera es de Inngest Cloud.** Tres corridas de
+`diagnostico-latencia` con 5 steps vacíos:
+
+| Corrida | Antes del primer step | Huecos entre steps vacíos | Finalization |
+|---|---|---|---|
+| 1 | 75 s | 2,5 · 2,0 · 2,1 · 0,25 s | 16,8 s |
+| 2 | 2,1 s | 37,6 · 2,1 · 0,3 · 1,8 s | 0,25 s |
+| 3 | 2,3 s | 48,5 · 2,2 · 2,3 · 43,7 s | 2,3 s |
+
+Steps que no hacen nada tienen **esperas al azar de 38 a 75 s**, con el mismo patrón que las
+altas: la mayoría sale en ~2 s (localmente, 0,12 a 0,20) y algunos esperan casi un minuto. Queda
+descartada la hipótesis de que la espera dependiera de cuánto dura el step. **No hay nada que
+arreglar en el worker ni en el pipeline**: la demora la agrega la plataforma al despachar.
+
+**Qué se hace:**
+1. 👥 escribirle al soporte de Inngest con los *run id* de estas corridas: ¿es el comportamiento
+   del plan Hobby, o un problema de la cuenta o de la región?
+2. Seguir con M.4.6 y M.5: la espera no afecta la corrección, y el cierre de mes es un step por
+   entidad.
+3. Si el soporte no lo resuelve, un piloto de Inngest autohosteado en Railway: el dev server local
+   no tuvo esperas. Va con su propia decisión, porque suma un servicio que operar.
