@@ -239,6 +239,7 @@ Tres cosas que cambian lo que sigue:
 | M.4.7 | 🆕 El job se cierra aunque la corrida termine fuera del handler: `on_failure` y las cancelaciones de Inngest | S | tests; probado contra un Inngest real | ✅ 2026-09-18 · `DECISIONS #52`. Cancelada una alta a mano, a los 5 s el job está `failed`. Los jobs ya colgados los cierra el equipo con el SQL de #52 (👥) |
 | M.4.8 | 🆕 El worker atiende varios steps a la vez: la ruta de Inngest en un pool de hilos, el pool de conexiones y el plazo de GEE seguros entre hilos | S | tres altas a la vez contra un Inngest real | ✅ 2026-09-19 · `DECISIONS #53`. **3 altas a la vez: 66 s → 23 s.** El SDK corría los handlers síncronos dentro del event loop (corrige `#26`) |
 | M.4.9 | 🆕 El arranque avisa si `INNGEST_BASE_URL` (o las otras URLs que lee el SDK) está en producción | S | tests con control negativo | ✅ 2026-09-19 · `DECISIONS #54`. Fue lo que rompió el sync del 2026-09-18; el reporte decía "en producción no se usa" |
+| M.4.10 | 🆕 Función de diagnóstico: N steps vacíos que miden la espera de Inngest entre steps | S | corrida contra un Inngest real | ✅ 2026-09-19 · `DECISIONS #55`. Línea de base local: 0,12–0,20 s entre steps. **Falta dispararla en producción** |
 
 **Riesgo:** los runs en vuelo durante el deploy rehacen sus steps. Es idempotente.
 

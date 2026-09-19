@@ -59,6 +59,7 @@ def test_hay_una_funcion_registrada_por_evento_esperado():
         "geeworker-process-parcela",
         "geeworker-process-rancho",
         "geeworker-cerrar-altas-canceladas",
+        "geeworker-diagnostico-latencia",
         "geeworker-generate-heatmap-on-demand",
         "geeworker-compute-timeseries",
         "geeworker-query-available-dates",
