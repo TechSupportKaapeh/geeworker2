@@ -3,6 +3,20 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
+> **2026-09-20, sesión 10 · M.6.4, y con ella el sprint M.6** (`DECISIONS #62`). La tarea
+> suponía angostar 35 `except Exception`; correr `ruff --select BLE` mostró que **sólo 8 son del
+> tipo que tapa bugs** —ruff no marca los que relanzan, que es el patrón correcto—. Tres estaban
+> en `utils_pkg/cache.py` e `io.py`, **sin un solo llamador**: se borraron los dos módulos. Los
+> cinco de `db_repository.py` son telemetría y ahora lo dicen con su `noqa` y su motivo.
+>
+> El invariante quedó en un test que corre `ruff --select BLE` sobre el repo entero, porque **el
+> CI sólo lo corre sobre `pipeline/`** y esto no dependía de que alguien se acordara del comando.
+> Control negativo corrido.
+>
+> **Sprint M.6 cerrado: −1.150 líneas de producción.** Sólo M.6.3 quedó sin hacer, y sin objeto:
+> M.6.2 la vació. Suite: **637 verdes**; `ruff check .` en la raíz, de 199 al abrir la sesión a
+> **77**.
+
 > **2026-09-20, sesión 10 · M.6.2b: la capa vieja desapareció** (`DECISIONS #61`). El mapa a
 > demanda corre sobre el pipeline (`handlers/mapa.py`), es de **un mes** y su key cuelga de
 > `tenants/{t}/parcelas/{p}/{receta}/{indice}/{AAAA-MM}.tif`. **Con eso, todo lo que el worker
@@ -274,7 +288,7 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
 | **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. **El sprint M.2 está cerrado** (2026-09-17). Están las cuatro etapas (`pipeline/etapas/`, M.2.1 a M.2.4), `productos.py`, el borde `ejecucion.py` (M.2.5) y la validación contra parcelas reales (M.2.6): `DECISIONS #38` a `#45`. **La compuerta pasó**: NDVI coherente con la estación, cobertura coherente, y 2 a 8 s por mes contra los 60 que pedía. En un mes la capa vieja no devolvió nada y el pipeline cubrió el 93,6 %. La receta v1 quedó con erosión de 2 px y acotando los índices. Faltan los handlers (M.4), que son los que van a usar `ejecucion`. Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **635 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7; 386 al cerrar M.1; 612 antes de M.6.1). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **637 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7; 386 al cerrar M.1; 612 antes de M.6.1). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
 | **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 

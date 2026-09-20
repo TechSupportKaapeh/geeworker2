@@ -2893,3 +2893,59 @@ trae `periodo` y eso no se arregla reintentando.
   con ellos**: moverlos, borrarlos, o dejar que el token los rechace.
 - **La ventana arbitraria** sigue sin existir. Recuperarla es cambiar `Mes` por un período
   semiabierto en `pipeline/`, que es también lo que habilitaría un formato por pasada.
+
+---
+
+## 62. M.6.4: `except Exception` se justifica o se borra, y el invariante queda en un test (2026-09-20)
+
+> Última tarea del sprint M.6. Lo que se hizo no es lo que la tarea suponía, y esa diferencia es
+> la decisión.
+
+**La tarea decía «excepciones explícitas en lugar de `except Exception` en lo que queda».
+Quedaban 35, y angostar los 35 habría sido una regresión.**
+
+Lo que resolvió el alcance fue correr la regla en vez de contar a ojo:
+
+```bash
+.venv/Scripts/python.exe -m ruff check . --select BLE
+```
+
+**Ruff marcaba 8 de los 35.** No marca un `except Exception` que **relanza**, y ahí está la
+distinción que importa: atrapar ancho para anotar el fallo y dejar que suba es el patrón
+correcto, y angostarlo sería peor —dejaría pasar sin registrar lo que no estuviera en la lista—.
+Lo que ruff marca son los que **absorben**, que son los que tapan bugs. Esos 27 que no marca son
+`pipeline/ejecucion.py` traduciendo errores de GEE, `avance_job.paso` y `handlers/seguimiento`
+anotando y relanzando, los `rollback`-y-relanzo de las escrituras, y los 19 que ya llevaban un
+`noqa` con su motivo.
+
+**De los 8: tres se borraron y cinco se justificaron.**
+
+`utils_pkg/cache.py` y `utils_pkg/io.py` **no tenían un solo llamador**. Guardaban mapids de GEE
+y estadísticas de cálculo en `BASE_OUTPUT_DIR`; lo último que escribía ahí era
+`export_service.py`, que se fue en M.6.2b. Sus tres `except Exception: pass / return None` eran
+justo la clase que ruff marca. Se borraron los dos módulos enteros, y `utils_pkg/__init__.py`
+quedó sin exportar nada.
+
+Los cinco de `db_repository.py` se quedan, con `# noqa: BLE001` y el motivo escrito. **El estado
+de un job es telemetría**: perder una actualización no puede abortar un procesamiento que ya
+corrió. Angostarlos a `psycopg2.Error` haría que un `TypeError` serializando el `detail` tumbara
+una corrida que había terminado bien — exactamente al revés de lo que la tarea busca.
+
+**El invariante quedó en un test, no en una costumbre.** `test_no_queda_ningun_except_exception_sin_justificar`
+corre `ruff --select BLE` sobre el repo entero y falla si aparece uno nuevo. Existe porque **el
+CI sólo corre ruff sobre `pipeline/`** (M.0.1, y el CI no se toca por pedido del usuario): sin
+esto, el criterio de aceptación dependería de que alguien se acuerde del comando. Control
+negativo corrido: con un `except Exception: return None` agregado a mano, sale rojo nombrando
+archivo y línea.
+
+**Una observación que quedó anotada y no se actuó:** si nada escribe ya en `BASE_OUTPUT_DIR`, el
+chequeo de arranque `verificar_outputs` está verificando una carpeta que no usa nadie. No se saca
+acá porque atrapó un fallo real de producción (`Permission denied: '../outputs'`, por job y no al
+arrancar) y cuesta poco; pero la variable y el chequeo son candidatos a irse juntos.
+
+**Cómo se verificó.** Suite: **637 verdes** (dos nuevos). `ruff check . --select BLE` limpio;
+`ruff check .` en la raíz baja de 92 a **77** — borrar los dos módulos se llevó más
+hallazgos de los que tenían sus `except`.
+
+**Con esto el sprint M.6 queda cerrado**, salvo M.6.3, que M.6.2 vació: de los cinco
+`Request*Async` sobrevivió `RequestHeatmapAsync`, y sin duplicación no hay refactor que hacer.

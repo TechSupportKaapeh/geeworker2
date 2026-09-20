@@ -334,10 +334,10 @@ republicación.
 | M.6.2 | Los handlers a demanda. 👥 Confirmar si el front de tenants usa `timeseries`, `dates`, `stats` y `export`; borrarlos o rehacerlos. El mapa a demanda pasa al pipeline | worker, Geocore | M | decisión escrita | 🟡 2026-09-20 · geeworker2#57 y Geocore#37, `DECISIONS #60` y `#35`. **El usuario decidió borrarlos.** Se fueron los cuatro handlers, sus cinco endpoints —suma `timeseries-on-the-fly`, que habría quedado fabricando jobs `pending` eternos— y todo lo que sólo ellos sostenían: **−467 líneas de producción**. **Falta M.6.2b**, el mapa a demanda al pipeline |
 | M.6.2b | 🆕 El mapa a demanda pasa al pipeline (`ARQUITECTURA` §9) | worker, Geocore | M | el COG a demanda sale con nodata y con el tenant en la key | ✅ 2026-09-20 · geeworker2#59 y Geocore#39, `DECISIONS #61` y `#36`. **La capa vieja desapareció**: `ee_client.py` quedó en 57 líneas (sólo `init_ee`) y `services/inngest_handlers.py` se borró. El mapa es de **un mes** (decisión del usuario) y su key cuelga de `tenants/`, que es lo que desbloquea M.8.1. −622 líneas de producción |
 | M.6.3 | Un solo `EncolarAsync` en vez de los cinco `Request*Async` | Geocore | S | tests | ⛔ **vaciada por M.6.2**: de los cinco quedó `RequestHeatmapAsync` sola, y sin duplicación no hay nada que unificar. Se revisa después de M.6.2b |
-| M.6.4 | Excepciones explícitas en lugar de `except Exception` en lo que queda | worker | M | ruff sin hallazgos nuevos | ⬜ **es lo único que queda de M.6**, y encogió mucho: los de `ee_client`, `ee_service`, `export_service` y `ee_indices` se fueron con los módulos. Lo que sobrevive (`db_repository.py`, `conexiones.py`, `app.py`, `check_schema.py`, `pipeline/ejecucion.py`) ya se revisó uno por uno el 2026-09-20 y es deliberado: angostarlo sería una regresión. **Conviene cerrarla declarándolo, no cambiando código** |
+| M.6.4 | Excepciones explícitas en lugar de `except Exception` en lo que queda | worker | M | ruff sin hallazgos nuevos | ✅ 2026-09-20 · geeworker2#60, `DECISIONS #62`. **Ruff marcaba 8 de los 35**: no marca los que relanzan, que son el patrón correcto. Tres estaban en `utils_pkg/cache.py` e `io.py`, sin un solo llamador: se borraron. Los cinco de `db_repository.py` son telemetría y ahora lo dicen con su `noqa`. **El invariante quedó en un test**, porque el CI sólo corre ruff sobre `pipeline/` |
 | M.6.5 | 🆕 El mapa del rancho, de los **cuatro** índices: un COG por índice y por mes | worker | S | tests; las keys no se pisan | ✅ 2026-09-20 · geeworker2#52, `DECISIONS #58`. Decisión del usuario. No toca la receta, pero el mes pasa de 1 a 4 descargas y de 2 a 5 llamadas a GEE. **Lo que está en producción sigue con sólo NDVI hasta que se reprocese** |
 
-**Sprint cerrado el 2026-09-20 (sesión 10), salvo M.6.4.** El objetivo era «que el worker
+**Sprint cerrado el 2026-09-20 (sesión 10).** El objetivo era «que el worker
 termine con menos código que al empezar», y se cumplió con margen: **−1.150 líneas de
 producción** entre M.6.1, M.6.2 y M.6.2b.
 
@@ -346,15 +346,21 @@ producción** entre M.6.1, M.6.2 y M.6.2b.
 | M.6.1 | Lo que ya no tenía llamador, y la escritura de `sentinel2_dates` (−61) |
 | M.6.2 | Los cuatro handlers a demanda, cinco endpoints, y todo lo que sostenían (−467) |
 | M.6.2b | El mapa a demanda al pipeline, y con él la capa vieja entera (−622) |
+| M.6.4 | `utils_pkg/cache.py` e `io.py`, sin llamadores |
 
 **Ya no queda nada anterior al pipeline mensual.** `ee_client.py` pasó de 436 líneas a 57 —sólo
 `init_ee`—, `services/inngest_handlers.py` se borró, y la lista de funciones vive en
 `handlers/registro.py`. El worker registra 7 funciones y **todo lo que escribe cuelga de
 `tenants/{t}/`**, que es lo que M.8.1 necesitaba.
 
-**Lo que queda:** sólo **M.6.4**, y conviene cerrarla declarando lo que se revisó en vez de
-cambiar código — los `except Exception` que sobreviven son deliberados y angostarlos sería una
-regresión. **M.6.3 quedó vaciada** por M.6.2: de los cinco `Request*Async` sobrevivió uno.
+**M.6.4 cerró con menos código, no con más.** La tarea suponía angostar 35 `except Exception`;
+correr `ruff --select BLE` mostró que sólo 8 eran del tipo que tapa bugs —ruff no marca los que
+relanzan—, y tres de esos estaban en dos módulos **sin un solo llamador**, que se borraron. Los
+otros cinco son telemetría y se justificaron con su `noqa`. El invariante quedó en un test,
+porque el CI sólo corre ruff sobre `pipeline/`.
+
+**M.6.3 es lo único que no se hizo, y no se va a hacer así:** M.6.2 la vació. De los cinco
+`Request*Async` sobrevivió `RequestHeatmapAsync`, y sin duplicación no hay refactor.
 
 **Tres cosas que salieron de hacerlo, y no estaban en la tarea:**
 - **`timeseries-on-the-fly` habría quedado fabricando jobs `pending` eternos.** Publicaba un

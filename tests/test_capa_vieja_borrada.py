@@ -225,3 +225,44 @@ def test_cada_evento_que_geocore_publica_tiene_oyente():
     }
 
     assert escuchados - propios == de_geocore
+
+
+def test_no_queda_ningun_except_exception_sin_justificar():
+    """M.6.4: `ruff --select BLE` limpio en todo el repo, no sólo en `pipeline/`.
+
+    **Qué cuenta como "sin justificar".** Ruff no marca un `except Exception` que
+    relanza: ahí atrapar ancho es el patrón correcto —anotar el fallo y dejar que
+    suba— y angostarlo sería peor, porque dejaría pasar sin registrar lo que no
+    estuviera en la lista. Marca los que **absorben**, que son los que tapan
+    bugs.
+
+    De los 35 que quedaban al empezar M.6.4, ruff marcaba 8: tres en
+    `utils_pkg/cache.py` e `io.py`, que no tenían un solo llamador y se borraron,
+    y cinco en `db_repository.py`, que son deliberados y ahora lo dicen con un
+    `noqa` y su motivo. El estado de un job es telemetría: perder una
+    actualización no puede abortar un procesamiento que ya corrió, y angostarlos
+    a `psycopg2.Error` haría que un `TypeError` serializando el detalle tumbara
+    la corrida.
+
+    El test existe porque **el CI sólo corre ruff sobre `pipeline/`** (M.0.1, y
+    el CI no se toca). Sin esto, el invariante dependería de que alguien se
+    acuerde de correr el comando.
+    """
+    import subprocess
+
+    resultado = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", ".", "--select", "BLE",
+         "--output-format", "concise"],
+        cwd=str(RAIZ), capture_output=True, text=True, timeout=120, check=False,
+    )
+    assert resultado.returncode == 0, resultado.stdout
+
+
+def test_utils_pkg_no_exporta_nada():
+    """Lo que tenía se fue con los módulos que lo usaban (M.6.2b y M.6.4)."""
+    import utils_pkg
+
+    assert getattr(utils_pkg, "__all__", []) == []
+    for modulo in ("utils_pkg.cache", "utils_pkg.io", "utils_pkg.visualization"):
+        with pytest.raises(ModuleNotFoundError):
+            __import__(modulo)
