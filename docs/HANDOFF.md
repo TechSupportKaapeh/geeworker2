@@ -3,7 +3,13 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
-> **Última revisión: 2026-09-19, sesión 9: M.5.3, el cierre de mes**
+> **2026-09-20:** el primer cierre de mes real sacó un bug de clasificación (`DECISIONS #57`):
+> `Pixel grid dimensions ... must be less than or equal to 32768` se trataba como pasajero y se
+> reintentaba cuatro veces —el primer intento gastó 144 s de GEE— cuando la misma geometría da
+> siempre el mismo error. Ya está en `_DEFINITIVOS`. Lo levantó un rancho de 13 x 111332 px, o
+> sea 130 m por 1113 km: un polígono mal cargado. Suite: 610 verdes.
+>
+> **Antes, 2026-09-19, sesión 9: M.5.3, el cierre de mes**
 > (`DECISIONS #56`). `handlers/mes.py` registra `process-parcela-mes` y `process-rancho-mes`,
 > que atienden `terra/parcela.mes.requested` y `terra/rancho.mes.requested` de Geocore: **un
 > solo step, con el mes que manda el evento en `periodo`**, y reusando `procesar_mes` de las
