@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict, Any, List
 
-from services.ee.ee_client import get_sentinel2_time_series, init_ee
+from services.ee.ee_client import init_ee
 from services.ee.ee_indices import compute_sentinel2_index
 from utils_pkg.visualization import index_band_and_vis
 
@@ -205,25 +205,7 @@ def generate_heatmap_tiles(
     }
 
 
-def generate_time_series_data(
-    roi: ee.Geometry,
-    start: str,
-    end: str,
-    index: str,
-    cloud_pct: int = 70,
-    limit: int = 30,
-    kml_id: Optional[str] = None,
-    source: str = 'on_demand',
-    rescate: bool = True
-) -> List[Dict[str, Any]]:
-    """Calcula y retorna la serie temporal de valores medios de un índice sobre un ROI, registrando mediciones.
-
-    `rescate` y `limit`: ver `get_sentinel2_time_series`.
-    """
-    init_ee()
-
-    # Obtener serie temporal optimizada
-    series_data = get_sentinel2_time_series(roi, start, end, index, cloud_pct, limit, rescate=rescate)
-    
-            
-    return series_data
+# `generate_time_series_data()` se borro en M.6.2 (`DECISIONS #60`) con los
+# handlers a demanda que la llamaban. Era un envoltorio de
+# `get_sentinel2_time_series`, que medía a 60 m y calculaba EVI y SAVI con
+# constantes pensadas para reflectancia 0-1 sobre bandas en miles.

@@ -5,19 +5,12 @@ from datetime import datetime, timezone
 import inngest
 
 from services.inngest_client import inngest_client
-from services.ee.ee_client import init_ee, get_sentinel2_dates
-from services.ee_service import generate_heatmap_tiles, generate_time_series_data
-from services.export_service import export_heatmap, export_time_series
+from services.ee.ee_client import init_ee
+from services.ee_service import generate_heatmap_tiles
+from services.export_service import export_heatmap
 from services.storage_service import get_storage_service
 from services.cog_converter import convert_to_cog
-# OJO: `get_sentinel2_dates` se importa arriba desde `services.ee.ee_client` y
-# consulta GEE. El repositorio tiene otra funcion con el MISMO nombre que leia
-# la tabla `sentinel2_dates`. Se importaba aliasada como `get_cached_dates` y no
-# la llamaba nadie: si alguien quitaba el alias, la del repositorio pisaba a la
-# de GEE y las dos llamadas de abajo le pasaban un ROI donde espera un
-# geometry_id. La del repositorio se elimino en FASE D; el alias, aca.
-from repositories.db_repository import (update_processing_job, insert_layer,
-                                       insert_measurement, insert_measurements)
+from repositories.db_repository import update_processing_job, insert_layer
 from services.avance_job import paso, reportar
 # M.4.2: el wrapper de jobs, el ROI y las utilidades viven en `handlers/`, para que
 # los handlers del pipeline mensual no importen este modulo, que es la capa vieja
@@ -165,108 +158,28 @@ def generate_heatmap_on_demand(ctx: inngest.Context, step: inngest.StepSync, pay
     res = paso(step, "generate-heatmap", _generate)
     return res
 
-@inngest_client.create_function(
-    fn_id="compute-timeseries",
-    trigger=inngest.TriggerEvent(event="terra/parcela.timeseries.requested"),
-    retries=RETRIES,
-)
-@_with_job_tracking
-def compute_timeseries(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
-    def _compute_ts():
-        etapa = "compute-ts"
-        indice, inicio, fin = payload["indice"], payload["fechaInicio"], payload["fechaFin"]
-        reportar(etapa, f"Serie de {indice}: {inicio} → {fin}",
-                 progreso=10, indice=indice, desde=inicio, hasta=fin)
-        t0 = time.monotonic()
-        init_ee()
-        roi = coords_to_geometry(payload["coordinates"])
-        ts_data = generate_time_series_data(roi, inicio, fin, indice, payload.get("cloudPct", 30))
-        escritas = insert_measurements(
-            {"parcela_id": payload['parcelaId'], "indice": indice,
-             "fecha": p['date'], "tenant_id": payload['tenantId'],
-             "valor": p.get('mean')}
-            for p in ts_data
-        )
-        reportar(etapa, f"Serie de {indice}: {escritas} fechas con valor",
-                 progreso=95, escritas=escritas, ms=_ms_desde(t0))
-        return {"data": ts_data}
-    res = paso(step, "compute-ts", _compute_ts)
-    return res
-
-@inngest_client.create_function(
-    fn_id="query-available-dates",
-    trigger=inngest.TriggerEvent(event="terra/parcela.dates.requested"),
-    retries=RETRIES,
-)
-@_with_job_tracking
-def query_available_dates(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
-    def _query_dates():
-        init_ee()
-        roi = coords_to_geometry(payload["coordinates"])
-        # M.6.1: las fechas se devuelven en el resultado del job y **no se
-        # persisten**. Antes cada una se escribia en `sentinel2_dates`, una
-        # tabla que no tenia una sola consulta de lectura (`§9`, A-4). El
-        # llamador siempre las leyo de aca, no de la tabla.
-        return {"dates": get_sentinel2_dates(
-            roi, payload["fechaInicio"], payload["fechaFin"],
-            payload.get("cloudPct", 30),
-        )}
-    res = step.run("query-dates", _query_dates)
-    return res
-
-@inngest_client.create_function(
-    fn_id="export-data",
-    trigger=inngest.TriggerEvent(event="terra/parcela.export.requested"),
-    retries=RETRIES,
-)
-@_with_job_tracking
-def export_data(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
-    def _export():
-        init_ee()
-        roi = coords_to_geometry(payload["coordinates"])
-        fmt = payload["formato"]
-        
-        if fmt in ["geotiff", "png"]:
-            path, stats = export_heatmap(roi, None, payload["indice"], payload["fecha"], payload["fecha"], 30, fmt)
-            obj = f"exports/{payload['parcelaId']}/{payload['fecha']}_{payload['indice']}.{fmt}"
-            ct = "image/tiff" if fmt == "geotiff" else "image/png"
-            storage_key = get_storage_service().upload_file(obj, path, ct)
-            _borrar_temporales(path)
-        else: # csv
-            # We need series pts
-            ts_data = generate_time_series_data(roi, payload["fecha"], payload["fecha"], payload["indice"])
-            path, _ = export_time_series(ts_data, payload["indice"], payload["fecha"], payload["fecha"], roi, None)
-            obj = f"exports/{payload['parcelaId']}/{payload['fecha']}_{payload['indice']}.csv"
-            storage_key = get_storage_service().upload_file(obj, path, "text/csv")
-            _borrar_temporales(path)
-            
-        return {"storage_key": storage_key}
-    res = step.run("export", _export)
-    return res
-
-@inngest_client.create_function(
-    fn_id="compute-parcela-stats",
-    trigger=inngest.TriggerEvent(event="terra/parcela.stats.requested"),
-    retries=RETRIES,
-)
-@_with_job_tracking
-def compute_parcela_stats(ctx: inngest.Context, step: inngest.StepSync, payload: dict) -> dict:
-    def _stats():
-        init_ee()
-        roi = coords_to_geometry(payload["coordinates"])
-        results = {}
-        for idx in payload["indices"]:
-            ts_data = generate_time_series_data(roi, payload["fecha"], payload["fecha"], idx)
-            if ts_data:
-                p = ts_data[0]
-                insert_measurement(
-                    parcela_id=payload['parcelaId'], indice=idx, fecha=payload['fecha'],
-                    tenant_id=payload['tenantId'], valor=p.get('mean'),
-                )
-                results[idx] = p.get('mean')
-        return results
-    res = step.run("stats", _stats)
-    return res
+# M.6.2, 2026-09-20 (`DECISIONS #60`): se borraron los cuatro handlers a demanda
+# —`compute_timeseries`, `query_available_dates`, `export_data` y
+# `compute_parcela_stats`— junto con sus endpoints en Geocore. Decision del
+# usuario, con el front avisado.
+#
+# Lo que el pipeline mensual ya daba mejor:
+#   - la serie: 96 filas por parcela (24 meses x 4 indices) con 7 estadisticas,
+#     medidas a 10 m y no a 60, sin descartar pasadas y con EVI bien calculado;
+#   - las estadisticas de una fecha: un subconjunto de eso;
+#   - el CSV: se arma leyendo `measurements`, no yendo a GEE.
+#
+# Y dos de los cuatro **nunca devolvieron un dato**: `stats` y el CSV de
+# `export` le pedian a GEE el rango `fecha -> fecha`, y `filterDate` es
+# semiabierto. `compute_timeseries` ademas escribia filas con `receta IS NULL`,
+# que son las que hubo que borrar a mano en M.3.5.
+#
+# Lo unico que se pierde es la ventana arbitraria (pedir del 3 al 20 de marzo).
+# Recuperarla es cambiar `Mes` por un rango semiabierto en `pipeline/etapas/`,
+# no conservar este codigo: contestaba a 60 m y con formulas equivocadas.
+#
+# `generate_heatmap_on_demand` sigue vivo: el mapa a demanda **pasa al
+# pipeline** (`ARQUITECTURA` §9), y eso es M.6.2b.
 
 all_functions = [
     process_parcela,
@@ -276,8 +189,4 @@ all_functions = [
     cerrar_altas_canceladas,
     diagnostico_latencia,
     generate_heatmap_on_demand,
-    compute_timeseries,
-    query_available_dates,
-    export_data,
-    compute_parcela_stats
 ]

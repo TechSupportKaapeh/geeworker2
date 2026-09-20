@@ -1,7 +1,5 @@
 import os
-import time
 import logging
-import csv
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List
 import ee
@@ -204,26 +202,7 @@ def export_heatmap(
     }
 
 
-def export_time_series(
-    series_pts: List[Dict[str, Any]],
-    index: str,
-    start: str,
-    end: str,
-    roi: ee.Geometry,
-    roi_bounds: Optional[List[float]],
-    kml_id: Optional[str] = None
-) -> Tuple[str, str]:
-    """Exporta una serie temporal en un archivo CSV y lo registra en base de datos."""
-    ensure_outputs_dir()
-    base_filename, _ = timestamped_base(index, start, end)
-    saved_path = str(Path(BASE_OUTPUT_DIR) / f"{base_filename}.csv")
-    
-    with open(saved_path, 'w', newline='', encoding='utf-8') as fh:
-        writer = csv.writer(fh)
-        writer.writerow(['date', 'value'])
-        for pt in series_pts:
-            writer.writerow([pt.get('date'), pt.get('value') or pt.get('mean')])
-            
-    asset_id = f"{index}_{int(time.time())}_series"
-    
-    return saved_path, asset_id
+# `export_time_series()` se borro en M.6.2 (`DECISIONS #60`). Escribia el CSV de
+# `export_data`, que **nunca devolvio una fila**: el handler le pedia a GEE el
+# rango `fecha -> fecha` y `filterDate` es semiabierto. Un CSV de la serie se
+# arma leyendo `measurements`, no yendo a GEE.

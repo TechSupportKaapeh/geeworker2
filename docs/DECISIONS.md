@@ -2723,3 +2723,84 @@ son `ee_service.py`, `export_service.py`, `ee_indices.py`, el constructor de col
   vistas dependientes y 0 filas**. Ningún lector en ninguno de los cuatro repos.
 - 👥 **M.6.2** sigue esperando si el front de los tenants usa `timeseries`, `dates`, `stats` y
   `export`.
+
+---
+
+## 60. M.6.2: se borran los cuatro handlers a demanda, y con ellos media capa vieja (2026-09-20)
+
+> Decisión del usuario, con el equipo del front avisado. Del lado de Geocore es `DECISIONS #35`.
+> Es la tarea que trabó el sprint M.6 durante toda la sesión 10.
+
+**Se borran cuatro de los cinco handlers a demanda:** `compute_timeseries`,
+`query_available_dates`, `export_data` y `compute_parcela_stats`.
+**`generate_heatmap_on_demand` se queda**: el mapa a demanda *pasa al pipeline*
+(`ARQUITECTURA §9`), y eso es M.6.2b. El worker baja de 11 funciones registradas a 7.
+
+**Lo que se cayó con ellos**, todo por no tener otro llamador:
+
+| Módulo | Qué se fue |
+|---|---|
+| `services/ee/ee_client.py` | `get_sentinel2_time_series` (con `add_index_band_fast`), `una_por_dia`, `_redondear`, `get_sentinel2_dates` |
+| `services/ee_service.py` | `generate_time_series_data` |
+| `services/export_service.py` | `export_time_series` |
+| `repositories/db_repository.py` | `insert_measurement`, `insert_measurements` |
+| `utils_pkg/io.py` | `round_sig` |
+| `scripts/check_pipeline_real.py` | `_mes_viejo` y las columnas del lado a lado |
+
+**`add_index_band_fast` era la segunda copia de las fórmulas**, y no coincidía con la primera.
+EVI y SAVI usaban constantes pensadas para reflectancia 0–1 sobre bandas en miles, así que el
+SAVI que devolvía era, en la práctica, `1,5 × NDVI`. La copia única vive en `pipeline/indices.py`,
+donde las fórmulas son texto y hay tests que las evalúan contra valores de la literatura.
+
+**`insert_measurement` e `insert_measurements` eran la escritura por pasada**, la que producía
+filas con `receta` nula — exactamente las que el equipo borró a mano en 👥 M.3.5. Mientras
+existieran, la canilla seguía abierta. Lo mensual se escribe con `upsert_mediciones_mensuales`,
+que siempre pone `receta`. Con esto, **la única escritora de `min_val` y `max_val` desaparece**:
+esas columnas quedan sólo para las filas viejas.
+
+**`una_por_dia` la resuelve mejor el pipeline.** Juntaba las dos imágenes de una misma pasada en
+el borde de dos teselas MGRS promediando dos medias espaciales parciales —una aproximación que
+no pondera por superficie (`DECISIONS #30`)—. `pipeline/etapas/compuesto.py` mosaica por
+`DATATAKE_IDENTIFIER` **en el espacio de la imagen**, antes de reducir, así que el problema no
+llega a existir.
+
+**El lado a lado de `check_pipeline_real.py` se retira, no se rompe.** Esa comparación era la
+compuerta de M.2.6 y **ya se corrió**, el 2026-09-17 sobre 3 parcelas reales × 3 meses
+(`DECISIONS #44` y `#45`); sus números están escritos. La capa vieja ya no existe para
+compararse, y un script que no se puede correr es peor que uno que dice por qué.
+
+**Los tests borrados no se perdieron, se mudaron.** Los cinco de `insert_measurements` y
+`una_por_dia` cuidaban que el lote fuera una sola llamada a `execute_values`, que las filas
+repetidas no llegaran a la base, que un lote vacío no abriera conexión y que la fecha viajara
+como `datetime` con zona. **Todo eso lo cuida `test_escritura_mensual.py`** sobre el camino que
+de verdad se usa — y ahí las filas repetidas son un `ValueError`, porque `filas_del_mes` no
+puede producirlas. Se verificó antes de borrar, no después.
+
+**Un casi-accidente, y el test que quedó de él.** Al revisar qué publica cada controlador de
+Geocore apareció que `POST /api/processing/jobs/timeseries-on-the-fly` publica
+`terra/parcela.timeseries.requested`, y que el handler borrado era su **único oyente**. No estaba
+en la lista de la tarea. Dejarlo vivo habría convertido ese endpoint en una fábrica de jobs
+`pending` eternos. Se borró también (Geocore `#35`), y quedó
+`test_cada_evento_que_geocore_publica_tiene_oyente`: compara los disparadores registrados contra
+la lista escrita de lo que Geocore publica, en las dos direcciones — que no falte un oyente y que
+no sobre uno. **No hay compilador que cruce los dos repos.** Control negativo corrido: quitando
+un handler de `all_functions`, el test sale rojo.
+
+**El orden de despliegue es el inverso del de M.5.5.** Allá el worker iba primero, para que
+hubiera quien escuchara. Acá se está quitando: **primero Geocore** (deja de publicar), **después
+el worker**. Al revés, entre un merge y el otro quedan eventos sin oyente.
+
+**Los números.** Código de producción: **−467 líneas** (los tests bajan 98 más). `ruff check .`
+en la raíz pasa de 187 a 157 hallazgos, **sin sumar ninguno nuevo** — verificado con un diff de
+conjuntos contra `main`, no comparando totales. Suite: 619 → **617** (se borraron 6 tests y
+entraron 4).
+
+**Lo que queda abierto:**
+- **M.6.2b**: el mapa a demanda al pipeline. Se lleva `ee_service.py`, `export_service.py`,
+  `ee_indices.py`, el constructor de colecciones de `ee_client.py` (con `apply_scsc` y el
+  descarte por pasada) e `index_band_and_vis`. **Ahí también se resuelve** que los GeoTIFF de los
+  on-demand siguen sin nodata y que sus keys no llevan tenant, que es lo que M.8.1 necesita.
+- **M.6.3** pierde casi todo su sentido: `RequestHeatmapAsync` queda sola, y sin duplicación no
+  hay nada que unificar. Se revisa después de M.6.2b.
+- **M.6.4** sigue en pie y ahora es más chica: los `except Exception` que quedaban en los módulos
+  borrados se fueron solos.
