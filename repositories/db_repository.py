@@ -147,7 +147,7 @@ def update_processing_job(job_id: str, status: str, progress: int = None, error_
         
         cur.execute(query, tuple(params))
         conn.commit()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - telemetria: no puede abortar el trabajo
         # No se relanza a proposito: el estado del job es telemetria, no el
         # trabajo. Perder la actualizacion no debe abortar un procesamiento que
         # ya corrio. Pero se loguea como ERROR y no con un print, para que se
@@ -169,7 +169,7 @@ def _deshacer(conn):
         return
     try:
         conn.rollback()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - devolver la conexion al pool no puede fallar hacia arriba
         logger.warning("No se pudo hacer rollback de una conexion del pool: %s", e)
 
 
@@ -208,7 +208,7 @@ def cerrar_job_abierto(job_id: str, error_message: str) -> bool:
         )
         conn.commit()
         return cur.rowcount == 1
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - cerrar un job es telemetria: se informa y sigue
         logger.error("No se pudo cerrar el job %s: %s", job_id, e)
         _deshacer(conn)
         return False
@@ -251,7 +251,7 @@ def registrar_evento_job(job_id: str, attempt: int, stage: str, level: str, mess
                     (round(progress), job_id),
                 )
                 conn.commit()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - el avance es telemetria
                 logger.error("No se pudo actualizar el avance del job %s: %s", job_id, e)
                 _deshacer(conn)
 
@@ -269,7 +269,7 @@ def registrar_evento_job(job_id: str, attempt: int, stage: str, level: str, mess
              Json(detail, dumps=lambda o: json.dumps(o, default=str)) if detail else None),
         )
         conn.commit()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - la bitacora es telemetria: nunca levanta
         _deshacer(conn)
         if getattr(e, "pgcode", None) == "42P01":  # undefined_table
             _sin_tabla_de_eventos_hasta = time.monotonic() + _PAUSA_SIN_TABLA_S
