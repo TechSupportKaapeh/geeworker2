@@ -1,10 +1,12 @@
-# 2026-09-20 — sesión 10: la limpieza, y el sprint que no se puede terminar
+# 2026-09-20 — sesión 10: la limpieza
 
-> Sprint M.6. Se hizo **M.6.1**; las otras tres tareas quedaron ⛔, todas por la misma
-> pregunta que espera al equipo del front. Fuera del tablero salieron dos cosas: un test
-> flaky en `main` y el panel traduciendo 5 de 11 tipos de proceso.
+> Sprint M.6. Se hicieron **M.6.1** y, después de que el usuario contestara la pregunta que
+> trababa el sprint, **M.6.2**: los handlers a demanda se borran. Queda **M.6.2b**, el mapa a
+> demanda al pipeline. Fuera del tablero salieron dos cosas: un test flaky en `main` y el panel
+> traduciendo 5 de 11 tipos de proceso.
 >
-> Decisiones: `DECISIONS #59` del worker. PR: geeworker2#54 y #55, Terra-admin#11.
+> Decisiones: `DECISIONS #59` y `#60` del worker, `#35` de Geocore.
+> PR: geeworker2#54, #55, #56 y #57; Geocore#36 y #37; Terra-admin#11.
 > Sesión anterior: [`SESSION_2026-09-19_sesion_9_el_cierre_de_mes.md`](SESSION_2026-09-19_sesion_9_el_cierre_de_mes.md)
 > y, el mismo día 20, `geocore/docs/SESSION_2026-09-20_el_cierre_en_produccion_y_las_geometrias.md`.
 
@@ -206,3 +208,97 @@ CI verde en los tres PR, mergeados con `--merge`.
 3. 👥 **Inngest**: el soporte sigue sin contestar por la espera entre steps (`#55`).
 4. Si la sesión que viene arranca con M.6 todavía trabado, la siguiente ⬜ del tablero es
    **M.7.1**.
+
+---
+
+# Segunda parte: el usuario contestó, y M.6.2 se hizo
+
+## 8. La decisión
+
+**«Borralos».** Con eso el sprint se destrabó entero. También quedaron contestadas las otras
+preguntas de la lista: se sigue en Inngest Cloud por ahora; M.0.6 y el backup de MinIO van
+**después de la demo**; la consola de MinIO se deja abierta por ahora; la retención se decide
+más tarde; el panel sigue sin librería de gráficos; la licencia de la capa satelital y el
+número del rancho contra su mapa se ven cuando lleguen. Y **M.6.1b está hecho**: el usuario
+aplicó el `DROP TABLE`.
+
+## 9. Lo que se borró, y lo que se cayó con ello
+
+Los cuatro handlers, sus cuatro endpoints, y todo lo que no tenía otro llamador:
+`get_sentinel2_time_series` con su `add_index_band_fast`, `una_por_dia`, `get_sentinel2_dates`,
+`generate_time_series_data`, `export_time_series`, `insert_measurement`, `insert_measurements`
+y `round_sig`. Más el lado a lado de `check_pipeline_real.py`, que ya no tiene contra qué
+comparar.
+
+**−467 líneas de producción.** Ése es el borrado que M.6 prometía y que M.6.1 no podía dar.
+
+Tres cosas que aparecieron al leer lo que se iba:
+
+- **`add_index_band_fast` era la segunda copia de las fórmulas, y no coincidía con la primera.**
+  EVI y SAVI con constantes de reflectancia 0–1 sobre bandas en miles: el SAVI que devolvía era,
+  en la práctica, `1,5 × NDVI`.
+- **`insert_measurement(s)` eran la canilla de las filas `receta IS NULL`**, las que el equipo
+  borró a mano en M.3.5. Con ellas se va la última escritora de `min_val` y `max_val`.
+- **`una_por_dia` promediaba dos medias espaciales parciales** de la misma pasada en el borde de
+  dos teselas MGRS. El pipeline mosaica por `DATATAKE_IDENTIFIER` antes de reducir, así que el
+  problema no llega a existir.
+
+## 10. El casi-accidente, que es lo más interesante de la tarea
+
+La lista de la tarea decía cuatro handlers y cuatro endpoints. Revisando **qué publica cada
+controlador de Geocore** —no la lista— apareció un quinto:
+`POST /api/processing/jobs/timeseries-on-the-fly` publica
+`terra/parcela.timeseries.requested`, y el handler que se estaba borrando era su **único
+oyente**.
+
+Dejarlo vivo habría convertido ese endpoint en una fábrica de jobs `pending` eternos: el
+síntoma que la pestaña Procesos marca como «En cola hace más de 10 minutos», y que ya se había
+sufrido al prender el cierre de mes. **Un endpoint que fabrica jobs colgados es peor que uno que
+no existe.**
+
+De ahí salió `test_cada_evento_que_geocore_publica_tiene_oyente`, que compara los disparadores
+registrados del worker contra la lista escrita de lo que Geocore publica, **en las dos
+direcciones**: que no falte un oyente, y que no sobre uno — un handler que escucha un evento que
+ya nadie publica es código muerto que parece vivo. No hay compilador que cruce los dos repos.
+Control negativo corrido: quitando un handler de `all_functions`, sale rojo.
+
+**La lección:** cuando se borra un consumidor, la lista de lo que hay que borrar no está en la
+tarea, está en quién produce. Buscarla del lado del productor encontró lo que la tarea no decía.
+
+## 11. Los tests borrados se verificaron antes, no después
+
+Se fueron cinco tests con `insert_measurements` y `una_por_dia`. Antes de borrarlos hubo que
+comprobar que lo que cuidaban seguía cuidado: que el lote sea una sola llamada a
+`execute_values`, que las filas repetidas no lleguen a la base, que un lote vacío no abra
+conexión, y que la fecha viaje como `datetime` con zona. **Todo eso está en
+`test_escritura_mensual.py`**, sobre el camino que de verdad se usa. Y ahí las filas repetidas
+son un `ValueError` y no un `warning`, porque `filas_del_mes` no puede producirlas.
+
+Borrar un test sin buscar su reemplazo es cómo se pierde cobertura sin que nadie lo note.
+
+## 12. El orden de despliegue, al revés que en M.5.5
+
+Allá había que desplegar el worker **antes** de prender la variable de Geocore, para que hubiera
+quien escuchara. Acá se está quitando, así que es al revés: **primero Geocore** (deja de
+publicar), **después el worker** (deja de escuchar). Los PR se mergearon en ese orden.
+
+## 13. Números finales de la sesión
+
+| | Al abrir | Al cerrar |
+|---|---|---|
+| Suite del worker | 612, con 1 flaky | **617**, sin flaky |
+| Suite de Geocore | 447 | **447** |
+| `ruff check .` en la raíz del worker | 199 | **157** |
+| Funciones registradas en Inngest | 11 | **7** |
+| Código de producción del worker | — | **−528 líneas** (−61 en M.6.1, −467 en M.6.2) |
+
+## 14. Lo que queda de M.6
+
+**M.6.2b**: el mapa a demanda al pipeline. Se lleva `ee_service.py`, `export_service.py`,
+`ee_indices.py`, el constructor de colecciones de `ee_client.py` (con `apply_scsc` y el descarte
+por pasada) e `index_band_and_vis`. Resuelve además dos pendientes viejos: los GeoTIFF de los
+on-demand siguen sin nodata, y sus keys no llevan tenant — que es lo que M.8.1 necesita.
+
+**M.6.3 quedó vaciada**: de los cinco `Request*Async` sobrevivió uno, y sin duplicación no hay
+refactor. **M.6.4 se desbloqueó y encogió**, y conviene hacerla después de M.6.2b para no
+revisar dos veces.
