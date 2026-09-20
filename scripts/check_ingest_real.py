@@ -58,11 +58,12 @@ _falla = "  FALLA     "
 
 def main():
     from rio_cogeo.cogeo import cog_validate
+    from services.export_service import export_heatmap
 
+    from handlers.geometria import coords_to_geometry
+    from handlers.utilidades import borrar_temporales as _borrar_temporales
     from services.cog_converter import convert_to_cog
     from services.ee.ee_client import init_ee
-    from services.export_service import export_heatmap
-    from services.inngest_handlers import _borrar_temporales, coords_to_geometry
     from services.storage_service import get_storage_service
 
     print()

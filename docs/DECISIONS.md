@@ -2804,3 +2804,92 @@ entraron 4).
   hay nada que unificar. Se revisa después de M.6.2b.
 - **M.6.4** sigue en pie y ahora es más chica: los `except Exception` que quedaban en los módulos
   borrados se fueron solos.
+
+---
+
+## 61. M.6.2b: el mapa a demanda pasa al pipeline, y la capa vieja desaparece (2026-09-20)
+
+> Decisión del usuario sobre el período. Del lado de Geocore es `DECISIONS #36`.
+> **Cierra el sprint M.6**: el worker ya no tiene nada de la capa anterior al pipeline mensual.
+
+**`generate_heatmap_on_demand` se rehízo sobre el pipeline** (`handlers/mapa.py`), con el mismo
+`fn_id` y el mismo evento. Es de **un índice y un mes**: el evento trae `periodo` en `AAAA-MM`.
+
+**Qué cambia, y por qué cada cosa importaba:**
+
+| | Antes | Ahora |
+|---|---|---|
+| El cálculo | la capa vieja: 60 m, descartando pasadas, EVI sin dividir por 10.000 | el mismo pipeline que el histórico: 10 m, sin descartar, fórmulas únicas |
+| La key | `parcelas/{id}/{periodo}_{indice}.tif`, en la raíz del bucket | `tenants/{t}/parcelas/{p}/{receta}/{indice}/{AAAA-MM}.tif` |
+| El nodata | **no lo declaraba**: una nube se pintaba como NDVI 0 | `NODATA_COG`, convertido en máscara por el COG |
+| La fila de `layers` | `receta` y `estadisticas` en nulo | las dos, con cobertura y observaciones |
+| Un mes sin píxel limpio | subía un ráster de ceros | no sube nada, y lo dice en la bitácora |
+
+**La key era el motivo real de la tarea.** Mientras el mapa a demanda colgara de `parcelas/{id}/`
+—fuera de `tenants/`— **A01 no se podía cerrar**: el token de mapa de M.8.1 autoriza comparando
+el prefijo del objeto contra el `tenant_id`, y un objeto fuera de ese prefijo no es autorizable.
+Ahora **todo lo que el worker escribe vive bajo `tenants/{t}/`**.
+
+**El mapa a demanda vive al lado del sistemático, no en otra carpeta.** Un mapa NDVI de una
+parcela y el ráster NDVI de su rancho son el mismo tipo de objeto; estaban separados por *por qué
+se pidió*, no por *qué son*. Lo que los distingue es `layers.source`, que ya existía. La
+`natural_key` los mantiene en filas distintas (`parcela_ondemand_…` contra `rancho_mensual_…`).
+
+**El polígono libre se identifica por su job.** `heatmap-on-the-fly` manda `parcelaId` en el uuid
+nulo: no hay entidad detrás, así que la key es
+`tenants/{t}/adhoc/{jobId}/{receta}/{indice}/{AAAA-MM}.tif`. **Consecuencia que hay que tener
+presente: esos objetos no se reutilizan ni se sobrescriben**, porque dos pedidos del mismo
+polígono no se pueden reconocer como el mismo recorte sin adivinar. Se acumulan, y su retención
+es parte de la decisión que quedó abierta en `PREGUNTAS_ABIERTAS` C-5.
+
+**Se conserva reutilizar el objeto si ya está** (E.9). La key encodea entidad, receta, índice y
+mes, así que «ya está» significa «es el mismo compuesto». La fila se escribe igual: si el objeto
+estaba sin su fila, o apuntando a otro lado, hay que registrarla.
+
+**Lo que se borró con esto:**
+
+- `services/ee_service.py`, `services/export_service.py`, `services/ee/ee_indices.py` y
+  `utils_pkg/visualization.py`, enteros;
+- de `ee_client.py`, todo menos `init_ee`: `get_sentinel2_collection`, `apply_scsc`,
+  `check_roi_coverage`, `mask_s2cloudless_and_shadows` y `add_cloud_probability`. El módulo pasó
+  de 436 a 57 líneas y hoy es **sólo las credenciales**;
+- `services/inngest_handlers.py`, que era lo último que quedaba de la capa vieja. Su lista de
+  funciones se mudó a `handlers/registro.py`, que **sólo tiene la lista**.
+
+**`apply_scsc` y `check_roi_coverage` merecen su epitafio**, porque explican por qué no se
+extrañan (`ARQUITECTURA` §8). La primera decía ser SCS+C y no lo era: le faltaba `cos(pendiente)`
+en el numerador y usaba un `C` fijo de 0,1 en lugar de uno por banda sacado de una regresión.
+Para índices normalizados el efecto de la iluminación se cancela casi entero en el cociente, así
+que la receta v1 no lleva corrección topográfica. La segunda descartaba las pasadas con menos del
+50 % del ROI limpio: en un compuesto mensual esa pasada aporta los píxeles que **sí** están
+limpios, y tirarla **agrega** nulos.
+
+**`handlers/raster.py`, un módulo nuevo y chico.** El nodata y la escala de descarga son un
+contrato con el tileserver, y ahora los usan dos handlers. Tenerlos en dos lados es cómo se
+desincronizan: ya pasó con la grilla de descarga, duplicada entre `inngest_handlers.py` y
+`export_service.py`, que cumplían `DECISIONS #19` por casualidad.
+
+**Los tests que se movieron, y por qué no se perdió nada.** `test_inngest_handlers.py` probaba el
+módulo borrado. Lo suyo se repartió: el wrapper de jobs a `test_avance_job.py` y
+`test_handlers_seguimiento.py` —eran el mismo `envolver_con_estado`, así que ahora prueban
+`con_seguimiento`, el único que queda—, las claves de una capa a `test_pipeline_claves.py`, y lo
+del registro a `test_handlers_registro.py`. El test de colisión con la capa vieja ahora compara
+contra **literales**, no contra una función: lo que no se puede pisar son las cadenas que ya están
+escritas en `layers`, no lo que devuelva un módulo que se borró.
+
+**Cómo se verificó.** Suite: 613 → **635** (22 nuevos, todos de `handlers/mapa.py`).
+`ruff check .` en la raíz pasa de 157 a **92**, verificado con un diff de conjuntos contra `main`:
+aparecieron 8 hallazgos nuevos —orden de imports que yo desordené, y un `pytest` sin usar— y están
+corregidos. Código de producción: **−622 líneas**.
+
+**Orden de despliegue: primero el worker, después Geocore.** Es el de M.5.5, no el de M.6.2:
+acá no se quita un consumidor, se cambia un contrato. En la ventana entre los dos merges un
+pedido de mapa falla **al primer intento** (`failed`, no `pending`), porque el payload viejo no
+trae `periodo` y eso no se arregla reintentando.
+
+**Lo que queda abierto:**
+- **Los rásters a demanda que ya están en el bucket siguen en `parcelas/{id}/`**, sin tenant y sin
+  nodata. Son de la capa vieja y sus filas siguen en `layers`. **M.8.1 tiene que decidir qué hacer
+  con ellos**: moverlos, borrarlos, o dejar que el token los rechace.
+- **La ventana arbitraria** sigue sin existir. Recuperarla es cambiar `Mes` por un período
+  semiabierto en `pipeline/`, que es también lo que habilitaría un formato por pasada.

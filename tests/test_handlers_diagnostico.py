@@ -14,7 +14,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 from handlers import diagnostico
-from services import inngest_handlers
+from handlers import registro as inngest_handlers
 
 
 class _Step:

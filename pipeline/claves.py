@@ -88,10 +88,40 @@ def prefijo_de_tenant(tenant_id: str) -> str:
     return f"{PREFIJO_TENANTS}/{_uuid_canonico(tenant_id, 'tenant_id')}/"
 
 
+def _claves_mensuales(  # noqa: PLR0913 - todo por nombre, y son datos distintos
+    *,
+    tenant_id: str,
+    carpeta: str,
+    entidad: str,
+    entidad_id: str,
+    etiqueta: str,
+    receta: Receta,
+    indice: str,
+    mes: Mes,
+) -> ClavesDeCapa:
+    """El armador único de las dos claves. Ver los tres envoltorios de abajo."""
+    if indice not in receta.indices:
+        msg = f"la receta {receta.version} no calcula {indice!r}: {receta.indices}"
+        raise ValueError(msg)
+    ident = _uuid_canonico(entidad_id, f"{entidad}_id")
+    return ClavesDeCapa(
+        storage_key=(
+            f"{prefijo_de_tenant(tenant_id)}{carpeta}/{ident}/"
+            f"{receta.version}/{indice}/{mes}.tif"
+        ),
+        # La etiqueta separa familias de capas que comparten entidad, índice y mes.
+        # `mensual` nació para no chocar con la capa vieja
+        # (`rancho_{indice}_{id}_{AAAA-MM-DD}`); `ondemand` hace lo mismo con el
+        # mapa a pedido, que vive al lado del sistemático pero no es el mismo
+        # producto: uno lo produce el alta o el cierre, el otro lo pide alguien.
+        natural_key=f"{entidad}_{etiqueta}_{indice}_{ident}_{mes}",
+    )
+
+
 def claves_cog_mensual(
     *, tenant_id: str, rancho_id: str, receta: Receta, indice: str, mes: Mes
 ) -> ClavesDeCapa:
-    """Las claves del COG de un rancho, un índice y un mes.
+    """Las claves del COG sistemático de un rancho, un índice y un mes.
 
     Los argumentos van por nombre: ``tenant_id`` y ``rancho_id`` son los dos
     texto, e intercambiarlos daría una key válida en el lugar equivocado.
@@ -101,16 +131,67 @@ def claves_cog_mensual(
         ValueError: si un id no es un uuid o es el nulo, o si la receta no
             calcula ``indice``.
     """
-    if indice not in receta.indices:
-        msg = f"la receta {receta.version} no calcula {indice!r}: {receta.indices}"
-        raise ValueError(msg)
-    rancho = _uuid_canonico(rancho_id, "rancho_id")
-    return ClavesDeCapa(
-        storage_key=(
-            f"{prefijo_de_tenant(tenant_id)}ranchos/{rancho}/"
-            f"{receta.version}/{indice}/{mes}.tif"
-        ),
-        # `mensual` la separa de las natural_key de la capa vieja
-        # (`rancho_{indice}_{id}_{AAAA-MM-DD}`), que siguen en `layers`.
-        natural_key=f"rancho_mensual_{indice}_{rancho}_{mes}",
+    return _claves_mensuales(
+        tenant_id=tenant_id,
+        carpeta="ranchos",
+        entidad="rancho",
+        entidad_id=rancho_id,
+        etiqueta="mensual",
+        receta=receta,
+        indice=indice,
+        mes=mes,
+    )
+
+
+def claves_cog_parcela_a_demanda(
+    *, tenant_id: str, parcela_id: str, receta: Receta, indice: str, mes: Mes
+) -> ClavesDeCapa:
+    """Las claves del mapa a demanda de una parcela (M.6.2b).
+
+    **Misma forma que el sistemático, un nivel al lado.** Un mapa NDVI de una
+    parcela y el ráster NDVI de su rancho son el mismo tipo de objeto; estaban
+    separados por *por qué se pidió*, no por *qué son*. Lo que los distingue es
+    ``layers.source``, no la carpeta.
+
+    Que esté bajo ``tenants/{t}/`` no es cosmético: hasta M.6.2b el mapa a demanda
+    colgaba de ``parcelas/{id}/`` en la raíz del bucket, y **eso es lo que impedía
+    cerrar A01** (M.8.1), que compara el prefijo del objeto contra el
+    ``tenant_id`` del token de mapa.
+    """
+    return _claves_mensuales(
+        tenant_id=tenant_id,
+        carpeta="parcelas",
+        entidad="parcela",
+        entidad_id=parcela_id,
+        etiqueta="ondemand",
+        receta=receta,
+        indice=indice,
+        mes=mes,
+    )
+
+
+def claves_cog_adhoc(
+    *, tenant_id: str, job_id: str, receta: Receta, indice: str, mes: Mes
+) -> ClavesDeCapa:
+    """Las claves del mapa de un polígono libre, que no es de ninguna entidad.
+
+    ``heatmap-on-the-fly`` manda un polígono suelto y ``parcelaId`` en el uuid
+    nulo. **La identidad es el job**, porque no hay otra: dos pedidos con el
+    mismo polígono son dos objetos distintos, y eso es correcto — sin una entidad
+    detrás no hay forma de saber que son el mismo recorte, y reutilizar por
+    coincidencia de coordenadas sería adivinar.
+
+    La consecuencia práctica, y hay que tenerla presente: **estos objetos no se
+    reutilizan ni se sobrescriben**, así que se acumulan. Su retención es parte de
+    la decisión de retención que quedó abierta (``PREGUNTAS_ABIERTAS`` C-5).
+    """
+    return _claves_mensuales(
+        tenant_id=tenant_id,
+        carpeta="adhoc",
+        entidad="adhoc",
+        entidad_id=job_id,
+        etiqueta="ondemand",
+        receta=receta,
+        indice=indice,
+        mes=mes,
     )

@@ -14,10 +14,15 @@ import pytest
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from pipeline.claves import ClavesDeCapa, claves_cog_mensual, prefijo_de_tenant
+from pipeline.claves import (
+    ClavesDeCapa,
+    claves_cog_adhoc,
+    claves_cog_mensual,
+    claves_cog_parcela_a_demanda,
+    prefijo_de_tenant,
+)
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
-from services import inngest_handlers as handlers
 
 TENANT = "7f3c2a10-5b6d-4e8f-9a01-23456789abcd"
 RANCHO = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
@@ -115,8 +120,76 @@ def test_cada_mes_e_indice_es_otra_capa():
         assert otra.natural_key != base.natural_key
 
 
+PARCELA = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"
+JOB = "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f"
+
+
 def test_la_natural_key_no_choca_con_la_de_la_capa_vieja():
-    """La capa vieja usa `rancho_{indice}_{id}_{AAAA-MM-DD}` y sus filas siguen en `layers`."""
-    _, vieja = handlers.claves_de_capa("rancho", RANCHO, "ndvi", "2025-09-01")
-    assert vieja != _claves().natural_key
-    assert "/" not in _claves().natural_key
+    """Las filas de la capa vieja siguen en `layers` y no se pueden pisar.
+
+    La forma vieja se escribe **como literal**, no se pide a una función: la capa
+    vieja se borró en M.6.2b, y lo que hay que no chocar son las cadenas que ya
+    están escritas en la base, no lo que devuelva un módulo.
+    """
+    de_la_capa_vieja = {
+        f"rancho_ndvi_{RANCHO}_2025-09-01",          # el ráster sistemático
+        f"parcela_ndvi_{PARCELA}_2025-09-01",        # el mapa a demanda
+        f"parcela_ndvi_{PARCELA}_2025-09-01_2025-09-30",  # el de un rango
+    }
+    nuevas = {
+        _claves().natural_key,
+        claves_cog_parcela_a_demanda(
+            tenant_id=TENANT, parcela_id=PARCELA, receta=RECETA_VIGENTE,
+            indice="ndvi", mes=Mes(2025, 9),
+        ).natural_key,
+        claves_cog_adhoc(
+            tenant_id=TENANT, job_id=JOB, receta=RECETA_VIGENTE,
+            indice="ndvi", mes=Mes(2025, 9),
+        ).natural_key,
+    }
+    assert nuevas.isdisjoint(de_la_capa_vieja)
+    assert all("/" not in clave for clave in nuevas)
+
+
+def test_el_mapa_a_demanda_vive_al_lado_del_sistematico():
+    """Misma forma, un nivel al lado: lo que los distingue es `layers.source`.
+
+    Que esté bajo `tenants/{t}/` es lo que permite cerrar A01 (M.8.1). Antes
+    colgaba de `parcelas/{id}/` en la raíz del bucket, fuera del prefijo que el
+    token de mapa compara.
+    """
+    claves = claves_cog_parcela_a_demanda(
+        tenant_id=TENANT, parcela_id=PARCELA, receta=RECETA_VIGENTE,
+        indice="ndvi", mes=Mes(2025, 9),
+    )
+    assert claves.storage_key == (
+        f"tenants/{TENANT}/parcelas/{PARCELA}/"
+        f"{RECETA_VIGENTE.version}/ndvi/2025-09.tif"
+    )
+    assert claves.storage_key.startswith(prefijo_de_tenant(TENANT))
+
+
+def test_el_poligono_libre_se_identifica_por_su_job():
+    """No hay entidad detrás, así que no hay nada más estable que el job.
+
+    La consecuencia: dos pedidos del mismo polígono son dos objetos. Reutilizar
+    por coincidencia de coordenadas sería adivinar.
+    """
+    claves = claves_cog_adhoc(
+        tenant_id=TENANT, job_id=JOB, receta=RECETA_VIGENTE,
+        indice="ndvi", mes=Mes(2025, 9),
+    )
+    assert claves.storage_key == (
+        f"tenants/{TENANT}/adhoc/{JOB}/{RECETA_VIGENTE.version}/ndvi/2025-09.tif"
+    )
+
+
+def test_una_parcela_y_un_rancho_con_el_mismo_id_no_comparten_capa():
+    """Hoy es imposible —los ids son uuid—, pero la identidad no debe depender de eso."""
+    mismo = RANCHO
+    del_rancho = _claves().natural_key
+    de_la_parcela = claves_cog_parcela_a_demanda(
+        tenant_id=TENANT, parcela_id=mismo, receta=RECETA_VIGENTE,
+        indice="ndvi", mes=Mes(2025, 9),
+    ).natural_key
+    assert del_rancho != de_la_parcela
