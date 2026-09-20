@@ -448,104 +448,19 @@ def upsert_mediciones_mensuales(filas) -> int:
         release_connection(conn)
 
 
-def insert_measurement(parcela_id: str, indice: str, fecha: str, tenant_id: str,
-                       valor: float, min_val: float = None, max_val: float = None) -> bool:
-    """Persiste una medicion agregada en `geodata.measurements`.
-
-    El ON CONFLICT apunta a la PK real (parcela_id, indice, fecha), asi que
-    reprocesar la misma fecha actualiza en vez de duplicar (contrato de
-    idempotencia, ARCHITECTURE_PLAN §5).
-
-    `valor` es NOT NULL en el esquema, pero GEE devuelve None para fechas donde
-    la nube tapo la parcela. Esas se saltean: un hueco en la serie es correcto,
-    y dejarlas pasar aborta el step entero por una fecha sin dato.
-
-    Devuelve True si se escribio la fila.
-
-    Nota: `measurements` no tiene columnas para stddev, quality ni source.
-    """
-    if valor is None:
-        logger.debug("medicion sin valor (parcela=%s indice=%s fecha=%s), se saltea",
-                     parcela_id, indice, fecha)
-        return False
-
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute('''
-        INSERT INTO measurements(parcela_id, indice, fecha, tenant_id, valor, min_val, max_val)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (parcela_id, indice, fecha) DO UPDATE SET
-            tenant_id = EXCLUDED.tenant_id,
-            valor = EXCLUDED.valor,
-            min_val = EXCLUDED.min_val,
-            max_val = EXCLUDED.max_val
-        ''', (parcela_id, indice, a_timestamptz(fecha, "fecha"), tenant_id,
-              valor, min_val, max_val))
-        conn.commit()
-        return True
-    finally:
-        release_connection(conn)
-
-
-def insert_measurements(mediciones) -> int:
-    """Persiste varias mediciones en **una sola conexion y un solo round-trip**.
-
-    `mediciones` es un iterable de dicts con las claves de `insert_measurement`.
-    Devuelve cuantas filas se escribieron.
-
-    **Por que existe** (`PLAN.md` E.7): `insert_measurement` pide una conexion
-    al pool, hace un INSERT, commitea y la devuelve. Una serie anual son ~70
-    fechas, o sea 70 ciclos de eso — y cada `commit` es un `fsync` del lado del
-    servidor. Contra una base gestionada, con la latencia de red por medio, es
-    la diferencia entre un step de segundos y uno de minutos.
-
-    Ademas es **atomico**: las 70 filas entran o no entra ninguna. Antes, un
-    fallo en la fila 40 dejaba media serie escrita y el reintento de Inngest la
-    completaba — el `ON CONFLICT` lo salvaba, pero el estado intermedio existia.
-
-    Las filas sin `valor` se saltean, con el mismo criterio que la version de a
-    una: la columna es NOT NULL y GEE devuelve `None` cuando la nube tapo la
-    parcela. Un hueco en la serie es correcto; abortar el step por una fecha sin
-    dato, no.
-    """
-    filas = [
-        (m["parcela_id"], m["indice"], a_timestamptz(m["fecha"], "fecha"),
-         m["tenant_id"], m["valor"], m.get("min_val"), m.get("max_val"))
-        for m in mediciones
-        if m.get("valor") is not None
-    ]
-    if not filas:
-        return 0
-
-    # Postgres rechaza un `INSERT ... ON CONFLICT DO UPDATE` que toque dos veces
-    # la misma fila (`CardinalityViolation`), y rechaza el lote entero. De a una
-    # fila, la segunda pisaba a la primera; en lote hay que hacerlo aca. Queda la
-    # ultima, que es lo que pasaba antes de E.7. Quien produce la serie ya junta
-    # las imagenes del mismo dia (`una_por_dia`): esto es la defensa en el borde.
-    por_clave = {fila[:3]: fila for fila in filas}
-    if len(por_clave) < len(filas):
-        logger.warning(
-            "insert_measurements: %d filas repetidas por (parcela, indice, fecha); "
-            "queda la ultima de cada una", len(filas) - len(por_clave))
-        filas = list(por_clave.values())
-
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        execute_values(cur, '''
-        INSERT INTO measurements(parcela_id, indice, fecha, tenant_id, valor, min_val, max_val)
-        VALUES %s
-        ON CONFLICT (parcela_id, indice, fecha) DO UPDATE SET
-            tenant_id = EXCLUDED.tenant_id,
-            valor = EXCLUDED.valor,
-            min_val = EXCLUDED.min_val,
-            max_val = EXCLUDED.max_val
-        ''', filas)
-        conn.commit()
-        return len(filas)
-    finally:
-        release_connection(conn)
+# `insert_measurement()` e `insert_measurements()` se borraron en M.6.2
+# (`DECISIONS #60`) con los handlers a demanda, sus unicos llamadores. Eran las
+# escrituras **por pasada**: una fila por (parcela, indice, dia), con `valor`,
+# `min_val` y `max_val` y **sin `receta`**.
+#
+# Son exactamente las filas que el equipo borro a mano en M.3.5 con
+# `DELETE FROM geodata.measurements WHERE receta IS NULL`. Mientras existieran,
+# la canilla seguia abierta.
+#
+# Lo mensual se escribe con `upsert_mediciones_mensuales()`, arriba: una fila
+# por (parcela, indice, mes) con las 7 estadisticas en `estadisticas`, la
+# cobertura, las observaciones y la receta. Es tambien la ultima escritora de
+# `min_val` y `max_val`, que quedan solo para las filas viejas.
 
 
 # `insert_sentinel2_date()` se borro en M.6.1, con la tabla. Ademas de escribir

@@ -62,11 +62,10 @@ def test_hay_una_funcion_registrada_por_evento_esperado():
         "geeworker-process-rancho-mes",
         "geeworker-cerrar-altas-canceladas",
         "geeworker-diagnostico-latencia",
+        # M.6.2 borro `compute-timeseries`, `query-available-dates`, `export-data`
+        # y `compute-parcela-stats`. Este queda hasta M.6.2b, que lo pasa al
+        # pipeline.
         "geeworker-generate-heatmap-on-demand",
-        "geeworker-compute-timeseries",
-        "geeworker-query-available-dates",
-        "geeworker-export-data",
-        "geeworker-compute-parcela-stats",
     }
 
 
@@ -253,152 +252,22 @@ def test_las_claves_del_payload_se_normalizan_a_camelCase():
     assert visto == {"parcelaId": "p-1", "tenantId": "t-1"}
 
 
-# --- 4. Las mediciones se escriben en lote (E.7) --------------------------
-
-
-def test_las_mediciones_se_escriben_en_una_sola_operacion(monkeypatch):
-    """~70 fechas eran ~70 conexiones al pool, cada una con su commit.
-
-    Se captura lo que llega a `execute_values` para comprobar dos cosas: que es
-    **una sola** llamada, y que las filas van en el orden de columnas del INSERT.
-    """
-    from repositories import db_repository
-
-    llamadas = []
-    monkeypatch.setattr(db_repository, "get_connection", lambda: _ConexionFalsa())
-    monkeypatch.setattr(db_repository, "release_connection", lambda conn: None)
-    monkeypatch.setattr(
-        db_repository, "execute_values",
-        lambda cur, sql, filas: llamadas.append(filas),
-    )
-
-    escritas = db_repository.insert_measurements([
-        {"parcela_id": "p", "indice": "ndvi", "fecha": "2026-01-01",
-         "tenant_id": "t", "valor": 0.5},
-        {"parcela_id": "p", "indice": "ndvi", "fecha": "2026-01-06",
-         "tenant_id": "t", "valor": 0.6, "min_val": 0.1, "max_val": 0.9},
-    ])
-
-    # Las fechas salen normalizadas a datetime UTC, no como string: la columna es
-    # `timestamptz` y esta en la PK (E.6).
-    from datetime import datetime, timezone
-    ene1 = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    ene6 = datetime(2026, 1, 6, tzinfo=timezone.utc)
-
-    assert escritas == 2
-    assert len(llamadas) == 1
-    assert llamadas[0][0] == ("p", "ndvi", ene1, "t", 0.5, None, None)
-    assert llamadas[0][1] == ("p", "ndvi", ene6, "t", 0.6, 0.1, 0.9)
-
-
-def test_las_fechas_sin_valor_no_llegan_a_la_tabla(monkeypatch):
-    """`valor` es NOT NULL, y GEE devuelve `None` cuando la nube tapo la parcela.
-
-    Un hueco en la serie es correcto; abortar el step entero por una fecha
-    nublada, no.
-    """
-    from repositories import db_repository
-
-    llamadas = []
-    monkeypatch.setattr(db_repository, "get_connection", lambda: _ConexionFalsa())
-    monkeypatch.setattr(db_repository, "release_connection", lambda conn: None)
-    monkeypatch.setattr(
-        db_repository, "execute_values",
-        lambda cur, sql, filas: llamadas.append(filas),
-    )
-
-    escritas = db_repository.insert_measurements([
-        {"parcela_id": "p", "indice": "ndvi", "fecha": "2026-01-01",
-         "tenant_id": "t", "valor": None},
-        {"parcela_id": "p", "indice": "ndvi", "fecha": "2026-01-06",
-         "tenant_id": "t", "valor": 0.6},
-    ])
-
-    from datetime import datetime, timezone
-
-    assert escritas == 1
-    assert len(llamadas[0]) == 1
-    assert llamadas[0][0][2] == datetime(2026, 1, 6, tzinfo=timezone.utc)
-
-
-def test_una_serie_entera_nublada_no_toca_la_base(monkeypatch):
-    """Sin filas que escribir no hay que pedir una conexion siquiera."""
-    from repositories import db_repository
-
-    def _no_deberia_conectarse():
-        raise AssertionError("pidio una conexion sin filas que escribir")
-
-    monkeypatch.setattr(db_repository, "get_connection", _no_deberia_conectarse)
-
-    assert db_repository.insert_measurements(
-        [{"parcela_id": "p", "indice": "ndvi", "fecha": "2026-01-01",
-          "tenant_id": "t", "valor": None}]
-    ) == 0
-
-
-def test_dos_filas_del_mismo_dia_no_rompen_el_lote(monkeypatch):
-    """La primera corrida real del historico (2026-09-12) fallo asi.
-
-    Postgres rechaza un `INSERT ... ON CONFLICT DO UPDATE` que toque la misma
-    fila dos veces, y el lote entero se cae con `CardinalityViolation`. Tiene
-    que llegar una sola fila por (parcela, indice, fecha): la ultima.
-    """
-    from datetime import datetime, timezone
-
-    from repositories import db_repository
-
-    llamadas = []
-    monkeypatch.setattr(db_repository, "get_connection", lambda: _ConexionFalsa())
-    monkeypatch.setattr(db_repository, "release_connection", lambda conn: None)
-    monkeypatch.setattr(
-        db_repository, "execute_values",
-        lambda cur, sql, filas: llamadas.append(filas),
-    )
-
-    escritas = db_repository.insert_measurements([
-        {"parcela_id": "p", "indice": "ndvi", "fecha": "2025-09-20",
-         "tenant_id": "t", "valor": 0.41},
-        {"parcela_id": "p", "indice": "ndvi", "fecha": "2025-09-25",
-         "tenant_id": "t", "valor": 0.50},
-        {"parcela_id": "p", "indice": "ndvi", "fecha": "2025-09-20",
-         "tenant_id": "t", "valor": 0.43},
-    ])
-
-    assert escritas == 2
-    assert [f[2] for f in llamadas[0]] == [
-        datetime(2025, 9, 20, tzinfo=timezone.utc),
-        datetime(2025, 9, 25, tzinfo=timezone.utc),
-    ]
-    assert llamadas[0][0][4] == 0.43
-
-
-def test_la_serie_trae_una_medicion_por_dia():
-    """Una parcela en el borde de dos tiles MGRS recibe dos imagenes de la misma
-    pasada. Se promedian: `fecha` esta en la PK de `measurements` (DECISIONS #30).
-    """
-    from services.ee.ee_client import una_por_dia
-
-    puntos = [
-        {"date": "2025-09-20", "timestamp": 2000, "mean": 0.40},
-        {"date": "2025-09-15", "timestamp": 1000, "mean": 0.30},
-        {"date": "2025-09-20", "timestamp": 2001, "mean": 0.50},
-    ]
-
-    juntos = una_por_dia(puntos)
-
-    assert [p["date"] for p in juntos] == ["2025-09-15", "2025-09-20"]
-    assert juntos[0]["mean"] == 0.30
-    assert abs(juntos[1]["mean"] - 0.45) < 1e-9
-    # Conserva el resto de los campos del primero del dia.
-    assert juntos[1]["timestamp"] == 2000
-
-
-class _ConexionFalsa:
-    def cursor(self):
-        return object()
-
-    def commit(self):
-        pass
+# --- 4. (borrada en M.6.2) ------------------------------------------------
+#
+# Aca vivian los cinco tests de `insert_measurements` y `una_por_dia`, que se
+# fueron con las funciones (`DECISIONS #60`). Eran la escritura **por pasada**.
+#
+# Lo que cuidaban no se perdio, lo cuida el camino mensual en
+# `test_escritura_mensual.py`: que el lote sea **una sola** llamada a
+# `execute_values`, que las filas repetidas no lleguen a la base (ahi es un
+# `ValueError`, porque `filas_del_mes` no puede producirlas), que un lote vacio
+# no abra conexion, y que la fecha viaje como `datetime` con zona y no como
+# string (`test_upsert_escribe_las_columnas_mensuales`).
+#
+# Y `una_por_dia` juntaba las dos imagenes de una pasada en el borde de dos
+# teselas MGRS promediando dos medias espaciales parciales. El pipeline lo
+# resuelve antes: `pipeline/etapas/compuesto.py` mosaica por
+# `DATATAKE_IDENTIFIER` en el espacio de la imagen, y su test lo fija.
 
 
 # --- 5. Las fechas van como timestamptz, no como string (E.6) -------------
@@ -466,28 +335,6 @@ def test_una_fecha_ilegible_falla_nombrando_el_campo():
 
     with _pytest.raises(ValueError, match="acquired_ts"):
         a_timestamptz("el martes", "acquired_ts")
-
-
-def test_las_mediciones_en_lote_llevan_datetime_no_string(monkeypatch):
-    """El lote tambien pasa por el normalizador."""
-    from datetime import datetime, timezone
-
-    from repositories import db_repository
-
-    llamadas = []
-    monkeypatch.setattr(db_repository, "get_connection", lambda: _ConexionFalsa())
-    monkeypatch.setattr(db_repository, "release_connection", lambda conn: None)
-    monkeypatch.setattr(
-        db_repository, "execute_values",
-        lambda cur, sql, filas: llamadas.append(filas),
-    )
-
-    db_repository.insert_measurements([
-        {"parcela_id": "p", "indice": "ndvi", "fecha": "2026-01-01",
-         "tenant_id": "t", "valor": 0.5},
-    ])
-
-    assert llamadas[0][0][2] == datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 # --- 6. Las dos claves de una capa salen de una sola fuente (E.9) ----------

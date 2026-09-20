@@ -31,19 +31,6 @@ def timestamped_base(index, start, end):
     return base, ts
 
 
-def round_sig(x, sig=2):
-    """Redondea un número a `sig` cifras significativas.
-
-    - Si x no es numérico devuelve None.
-    - Mantiene None como None.
-    """
-    try:
-        if x is None:
-            return None
-        x = float(x)
-        if x == 0:
-            return 0.0
-        import math
-        return float(round(x, sig - int(math.floor(math.log10(abs(x)))) - 1))
-    except Exception:
-        return None
+# `round_sig()` se borro en M.6.2 con su unico llamador, el `_redondear` de
+# `get_sentinel2_time_series`. El pipeline mensual no redondea: guarda el float
+# que da GEE y deja el formato al panel.

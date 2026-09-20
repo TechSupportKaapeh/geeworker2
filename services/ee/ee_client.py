@@ -1,6 +1,5 @@
 import json
 import os
-from datetime import datetime, timezone
 
 import ee
 from dotenv import load_dotenv
@@ -168,252 +167,24 @@ def get_sentinel2_collection(roi, start, end, cloud_pct=30, min_coverage=0.5):
 
     return filtered
 
-def get_sentinel2_time_series(roi, start, end, index, cloud_pct=70, limit=30, rescate=True):
-    """
-    Obtiene serie temporal de cada pasada individual de Sentinel-2 filtrada por cobertura del KML
 
-    `rescate`: si no hay ninguna imagen bajo `cloud_pct`, se reintenta aceptando
-    hasta 90 % de nubes. `process_parcela` lo apaga al consultar mes por mes y lo
-    aplica despues sobre el año entero: mes por mes, cada mes nublado caeria al
-    90 % y la serie mezclaria dos criterios de calidad.
-
-    OJO con `limit`: se aplica sobre la coleccion **ordenada de la mas vieja a la
-    mas nueva**, asi que un periodo con mas imagenes que `limit` pierde las
-    ultimas, no las peores.
-    """
-    cloud_thresholds = [min(cloud_pct, 80), 90] if rescate else [min(cloud_pct, 80)]
-    limit_to_use = limit if limit and limit > 0 else 30
-
-    for threshold in cloud_thresholds:
-        # Usamos nuestra colección robusta con s2cloudless
-        collection = get_sentinel2_collection(roi, start, end, cloud_pct=threshold, min_coverage=0.5)
-        collection = collection.sort('system:time_start').limit(limit_to_use)
-
-        try:
-            size = int(collection.size().getInfo())
-        except Exception:
-            size = 0
-            
-        if size > 0:
-            break
-    else:
-        return []
-
-    def add_index_band_fast(img):
-        idx = index.lower()
-        if idx == 'ndvi':
-            return img.addBands(img.normalizedDifference(['B8', 'B4']).rename(index))
-        elif idx == 'ndwi':
-            return img.addBands(img.normalizedDifference(['B3', 'B8']).rename(index))
-        elif idx == 'ndmi':
-            return img.addBands(img.normalizedDifference(['B8', 'B11']).rename(index))
-        elif idx == 'ndre':
-            try:
-                ndre = img.normalizedDifference(['B8', 'B5']).rename(index)
-            except Exception:
-                ndre = img.normalizedDifference(['B8', 'B4']).rename(index)
-            return img.addBands(ndre)
-        elif idx == 'evi':
-            evi = img.expression(
-                '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1.0))',
-                {
-                    'NIR': img.select('B8'),
-                    'RED': img.select('B4'),
-                    'BLUE': img.select('B2')
-                }
-            ).rename(index)
-            return img.addBands(evi)
-        elif idx == 'savi':
-            savi = img.expression(
-                '1.5 * ((NIR - RED) / (NIR + RED + 0.5))',
-                {
-                    'NIR': img.select('B8'),
-                    'RED': img.select('B4')
-                }
-            ).rename(index)
-            return img.addBands(savi)
-        elif idx == 'gci':
-            try:
-                gci = img.select('B8').divide(img.select('B3')).subtract(1.0).rename(index)
-            except Exception:
-                gci = img.normalizedDifference(['B8', 'B4']).rename(index)
-            return img.addBands(gci)
-        elif idx == 'vegetation_health':
-            try:
-                svhi = img.expression(
-                    '(4 * NIR - (RED + RED_EDGE + SWIR1 + SWIR2)) / (4 * NIR + (RED + RED_EDGE + SWIR1 + SWIR2))',
-                    {
-                        'NIR': img.select('B8'),
-                        'RED': img.select('B4'),
-                        'RED_EDGE': img.select('B5'),
-                        'SWIR1': img.select('B11'),
-                        'SWIR2': img.select('B12')
-                    }
-                ).rename(index)
-            except Exception:
-                svhi = img.normalizedDifference(['B8', 'B4']).rename(index)
-            return img.addBands(svhi)
-        elif idx == 'water_detection':
-            try:
-                mndwi = img.normalizedDifference(['B3', 'B11']).rename(index)
-            except Exception:
-                mndwi = img.normalizedDifference(['B3', 'B8']).rename(index)
-            return img.addBands(mndwi)
-        elif idx == 'urban_index':
-            try:
-                ndbi = img.normalizedDifference(['B11', 'B8']).rename(index)
-            except Exception:
-                ndbi = img.normalizedDifference(['B11', 'B8']).rename(index)
-            return img.addBands(ndbi)
-        elif idx == 'soil_moisture':
-            try:
-                nsmi = img.normalizedDifference(['B11', 'B12']).rename(index)
-            except Exception:
-                nsmi = img.normalizedDifference(['B8', 'B11']).rename(index)
-            return img.addBands(nsmi)
-        elif idx == 'lai':
-            ndvi = img.normalizedDifference(['B8', 'B4'])
-            lai = ndvi.multiply(3.618).subtract(0.118).max(0).rename(index)
-            return img.addBands(lai)
-
-        else:
-            return img.addBands(img.normalizedDifference(['B8', 'B4']).rename(index))
-
-    processed_collection = collection.map(add_index_band_fast)
-
-    try:
-        limited_collection = processed_collection.limit(limit_to_use)
-        image_count = limited_collection.size().getInfo()
-        image_list = limited_collection.toList(image_count)
-        puntos = []
-        for i in range(image_count):
-            try:
-                img = ee.Image(image_list.get(i))
-                stats = img.select(index).reduceRegion(reducer=ee.Reducer.mean(), geometry=roi, scale=60, maxPixels=1e5, bestEffort=True).getInfo()
-                metadata = img.getInfo()
-                date_ms = metadata['properties']['system:time_start']
-                # En UTC: `system:time_start` es un instante UTC, y sin `tz` el dia
-                # salia del huso de la maquina que corre el worker.
-                date_str = datetime.fromtimestamp(date_ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
-                mean_value = stats.get(index)
-                if mean_value is not None:
-                    puntos.append({'date': date_str, 'datetime': date_str + ' 12:00:00', 'timestamp': date_ms, 'mean': float(mean_value)})
-            except Exception:
-                continue
-        # Se redondea despues de juntar los del mismo dia: promediar valores ya
-        # redondeados a dos cifras sumaria el error de los dos.
-        time_series = una_por_dia(puntos)
-        for p in time_series:
-            p['mean'] = _redondear(p['mean'])
-        return time_series
-    except Exception:
-        return []
-
-
-def una_por_dia(puntos):
-    """Una medicion por dia: promedia las imagenes que comparten fecha.
-
-    Una parcela en el borde de dos tiles MGRS recibe **dos imagenes de la misma
-    pasada**, una por tile y con la misma fecha. Cada una da la media de la parte
-    de la parcela que cubre. `measurements` guarda una fila por
-    (parcela, indice, dia) —`fecha` esta en la PK—, y dos filas del mismo dia en
-    un lote tiraban el `INSERT ... ON CONFLICT DO UPDATE` entero con
-    `CardinalityViolation`: la primera corrida real del historico, el 2026-09-12,
-    fallo asi en el mes 1 de la serie.
-
-    El promedio simple es una aproximacion: no pondera por cuanta superficie de
-    la parcela cubre cada tile (`DECISIONS #30`).
-
-    `puntos` son dicts con `date`, `timestamp` y `mean`. Devuelve uno por fecha,
-    ordenados por `timestamp`, cada uno con el resto de los campos del primero.
-    """
-    por_dia = {}
-    for p in puntos:
-        por_dia.setdefault(p['date'], []).append(p)
-    juntos = []
-    for del_dia in por_dia.values():
-        primero = min(del_dia, key=lambda x: x.get('timestamp', 0))
-        media = sum(x['mean'] for x in del_dia) / len(del_dia)
-        juntos.append({**primero, 'mean': media})
-    juntos.sort(key=lambda x: x.get('timestamp', 0))
-    return juntos
-
-
-def _redondear(valor):
-    try:
-        from utils_pkg.io import round_sig
-        return round_sig(float(valor), sig=2)
-    except Exception:
-        return float(valor)
-
-
-def get_sentinel2_dates(roi, start, end, cloud_pct=100):
-    """
-    Obtiene todas las fechas disponibles de imágenes Sentinel-2 para una geometría.
-    
-    Args:
-        roi: ee.Geometry - región de interés
-        start: str - fecha inicio (YYYY-MM-DD)
-        end: str - fecha fin (YYYY-MM-DD)
-        cloud_pct: int - filtro max de cobertura de nubes (0-100), default 100 (todas)
-    
-    Returns:
-        List[dict] - lista de diccionarios con metadata de cada imagen:
-            - date: str (YYYY-MM-DD)
-            - system_time_start: int (milliseconds)
-            - cloud_cover: float (0-100)
-            - tile_id: str (MGRS tile)
-    """
-    try:
-        # Obtener colección sin máscara (queremos todas las fechas disponibles)
-        collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                     .filterBounds(roi)
-                     .filterDate(start, end)
-                     .filter(ee.Filter.lte('CLOUDY_PIXEL_PERCENTAGE', cloud_pct))
-                     .sort('system:time_start'))
-        
-        # Obtener el tamaño de la colección
-        size = collection.size().getInfo()
-        
-        if size == 0:
-            return []
-        
-        # Convertir a lista y extraer metadata
-        image_list = collection.toList(size)
-        dates = []
-        
-        for i in range(size):
-            try:
-                img = ee.Image(image_list.get(i))
-                props = img.getInfo()['properties']
-                
-                date_ms = props.get('system:time_start')
-                if not date_ms:
-                    continue
-                
-                # Convertir timestamp a fecha ISO
-                import datetime
-                date_obj = datetime.datetime.utcfromtimestamp(date_ms / 1000)
-                date_str = date_obj.strftime('%Y-%m-%d')
-                
-                # Extraer metadata adicional
-                cloud_cover = props.get('CLOUDY_PIXEL_PERCENTAGE')
-                tile_id = props.get('MGRS_TILE', props.get('system:index'))
-                
-                dates.append({
-                    'date': date_str,
-                    'system_time_start': date_ms,
-                    'cloud_cover': float(cloud_cover) if cloud_cover is not None else None,
-                    'tile_id': str(tile_id) if tile_id else None
-                })
-            except Exception:
-                # Skip imágenes con errores de metadata
-                continue
-        
-        return dates
-    
-    except Exception as e:
-        raise RuntimeError(f"Error obteniendo fechas de Sentinel-2: {str(e)}")
-
-
-# rest of file omitted for brevity; original content preserved
+# M.6.2 (`DECISIONS #60`): se borraron `get_sentinel2_time_series` —con su
+# `add_index_band_fast`—, `una_por_dia`, `_redondear` y `get_sentinel2_dates`,
+# las cuatro con los handlers a demanda que las llamaban.
+#
+# `add_index_band_fast` era **la segunda copia de las formulas** de indices, y
+# no coincidia con la primera: EVI y SAVI usaban constantes pensadas para
+# reflectancia 0-1 sobre bandas en miles, asi que el SAVI que devolvia era, en
+# la practica, 1,5 x NDVI. La copia unica vive en `pipeline/indices.py`, donde
+# las formulas son texto y hay tests que las evaluan contra valores de
+# referencia.
+#
+# `una_por_dia` juntaba las dos imagenes de una misma pasada en el borde de dos
+# teselas MGRS. El pipeline lo resuelve antes y mejor: `pipeline/etapas/
+# compuesto.py` mosaica por `DATATAKE_IDENTIFIER` en el espacio de la imagen, en
+# vez de promediar dos medias espaciales parciales.
+#
+# Lo que queda en este modulo —`get_sentinel2_collection` y sus ayudantes— lo
+# sostiene **solo** `generate_heatmap_on_demand`, via
+# `ee_indices.compute_sentinel2_index`. Se va con M.6.2b, cuando el mapa a
+# demanda pase al pipeline.

@@ -1,4 +1,4 @@
-r"""M.2.6: el pipeline mensual contra la realidad, y al lado de la capa vieja.
+r"""M.2.6: el pipeline mensual contra la realidad.
 
 QUE HACE
 --------
@@ -6,8 +6,7 @@ Corre el pipeline nuevo (`pipeline/`) sobre parcelas y meses reales, y lo pone
 **al lado de lo que hace el codigo de hoy**. Cinco escalones:
 
 1. **Los numeros del mes**, parcela por parcela y mes por mes: mediana, cobertura,
-   observaciones y cuanto tardo. Al lado, la serie vieja
-   (`get_sentinel2_time_series`) sobre el mismo ROI y el mismo mes.
+   observaciones y cuanto tardo.
 2. **Las dos variantes pendientes**, cambiando solo la receta:
    - `nubes_erosion_px` 0 contra 2 (`DECISIONS #39`);
    - `acotar_indices` False contra True (`DECISIONS #41`).
@@ -21,14 +20,19 @@ Corre el pipeline nuevo (`pipeline/`) sobre parcelas y meses reales, y lo pone
 5. **El COG de un rancho** (`--cog`): baja `mapa_del_mes`, lo convierte y lo
    valida con `rio-cogeo`.
 
-POR QUE LADO A LADO
--------------------
-La capa vieja no hace lo mismo, y las diferencias estan previstas: usa la
-**media** y no la mediana, reduce a **60 m** con `bestEffort=True` y
-`maxPixels=1e5`, **descarta** las pasadas con menos del 50 % del ROI limpio,
-corta en 30 imagenes ordenadas de la mas vieja, y calcula EVI **sin dividir por
-10.000**. El punto no es que los numeros coincidan: es entender **por que**
-difieren, y que los del pipeline sean plausibles (`ARQUITECTURA` §8).
+EL LADO A LADO YA NO ESTA
+-------------------------
+Hasta M.6.2 el escalon 1 imprimia al lado lo que devolvia la capa vieja. Esa
+comparacion era la compuerta de M.2.6 y **ya se corrio**: el 2026-09-17, sobre 3
+parcelas reales x 3 meses (`DECISIONS #44` y `#45`). La capa vieja se borro con
+sus handlers, asi que no hay contra que comparar; los numeros de entonces quedan
+en esa decision y en la cronica de la sesion.
+
+Las diferencias que se habian previsto, y que explicaban lo observado: la capa
+vieja usaba la **media** y no la mediana, reducia a **60 m** con
+`bestEffort=True`, **descartaba** las pasadas con menos del 50 % del ROI limpio,
+cortaba en 30 imagenes ordenadas de la mas vieja, y calculaba EVI **sin dividir
+por 10.000** (`ARQUITECTURA` §8).
 
 LA COMPUERTA (SPRINTS, antes de M.4)
 ------------------------------------
@@ -108,26 +112,10 @@ def _parcelas_desde(carpeta: Path):
     return parcelas
 
 
-def _mes_viejo(roi, mes, indice):
-    """Lo que la capa vieja devuelve para ese mes: la media de sus pasadas.
-
-    Devuelve `(valor, pasadas, segundos)`, o `(None, 0, segundos)` si no encontro
-    ninguna imagen que pasara su filtro de cobertura.
-    """
-    from pipeline.periodos import rango
-    from services.ee.ee_client import get_sentinel2_time_series
-
-    inicio, fin = rango(mes)
-    reloj = time.monotonic()
-    serie = get_sentinel2_time_series(
-        roi, inicio.strftime("%Y-%m-%d"), fin.strftime("%Y-%m-%d"),
-        indice, cloud_pct=70, limit=30, rescate=False,
-    )
-    segundos = time.monotonic() - reloj
-    if not serie:
-        return None, 0, segundos
-    medias = [punto["mean"] for punto in serie]
-    return sum(medias) / len(medias), len(serie), segundos
+# `_mes_viejo()` se borro en M.6.2 (`DECISIONS #60`) con
+# `get_sentinel2_time_series`. La comparacion lado a lado ya cumplio su
+# proposito: fue la compuerta de M.2.6, el 2026-09-17 (`DECISIONS #44` y `#45`),
+# y esos numeros estan escritos. La capa vieja ya no existe para compararse.
 
 
 def _mes_nuevo(roi, mes, receta):
@@ -141,25 +129,29 @@ def _mes_nuevo(roi, mes, receta):
 
 
 def escalon_numeros(parcelas, meses, receta, indice):
-    """1. El mes de cada parcela, con el pipeline y con la capa vieja."""
+    """1. El mes de cada parcela.
+
+    Hasta M.6.2 esto imprimia al lado lo que devolvia la capa vieja. Esa
+    comparacion fue la compuerta de M.2.6 y sus numeros estan en `DECISIONS #44`;
+    el codigo viejo se borro, asi que el informe queda con las columnas del
+    pipeline.
+    """
     from pipeline.indices import INDICES
 
     minimo, maximo = INDICES[indice].rango
     problemas = []
     print(f"\n  1. LOS NUMEROS DEL MES  (indice {indice})\n")
     print(f"{_dato}{'parcela':14s} {'mes':8s} {'mediana':>9s} {'cobertura':>10s} "
-          f"{'obs':>4s} {'seg':>6s} | {'vieja':>9s} {'pasadas':>8s} {'seg':>6s}")
+          f"{'obs':>4s} {'seg':>6s}")
 
     for nombre, roi in parcelas:
         for mes in meses:
             leida, seg, llamadas = _mes_nuevo(roi, mes, receta)
             valor = leida.estadisticas[indice]["mediana"]
-            viejo, pasadas, seg_viejo = _mes_viejo(roi, mes, indice)
 
             print(f"{_dato}{nombre:14.14s} {mes!s:8s} "
                   f"{_num(valor):>9s} {_num(leida.cobertura):>10s} "
-                  f"{_num(leida.observaciones, 0):>4s} {seg:6.1f} | "
-                  f"{_num(viejo):>9s} {pasadas:8d} {seg_viejo:6.1f}")
+                  f"{_num(leida.observaciones, 0):>4s} {seg:6.1f}")
 
             if llamadas != 1:
                 problemas.append(f"{nombre} {mes}: {llamadas} llamadas a GEE, se esperaba 1")

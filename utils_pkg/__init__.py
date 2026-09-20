@@ -7,7 +7,6 @@
 from .visualization import index_band_and_vis, get_tile_url
 from .cache import make_cache_key, save_mapid, load_mapid
 from .io import save_compute_stats, ensure_outputs_dir, timestamped_base
-from .io import round_sig
 
 __all__ = [
 	"index_band_and_vis",
@@ -18,5 +17,4 @@ __all__ = [
 	"save_compute_stats",
 	"ensure_outputs_dir",
 	"timestamped_base",
-	"round_sig",
 ]
