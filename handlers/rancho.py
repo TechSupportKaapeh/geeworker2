@@ -26,14 +26,11 @@ Reemplaza al ``process_rancho`` de la capa vieja con el mismo ``fn_id``, y a su
 No importa ``services/inngest_handlers.py``, que M.6.1 borra.
 """
 
-import os
-import tempfile
 import time
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Any
 
 import inngest
-import rasterio
 from pipeline import ejecucion
 from pipeline.claves import claves_cog_mensual
 from pipeline.ejecucion import reduccion_del_mes, url_de_descarga
@@ -42,11 +39,8 @@ from pipeline.productos import mapa_del_mes
 from pipeline.receta import RECETA_VIGENTE, Receta
 from repositories.db_repository import insert_layer
 from services.avance_job import AVISO, paso, reportar
-from services.cog_converter import convert_to_cog
 from services.ee.ee_client import init_ee
-from services.ee.gee_download import descargar_a_archivo, parametros_de_descarga
 from services.inngest_client import inngest_client
-from services.storage_service import get_storage_service
 
 from handlers.altas import (
     CONCURRENCIA_GEE,
@@ -60,8 +54,9 @@ from handlers.altas import (
 )
 from handlers.cierre import cerrar_por_falla
 from handlers.geometria import coords_to_geometry
+from handlers.raster import NODATA_COG, parametros_del_mapa, subir_cog
 from handlers.seguimiento import RETRIES, con_seguimiento
-from handlers.utilidades import borrar_temporales, entre, ms_desde
+from handlers.utilidades import entre, ms_desde
 
 
 # **Un mapa por índice de la receta** (decisión del usuario, 2026-09-20). Hasta el
@@ -77,23 +72,9 @@ def indices_del_mapa(receta: Receta) -> tuple[str, ...]:
     """Los índices que se suben como mapa: todos los de la receta."""
     return receta.indices
 
-# Lo que en el COG significa "sin dato". **El GeoTIFF de GEE no declara nodata**:
-# lo enmascarado llega como 0, que en NDVI es suelo desnudo (medido el 2026-09-18:
-# 3.929 de 10.325 píxeles de un mes con nubes). Se rellena con un valor que ningún
-# índice normalizado puede dar, y el COG lo convierte en su máscara.
-NODATA_COG: Final = -9999.0
-
-_BYTES_POR_MEGA: Final = 1_000_000
-
-
-def _parametros(roi: object, receta: Receta) -> dict[str, Any]:
-    """Los de ``gee_download``, con la escala de la receta.
-
-    La grilla (``crs``, formato) es la de ``DECISIONS #19``. La escala sale de la
-    receta porque el mapa tiene que ser de los mismos píxeles que las estadísticas
-    (``ARQUITECTURA`` §8.5); hoy las dos valen 10 m.
-    """
-    return {**parametros_de_descarga(roi), "scale": receta.escala_m}
+# `NODATA_COG`, `_parametros` y `_subir_cog` se mudaron a `handlers/raster.py` en
+# M.6.2b: el mapa a demanda hace lo mismo, y el nodata y la escala son un
+# contrato con el tileserver que no puede vivir en dos lados.
 
 
 def _estadisticas_de_la_capa(reduccion: Any, indice: str) -> dict[str, float | None]:  # noqa: ANN401 - una Reduccion
@@ -103,27 +84,6 @@ def _estadisticas_de_la_capa(reduccion: Any, indice: str) -> dict[str, float | N
         "cobertura": reduccion.cobertura,
         "observaciones": reduccion.observaciones,
     }
-
-
-def _subir_cog(url: str, storage_key: str) -> tuple[list[float], float]:
-    """Baja el GeoTIFF, lo pasa a COG y lo sube. Devuelve el bbox y los megas.
-
-    Los temporales se borran en ``finally``: el proceso es de larga vida y los
-    reintentos se acumulan.
-    """
-    crudo = cog = None
-    try:
-        fd, crudo = tempfile.mkstemp(suffix=".tif")
-        os.close(fd)
-        descargar_a_archivo(url, crudo)
-        megas = round(os.path.getsize(crudo) / _BYTES_POR_MEGA, 2)  # noqa: PTH202 - la ruta es str de tempfile
-        with rasterio.open(crudo) as fuente:
-            bbox = list(fuente.bounds)
-        cog = convert_to_cog(crudo, nodata=NODATA_COG)
-        get_storage_service().upload_file(storage_key, cog, "image/tiff")
-    finally:
-        borrar_temporales(crudo, cog)
-    return bbox, megas
 
 
 def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
@@ -186,7 +146,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
 
         # Las URL de todos, dentro del mismo bloque: las llamadas a GEE del mes
         # quedan contadas juntas y traducidas por el mismo manejador.
-        parametros = _parametros(roi, receta)
+        parametros = parametros_del_mapa(roi, receta)
         urls = {
             indice: url_de_descarga(
                 mapa_del_mes(roi, mes, receta, indice).unmask(
@@ -205,7 +165,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     # que es exactamente lo que el reintento vuelve a pisar.
     for indice in indices:
         claves = claves_por_indice[indice]
-        bbox, megas = _subir_cog(urls[indice], claves.storage_key)
+        bbox, megas = subir_cog(urls[indice], claves.storage_key)
         megas_total += megas
         insert_layer(
             natural_key=claves.natural_key,

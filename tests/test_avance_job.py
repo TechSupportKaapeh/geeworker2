@@ -23,9 +23,9 @@ import pytest
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
+from handlers import seguimiento
 from repositories import db_repository
 from services import avance_job
-from services import inngest_handlers as handlers
 
 
 class _Interrupcion(BaseException):
@@ -77,7 +77,9 @@ def bitacora(monkeypatch):
 @pytest.fixture
 def estados(monkeypatch):
     llamadas = []
-    monkeypatch.setattr(handlers, "update_processing_job",
+    # `con_seguimiento` busca la funcion en `db_repository` al llamarla, no al
+    # decorar: por eso alcanza con reemplazarla aca.
+    monkeypatch.setattr(db_repository, "update_processing_job",
                         lambda job_id, status, **kw: llamadas.append((status, kw)))
     return llamadas
 
@@ -165,10 +167,15 @@ def test_es_definitivo(error, attempt, esperado):
 
 
 # --- 2. El wrapper de jobs ------------------------------------------------
+#
+# Hasta M.6.2b esto probaba `_with_job_tracking`, el wrapper de la capa vieja.
+# Los dos eran el mismo `envolver_con_estado`; lo unico que cambiaba era de donde
+# salia `update_processing_job`. Borrada la capa vieja, prueban `con_seguimiento`,
+# que es el que usan todos los handlers.
 
 
 def test_inicio_y_fin_quedan_en_la_bitacora(bitacora, estados):
-    @handlers._with_job_tracking
+    @seguimiento.con_seguimiento
     def handler_ok(ctx, step, payload):
         return {"ok": True}
 
@@ -180,7 +187,7 @@ def test_inicio_y_fin_quedan_en_la_bitacora(bitacora, estados):
 
 def test_un_non_retriable_marca_failed_en_el_primer_intento(bitacora, estados):
     """Antes el wrapper solo miraba `attempt`: el job quedaba en `running` para siempre."""
-    @handlers._with_job_tracking
+    @seguimiento.con_seguimiento
     def handler(ctx, step, payload):
         raise inngest.NonRetriableError("No se encontraron imágenes útiles")
 
@@ -193,7 +200,7 @@ def test_un_non_retriable_marca_failed_en_el_primer_intento(bitacora, estados):
 
 def test_un_step_agotado_marca_failed_en_cualquier_intento(bitacora, estados):
     """El SDK entrega el error memoizado de un step sin reintentos como `StepError`."""
-    @handlers._with_job_tracking
+    @seguimiento.con_seguimiento
     def handler(ctx, step, payload):
         raise inngest.StepError(message="Computation timed out.", name="EEException", stack=None)
 
@@ -205,13 +212,13 @@ def test_un_step_agotado_marca_failed_en_cualquier_intento(bitacora, estados):
 
 
 def test_error_message_no_filtra_la_url_firmada_ni_el_host_privado(bitacora, estados):
-    @handlers._with_job_tracking
+    @seguimiento.con_seguimiento
     def handler(ctx, step, payload):
         raise RuntimeError("fallo subiendo a http://terra-minio.railway.internal:9000/"
                            "terra/x.tif?X-Amz-Signature=abc123&X-Amz-Credential=AKIA")
 
     with pytest.raises(RuntimeError):
-        handler(_CtxFalso({"jobId": "job-1"}, attempt=handlers.RETRIES), _StepComoElSdk())
+        handler(_CtxFalso({"jobId": "job-1"}, attempt=seguimiento.RETRIES), _StepComoElSdk())
 
     (_, kw), = [e for e in estados if e[0] == "failed"]
     assert "abc123" not in kw["error_message"]

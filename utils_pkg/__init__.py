@@ -4,13 +4,10 @@
 # consumidor— tampoco tenia llamadores. Tomaban un objeto `req` con atributos,
 # que era la forma de los requests HTTP que la FASE D elimino; los handlers arman
 # el ROI con `coords_to_geometry(payload["coordinates"])`, directo del evento.
-from .visualization import index_band_and_vis, get_tile_url
 from .cache import make_cache_key, save_mapid, load_mapid
 from .io import save_compute_stats, ensure_outputs_dir, timestamped_base
 
 __all__ = [
-	"index_band_and_vis",
-	"get_tile_url",
 	"make_cache_key",
 	"save_mapid",
 	"load_mapid",

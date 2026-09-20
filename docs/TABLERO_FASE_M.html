@@ -337,15 +337,15 @@ const SPRINTS = [
       { id: "M.5.5", t: "Forzar el mes objetivo y reiniciar Geocore dos veces", repo: "todos", T: "S", ok: "Sin duplicados ni meses perdidos" }
     ] },
   { id: "M.6", nombre: "Limpieza", objetivo: "El worker termina con menos código que al empezar.", sesiones: "1",
-    aviso: { tipo: "compuerta", texto: "<b>M.6.1 y M.6.2 hechas; falta M.6.2b.</b> El usuario decidió <b>borrar</b> los handlers a demanda (2026-09-20), y con ellos se fue media capa vieja: <b>−467 líneas de producción</b>, cinco endpoints retirados y el worker de 11 funciones a 7. Lo que queda de M.6 es <b>M.6.2b</b>, el mapa a demanda al pipeline." },
-    aviso2: { tipo: "equipo", texto: "<b>Lo que salió al borrar y no estaba en la lista:</b> <code>POST /api/processing/jobs/timeseries-on-the-fly</code> publicaba <code>terra/parcela.timeseries.requested</code>, cuyo único oyente era el handler que se borraba. Habría quedado fabricando jobs <code>pending</code> eternos. Se fue con los otros, y quedó un test que compara los disparadores del worker contra lo que Geocore publica. <b>El orden de despliegue es el inverso del de M.5.5:</b> primero Geocore, que deja de publicar; después el worker." },
+    aviso: { tipo: "compuerta", texto: "<b>Sprint cerrado el 2026-09-20, salvo M.6.4.</b> El objetivo era que el worker terminara con menos código que al empezar, y se cumplió con margen: <b>−1.150 líneas de producción</b> entre M.6.1 (−61), M.6.2 (−467) y M.6.2b (−622). <b>Ya no queda nada anterior al pipeline mensual:</b> <code>ee_client.py</code> pasó de 436 líneas a 57 —sólo <code>init_ee</code>—, <code>services/inngest_handlers.py</code> se borró, y <b>todo lo que el worker escribe cuelga de <code>tenants/{t}/</code></b>, que es lo que M.8.1 necesitaba." },
+    aviso2: { tipo: "equipo", texto: "<b>Tres cosas que salieron de hacerlo y no estaban en la tarea:</b> <code>timeseries-on-the-fly</code> habría quedado fabricando jobs <code>pending</code> eternos —publicaba un evento cuyo único oyente se borraba—; <code>cloudPct</code> nunca hizo nada, el worker lo recibía y no lo aplicaba; y el test de <code>/health</code> era flaky y estaba rojo en <code>main</code>. <b>Para M.8.1:</b> los rásters a demanda que ya están en el bucket siguen en <code>parcelas/{id}/</code>, sin tenant y sin nodata." },
     tareas: [
       { id: "M.6.1", t: "Borrar la capa vieja y dejar de crear sentinel2_dates", repo: "worker", T: "M", ok: "Código de producción −61 líneas; 619 tests verdes" },
       { id: "M.6.1b", t: "DROP TABLE geodata.sentinel2_dates", repo: "GeoData", T: "S", ok: "Aplicado por el usuario el 2026-09-20", equipo: true },
       { id: "M.6.2", t: "Handlers a demanda: el usuario decidió borrarlos, con el front avisado", repo: "worker · Geocore", T: "M", ok: "−467 líneas de producción; 5 endpoints retirados" },
-      { id: "M.6.2b", t: "El mapa a demanda pasa al pipeline: se lleva ee_service, export_service, ee_indices y el constructor de colecciones de ee_client", repo: "worker · Geocore", T: "M", ok: "El COG a demanda sale con nodata y con el tenant en la key" },
+      { id: "M.6.2b", t: "El mapa a demanda pasa al pipeline: se llevó ee_service, export_service, ee_indices y casi todo ee_client", repo: "worker · Geocore", T: "M", ok: "−622 líneas; todo lo que el worker escribe cuelga de tenants/" },
       { id: "M.6.3", t: "Un solo EncolarAsync en vez de cinco Request*Async", repo: "Geocore", T: "S", ok: "Vaciada por M.6.2: quedó RequestHeatmapAsync sola" },
-      { id: "M.6.4", t: "Excepciones explícitas en lugar de except Exception", repo: "worker", T: "M", ok: "Desbloqueada y más chica; conviene hacerla después de M.6.2b" },
+      { id: "M.6.4", t: "Excepciones explícitas en lugar de except Exception", repo: "worker", T: "M", ok: "Lo único que queda de M.6; los que sobreviven ya se revisaron y son deliberados" },
       { id: "M.6.5", t: "El mapa del rancho, de los cuatro índices: un COG por índice y por mes", repo: "worker", T: "S", ok: "Tests; las keys no se pisan" }
     ] },
   { id: "M.7", nombre: "Panel", objetivo: "Ver series y mapas mensuales, y cargar geometría sin sufrir.", sesiones: "2–3",
@@ -375,15 +375,14 @@ const SPRINTS = [
     ] }
 ];
 
-// Al 2026-09-20, cerrando la sesión 10: M.0.1 a M.0.5, M.1, M.2, M.3, M.4 y M.5 enteros,
-// M.6.1, M.6.1b, M.6.2 y M.6.5, y M.8.2. El cierre de mes corre en producción desde el
-// 2026-09-19.
+// Al 2026-09-20, cerrando la sesión 10: M.0.1 a M.0.5, M.1, M.2, M.3, M.4, M.5 y **M.6
+// entero salvo M.6.4**, más M.8.2. El cierre de mes corre en producción desde el 2026-09-19.
 //
-// **M.6.2 destrabó el sprint**: el usuario decidió borrar los handlers a demanda, y con ellos
-// se fue media capa vieja (−467 líneas de producción, cinco endpoints retirados, el worker de
-// 11 funciones a 7). Lo que queda de M.6 es **M.6.2b**, el mapa a demanda al pipeline. M.6.3
-// quedó vaciada —de los cinco `Request*Async` sobrevivió uno, y sin duplicación no hay refactor—
-// y M.6.4 se desbloqueó y encogió; conviene hacerla después de M.6.2b.
+// El sprint M.6 cumplió su objetivo con margen: **−1.150 líneas de producción**. Ya no queda
+// nada anterior al pipeline mensual, y todo lo que el worker escribe cuelga de `tenants/{t}/`,
+// que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
+// y M.6.4 es lo único pendiente — y conviene cerrarla declarando lo revisado, porque los
+// `except Exception` que sobreviven son deliberados.
 //
 // Fuera del tablero, la misma sesión: el test flaky de `/health` que estaba rojo en `main`, y el
 // panel traduciendo 5 de los 11 tipos de proceso. Queda M.0.6, postergada hasta después de la
@@ -398,7 +397,7 @@ const ESTADO = {
   "M.3.1": "hecho", "M.3.1b": "hecho", "M.3.2": "hecho", "M.3.3": "hecho", "M.3.4": "hecho", "M.3.5": "hecho",
   "M.4.1": "hecho", "M.4.2": "hecho", "M.4.3": "hecho", "M.4.4": "hecho", "M.4.5": "hecho", "M.4.6": "hecho", "M.4.7": "hecho", "M.4.8": "hecho", "M.4.9": "hecho", "M.4.10": "hecho",
   "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho", "M.5.4": "hecho", "M.5.5": "hecho",
-  "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.3": "bloqueado", "M.6.4": "pendiente", "M.6.5": "hecho",
+  "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.2b": "hecho", "M.6.3": "bloqueado", "M.6.4": "pendiente", "M.6.5": "hecho",
   "M.8.2": "hecho"
 };
 

@@ -24,14 +24,15 @@ from rasterio.transform import from_origin
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from handlers import altas, rancho
+from handlers import altas, rancho, raster
 from pipeline import ejecucion
 from pipeline.estadisticas import claves_de_salida
 from pipeline.receta import RECETA_VIGENTE
 
 INDICES = list(RECETA_VIGENTE.indices)
+from handlers import registro as inngest_handlers
 from repositories import db_repository
-from services import avance_job, inngest_handlers
+from services import avance_job
 
 HOY = date(2026, 9, 18)
 MESES_V1 = [f"{2024 + (8 + i) // 12}-{(8 + i) % 12 + 1:02d}" for i in range(24)]
@@ -135,8 +136,10 @@ def mundo(monkeypatch):
 
     monkeypatch.setattr(ejecucion, "estadisticas_del_mes", _estadisticas_del_mes)
     monkeypatch.setattr(rancho, "mapa_del_mes", lambda roi, mes, receta, indice: _Imagen(estado, str(mes)))
-    monkeypatch.setattr(rancho, "descargar_a_archivo", _descargar)
-    monkeypatch.setattr(rancho, "get_storage_service", _Storage)
+    # La descarga y la subida viven en `handlers/raster.py` desde M.6.2b: las
+    # comparte con el mapa a demanda.
+    monkeypatch.setattr(raster, "descargar_a_archivo", _descargar)
+    monkeypatch.setattr(raster, "get_storage_service", _Storage)
     monkeypatch.setattr(rancho, "insert_layer", lambda **kw: estado["capas"].append(kw))
     monkeypatch.setattr(rancho, "init_ee", lambda: None)
     monkeypatch.setattr(rancho, "coords_to_geometry", lambda c: "roi")

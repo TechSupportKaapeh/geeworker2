@@ -15,6 +15,8 @@ que, esta al final: `test_lo_que_sigue_vivo_es_de_m62b`.
 import sys
 from pathlib import Path
 
+import pytest
+
 RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
@@ -130,75 +132,59 @@ def test_config_no_declara_una_lista_de_indices_que_nadie_consulta():
     assert not hasattr(config, "SUPPORTED_INDICES")
 
 
-def test_lo_que_se_fue_con_los_handlers_a_demanda():
-    """M.6.2: los cuatro handlers, y todo lo que solo ellos sostenian.
+def test_la_capa_vieja_de_gee_ya_no_existe():
+    """M.6.2b: se fueron los cuatro modulos, y `ee_client` quedo en las credenciales.
 
-    Este test reemplaza a `test_lo_que_sigue_vivo_es_de_m62`, que cuidaba el
-    limite de M.6.1 y se puso rojo al hacerse M.6.2 — que era exactamente lo que
-    su docstring decia que iba a pasar.
+    Este test reemplaza a `test_lo_que_sigue_vivo_es_de_m62b`, que cuidaba el
+    limite de M.6.2 y se puso rojo al hacerse M.6.2b — que era lo que su docstring
+    decia que iba a pasar. **Ya no queda nada de la capa vieja**, asi que no hay
+    otro limite que escribir.
     """
-    from services import ee_service, export_service, inngest_handlers
+    import importlib
+
+    for modulo in ("services.ee_service", "services.export_service",
+                   "services.ee.ee_indices", "utils_pkg.visualization",
+                   "services.inngest_handlers"):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(modulo)
+
+
+def test_ee_client_es_solo_las_credenciales():
+    """Lo unico que quedo del modulo es `init_ee`.
+
+    Lo que se fue y no puede volver, porque el pipeline lo hace distinto a
+    proposito (`ARQUITECTURA` §8):
+
+    - `get_sentinel2_collection` no dividia las bandas por 10.000, que es por lo
+      que su EVI y su SAVI estaban mal;
+    - `apply_scsc` no era SCS+C: le faltaba `cos(pendiente)` y usaba un `C` fijo;
+    - `check_roi_coverage` descartaba pasadas con menos del 50 % del ROI limpio,
+      que en un compuesto mensual **agrega** nulos en vez de sacarlos.
+    """
     from services.ee import ee_client
-    from utils_pkg import io
 
-    for nombre in ("compute_timeseries", "query_available_dates", "export_data",
-                   "compute_parcela_stats"):
-        assert not hasattr(inngest_handlers, nombre), nombre
-
-    # La segunda copia de las formulas de indices, con EVI y SAVI equivocados.
-    for nombre in ("get_sentinel2_time_series", "una_por_dia", "get_sentinel2_dates"):
+    assert hasattr(ee_client, "init_ee")
+    for nombre in ("get_sentinel2_collection", "apply_scsc", "check_roi_coverage",
+                   "mask_s2cloudless_and_shadows", "add_cloud_probability"):
         assert not hasattr(ee_client, nombre), nombre
 
-    assert not hasattr(ee_service, "generate_time_series_data")
-    assert not hasattr(export_service, "export_time_series")
-    assert not hasattr(io, "round_sig")
+
+def test_el_mapa_a_demanda_corre_sobre_el_pipeline():
+    """El ultimo handler que quedaba de la capa vieja, rehecho (M.6.2b)."""
+    from handlers import mapa, registro
+
+    assert mapa.generate_heatmap_on_demand in registro.all_functions
+    # El `fn_id` es el mismo a proposito: Inngest identifica las funciones por
+    # ahi, y cambiarlo dejaria la vieja archivada y los eventos en vuelo sin
+    # quien los atienda.
+    assert mapa.generate_heatmap_on_demand.id == "geeworker-generate-heatmap-on-demand"
 
 
-def test_ya_no_existe_la_escritura_por_pasada():
-    """`insert_measurement` e `insert_measurements` escribian `receta IS NULL`.
+def test_el_worker_registra_siete_funciones():
+    """El numero es el que tiene que ver Inngest. Eran 11 antes de M.6.2."""
+    from handlers import registro
 
-    Son exactamente las filas que el equipo tuvo que borrar a mano en M.3.5
-    (`DELETE FROM geodata.measurements WHERE receta IS NULL`). Mientras las
-    funciones existieran, la canilla seguia abierta. Lo mensual se escribe con
-    `upsert_mediciones_mensuales`, que siempre pone `receta`.
-    """
-    from repositories import db_repository
-
-    assert not hasattr(db_repository, "insert_measurement")
-    assert not hasattr(db_repository, "insert_measurements")
-    assert hasattr(db_repository, "upsert_mediciones_mensuales")
-
-
-def test_lo_que_sigue_vivo_es_de_m62b():
-    """El limite que queda, escrito donde se rompe si alguien lo cruza.
-
-    `generate_heatmap_on_demand` sigue registrado, y con el el resto de la capa
-    vieja de GEE: `ARQUITECTURA` §9 dice que **el mapa a demanda pasa al
-    pipeline**, y eso es M.6.2b. Hasta entonces `ee_service`, `export_service`,
-    `ee_indices`, el constructor de colecciones de `ee_client` e
-    `index_band_and_vis` tienen un llamador.
-
-    Si este test se pone rojo porque ya no estan, es que M.6.2b se hizo: se borra
-    el test, no se revive el codigo.
-    """
-    from services import ee_service, export_service, inngest_handlers
-    from services.ee import ee_client, ee_indices
-    from utils_pkg import visualization
-
-    assert hasattr(inngest_handlers, "generate_heatmap_on_demand")
-    assert hasattr(ee_service, "generate_heatmap_tiles")
-    assert hasattr(export_service, "export_heatmap")
-    assert hasattr(ee_indices, "compute_sentinel2_index")
-    assert hasattr(visualization, "index_band_and_vis")
-    for nombre in ("get_sentinel2_collection", "apply_scsc", "check_roi_coverage"):
-        assert hasattr(ee_client, nombre), f"{nombre} se fue antes de tiempo"
-
-
-def test_el_worker_registra_solo_lo_que_queda():
-    """De 11 funciones a 7. El numero es el que tiene que ver Inngest."""
-    from services import inngest_handlers
-
-    assert len(inngest_handlers.all_functions) == 7
+    assert len(registro.all_functions) == 7
 
 
 def test_cada_evento_que_geocore_publica_tiene_oyente():
@@ -216,7 +202,7 @@ def test_cada_evento_que_geocore_publica_tiene_oyente():
     baratos: que no falte un oyente, y que **no sobre** uno — un handler que
     escucha un evento que ya nadie publica es codigo muerto que parece vivo.
     """
-    from services import inngest_handlers
+    from handlers import registro as inngest_handlers
 
     # Lo que Geocore publica hoy: `ParcelaService`, `RanchoService`,
     # `ReconciliadorMensual`, `ReprocesoService` y `ProcessingJobsController`.

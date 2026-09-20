@@ -18,8 +18,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 from handlers import cancelaciones, cierre, parcela, rancho
+from handlers import registro as inngest_handlers
 from repositories import db_repository
-from services import inngest_handlers
 
 JOB = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 

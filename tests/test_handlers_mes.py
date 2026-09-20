@@ -111,7 +111,9 @@ def mundo(monkeypatch):
     monkeypatch.setattr(rancho, "mapa_del_mes",
                         lambda *a, **k: type("Img", (), {"unmask": lambda self, *a, **k: self})())
     monkeypatch.setattr(rancho, "url_de_descarga", lambda *a, **k: "https://gee/descarga.tif")
-    monkeypatch.setattr(rancho, "_subir_cog", lambda url, key: ([0, 0, 1, 1], 1.5))
+    # `subir_cog` se mudo a `handlers/raster.py` en M.6.2b, pero `rancho` la
+    # importo por nombre: se reemplaza donde la busca.
+    monkeypatch.setattr(rancho, "subir_cog", lambda url, key: ([0, 0, 1, 1], 1.5))
     monkeypatch.setattr(rancho, "insert_layer",
                         lambda **kw: estado["capas"].append(kw))
 
@@ -253,7 +255,7 @@ def test_las_cuatro_funciones_de_gee_comparten_una_cola_de_5():
 
 
 def test_las_dos_funciones_del_mes_estan_registradas_y_escuchan_su_evento():
-    from services.inngest_handlers import all_functions
+    from handlers.registro import all_functions
 
     ids = [f.id for f in all_functions]
     assert "geeworker-process-parcela-mes" in ids

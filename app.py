@@ -22,11 +22,11 @@ from utils_pkg.logging_config import setup_logging
 
 setup_logging()
 
+import logging
+
 from config import IS_PRODUCTION
 from utils_pkg.arranque import registrar_arranque
 from utils_pkg.conexiones import registrar_conexiones
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +129,9 @@ def health():
 # M.4.8: el `serve` propio, no el de `inngest.fast_api`. El del SDK corre los
 # handlers sincronicos dentro del event loop, asi que el worker atendia un step
 # por vez y los demas hacian cola en Inngest (`DECISIONS #53`).
+from handlers.registro import all_functions
 from services import inngest_serve
 from services.inngest_client import inngest_client
-from services.inngest_handlers import all_functions
 
 # `serve()` puede levantar, y si lo hace se lleva el proceso puesto.
 #

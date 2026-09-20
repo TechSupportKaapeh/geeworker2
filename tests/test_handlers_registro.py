@@ -1,4 +1,9 @@
-"""Invariantes de los handlers de Inngest.
+"""Invariantes del registro de funciones y del contrato de coordenadas.
+
+Se llamaba `test_inngest_handlers.py`, por el modulo que M.6.2b borro. Lo que
+probaba del estado del job esta en `test_avance_job.py` y
+`test_handlers_seguimiento.py`; lo de las claves de una capa, en
+`test_pipeline_claves.py`.
 
 Hasta el 2026-09-04 **ningun test tocaba un handler**. Estos no prueban el
 procesamiento —para eso hace falta GEE, MinIO y la DB, y esa verificacion es
@@ -25,12 +30,12 @@ con GEE.
 import sys
 from pathlib import Path
 
-import pytest
-
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from services import inngest_handlers as handlers
+from handlers import registro as handlers
+from handlers.geometria import coords_to_geometry, normalizar_coordenadas  # noqa: F401
+from handlers.seguimiento import RETRIES
 
 # --- 1. Los handlers no son corrutinas (E.5) ------------------------------
 
@@ -79,6 +84,16 @@ def test_process_kml_ya_no_existe():
     assert not hasattr(handlers, "process_kml")
 
 
+def test_el_numero_de_reintentos_es_uno_solo():
+    """Si `RETRIES` y el `retries=` de los decoradores se separan, E.4 se rompe.
+
+    El wrapper decide si marcar `failed` comparando contra `RETRIES`. Con un
+    decorador en 5 y la constante en 3, el job se marcaria fallido dos intentos
+    antes de que Inngest deje de reintentar — y volveria a mentir.
+    """
+    assert {f._opts.retries for f in handlers.all_functions} == {RETRIES}
+
+
 # --- 2. El contrato de coordenadas con Geocore ----------------------------
 
 
@@ -86,7 +101,7 @@ def test_coordenadas_como_lista_de_diccionarios_de_csharp():
     """Geocore manda `CoordinateDto`, o sea `[{lat, lng}]`, nunca ValueTuples."""
     coords = [{"lat": 24.75, "lng": -107.45}, {"lat": 24.85, "lng": -107.45},
               {"lat": 24.85, "lng": -107.35}]
-    (anillo,), es_multi = handlers.normalizar_coordenadas(coords)
+    (anillo,), es_multi = normalizar_coordenadas(coords)
 
     # **El orden se invierte a (lng, lat).** Es el detalle que no falla: da un
     # ROI en otro lugar del planeta, y GEE lo procesa sin quejarse.
@@ -100,7 +115,7 @@ def test_coordenadas_con_mayuscula_inicial():
     """C# serializa en PascalCase si no se configura lo contrario."""
     coords = [{"Lat": 24.75, "Lng": -107.45}, {"Lat": 24.85, "Lng": -107.45},
               {"Lat": 24.85, "Lng": -107.35}]
-    (anillo,), _ = handlers.normalizar_coordenadas(coords)
+    (anillo,), _ = normalizar_coordenadas(coords)
     assert anillo[0] == [-107.45, 24.75]
 
 
@@ -111,7 +126,7 @@ def test_una_coordenada_en_cero_no_se_pierde():
     un `lng` de 0.0 caia al `Lng` en PascalCase, que no existe, y quedaba `None`
     — un ROI corrupto sin ningun error.
     """
-    (anillo,), _ = handlers.normalizar_coordenadas(
+    (anillo,), _ = normalizar_coordenadas(
         [{"lat": 0.0, "lng": 0.0}, {"lat": 0.0, "lng": 1.0}, {"lat": 1.0, "lng": 1.0}]
     )
     assert anillo[0] == [0.0, 0.0]
@@ -121,135 +136,19 @@ def test_una_coordenada_en_cero_no_se_pierde():
 def test_un_anillo_ya_cerrado_no_se_duplica():
     coords = [{"lat": 24.75, "lng": -107.45}, {"lat": 24.85, "lng": -107.45},
               {"lat": 24.85, "lng": -107.35}, {"lat": 24.75, "lng": -107.45}]
-    (anillo,), _ = handlers.normalizar_coordenadas(coords)
+    (anillo,), _ = normalizar_coordenadas(coords)
     assert len(anillo) == 4
 
 
 def test_poligono_y_multipoligono_se_distinguen_por_anidamiento():
     poligono = [[[-107.45, 24.75], [-107.45, 24.85], [-107.35, 24.85], [-107.45, 24.75]]]
-    coords, es_multi = handlers.normalizar_coordenadas(poligono)
+    coords, es_multi = normalizar_coordenadas(poligono)
     assert es_multi is False
     assert coords is poligono
 
     multi = [poligono, [[[-107.25, 24.75], [-107.25, 24.85], [-107.15, 24.85], [-107.25, 24.75]]]]
-    _, es_multi = handlers.normalizar_coordenadas(multi)
+    _, es_multi = normalizar_coordenadas(multi)
     assert es_multi is True
-
-
-# --- 3. El estado del job ------------------------------------------------
-
-
-class _StepFalso:
-    """Ejecuta los pasos en el momento y registra sus nombres, como Inngest."""
-
-    def __init__(self):
-        self.ejecutados = []
-
-    def run(self, nombre, funcion, *args, **kwargs):
-        self.ejecutados.append(nombre)
-        return funcion(*args, **kwargs)
-
-    def send_event(self, nombre, evento):
-        self.ejecutados.append(nombre)
-
-
-class _CtxFalso:
-    """`attempt` es 0-indexado, igual que en `inngest.Context`."""
-
-    def __init__(self, data, attempt=0):
-        self.event = type("Evento", (), {"data": data})()
-        self.attempt = attempt
-
-
-@pytest.fixture
-def jobs_registrados(monkeypatch):
-    """Captura las llamadas a `update_processing_job` en vez de ir a la DB."""
-    llamadas = []
-    monkeypatch.setattr(
-        handlers, "update_processing_job",
-        lambda job_id, status, **kw: llamadas.append((job_id, status)),
-    )
-    return llamadas
-
-
-def test_el_job_pasa_por_running_y_completed(jobs_registrados):
-    @handlers._with_job_tracking
-    def handler_ok(ctx, step, payload):
-        return {"ok": True}
-
-    paso = _StepFalso()
-    resultado = handler_ok(_CtxFalso({"jobId": "job-1", "tenantId": "t"}), paso)
-
-    assert resultado == {"ok": True}
-    assert jobs_registrados == [("job-1", "running"), ("job-1", "completed")]
-
-
-@pytest.mark.parametrize("attempt", [0, 1, 2])
-def test_un_intento_intermedio_no_marca_failed(jobs_registrados, attempt):
-    """E.4: `failed` tiene que significar "no se va a recuperar".
-
-    Antes se marcaba en cada intento y el reintento lo devolvia a `running`, asi
-    que con `retries=3` el estado mentia durante toda la ventana: un job que se
-    iba a recuperar solo aparecia como fallido, y quien lo mirara diagnosticaba
-    un problema inexistente.
-
-    La excepcion **si** se propaga igual: es lo que hace que Inngest reintente.
-    """
-    @handlers._with_job_tracking
-    def handler_roto(ctx, step, payload):
-        raise ValueError("revento")
-
-    with pytest.raises(ValueError, match="revento"):
-        handler_roto(_CtxFalso({"jobId": "job-2"}, attempt=attempt), _StepFalso())
-
-    assert jobs_registrados == [("job-2", "running")]
-
-
-def test_el_ultimo_intento_si_marca_failed(jobs_registrados):
-    """Con `RETRIES=3` y `attempt` 0-indexado, el ultimo es `attempt == 3`."""
-    @handlers._with_job_tracking
-    def handler_roto(ctx, step, payload):
-        raise ValueError("revento")
-
-    with pytest.raises(ValueError, match="revento"):
-        handler_roto(
-            _CtxFalso({"jobId": "job-3"}, attempt=handlers.RETRIES), _StepFalso()
-        )
-
-    assert jobs_registrados == [("job-3", "running"), ("job-3", "failed")]
-
-
-def test_el_numero_de_reintentos_es_uno_solo():
-    """Si `RETRIES` y el `retries=` de los decoradores se separan, E.4 se rompe.
-
-    El wrapper decide si marcar `failed` comparando contra `RETRIES`. Con un
-    decorador en 5 y la constante en 3, el job se marcaria fallido dos intentos
-    antes de que Inngest deje de reintentar — y volveria a mentir.
-    """
-    assert {f._opts.retries for f in handlers.all_functions} == {handlers.RETRIES}
-
-
-def test_sin_job_id_no_se_toca_la_tabla(jobs_registrados):
-    """Los eventos que no vienen de un pedido de Geocore no tienen job."""
-    @handlers._with_job_tracking
-    def handler_ok(ctx, step, payload):
-        return {"ok": True}
-
-    handler_ok(_CtxFalso({"tenantId": "t"}), _StepFalso())
-    assert jobs_registrados == []
-
-
-def test_las_claves_del_payload_se_normalizan_a_camelCase():
-    """Geocore serializa en PascalCase; los handlers leen `parcelaId`."""
-    visto = {}
-
-    @handlers._with_job_tracking
-    def handler(ctx, step, payload):
-        visto.update(payload)
-        return {}
-
-    handler(_CtxFalso({"ParcelaId": "p-1", "TenantId": "t-1"}), _StepFalso())
-    assert visto == {"parcelaId": "p-1", "tenantId": "t-1"}
 
 
 # --- 4. (borrada en M.6.2) ------------------------------------------------
@@ -337,77 +236,3 @@ def test_una_fecha_ilegible_falla_nombrando_el_campo():
         a_timestamptz("el martes", "acquired_ts")
 
 
-# --- 6. Las dos claves de una capa salen de una sola fuente (E.9) ----------
-
-
-def test_la_capa_sistematica_y_la_on_demand_de_la_misma_fecha_son_la_misma():
-    """Era una colision real, no una duplicacion teorica.
-
-    `process_parcela` armaba `natural_key = f"ndvi_{id}_{fecha}"` con
-    `storage_key = parcelas/{id}/…`, y el on-demand armaba
-    `natural_key = f"{indice}_{id}_{fechaInicio}"` con `heatmaps/{id}/…`. Para
-    NDVI, la misma parcela y la misma fecha **las dos natural_key eran
-    identicas** — o sea el mismo UUIDv5, la misma fila de `layers`— pero con
-    `storage_key` distinta.
-
-    El pedido on-demand pisaba la fila de la capa sistematica apuntandola a
-    `heatmaps/`, y el objeto de `parcelas/` quedaba huerfano en el bucket,
-    referenciado por nadie.
-    """
-    sistematica = handlers.claves_de_capa("parcela", "p-1", "ndvi", "2026-01-01")
-    on_demand = handlers.claves_de_capa("parcela", "p-1", "ndvi", "2026-01-01", "2026-01-01")
-
-    # Misma capa: misma key y misma fila.
-    assert sistematica == on_demand
-    assert sistematica[0] == "parcelas/p-1/2026-01-01_ndvi.tif"
-    assert "heatmaps/" not in sistematica[0]
-
-
-def test_dos_periodos_distintos_no_comparten_objeto():
-    """La key usaba solo `fechaInicio`, asi que un heatmap de ene1–ene31 y otro
-    de ene1–feb28 escribian **el mismo objeto**."""
-    enero = handlers.claves_de_capa("parcela", "p-1", "ndvi", "2026-01-01", "2026-01-31")
-    dos_meses = handlers.claves_de_capa("parcela", "p-1", "ndvi", "2026-01-01", "2026-02-28")
-
-    assert enero != dos_meses
-    assert enero[0] == "parcelas/p-1/2026-01-01_2026-01-31_ndvi.tif"
-
-
-def test_la_storage_key_y_la_natural_key_no_pueden_divergir():
-    """El par del rancho de la capa vieja era el caso peligroso: `process_rancho`
-    armaba la `storage_key` y `register_layer` la `natural_key`, **en otro
-    handler, separados por un evento**. Que salgan de la misma funcion es lo que
-    impide que una convencion se desincronice a traves de esa frontera. Los dos
-    handlers se borraron en M.4.5; lo mensual usa `pipeline/claves.py`."""
-    storage_key, natural_key = handlers.claves_de_capa("rancho", "r-1", "ndvi", "2026-01-01")
-
-    assert storage_key == "ranchos/r-1/2026-01-01_ndvi.tif"
-    assert natural_key == "rancho_ndvi_r-1_2026-01-01"
-    # La natural_key identifica la capa sin depender del prefijo del bucket, que
-    # A-7 puede rediseñar en FASE C sin cambiar la identidad de las filas.
-    assert "/" not in natural_key
-
-
-def test_cada_indice_es_una_capa_distinta():
-    ndvi = handlers.claves_de_capa("parcela", "p-1", "ndvi", "2026-01-01")
-    ndwi = handlers.claves_de_capa("parcela", "p-1", "ndwi", "2026-01-01")
-
-    assert ndvi[0] != ndwi[0]
-    assert ndvi[1] != ndwi[1]
-
-
-def test_rancho_y_parcela_con_el_mismo_id_no_colisionan():
-    """Lo destapo este mismo test en su primera version.
-
-    Sin la entidad en la `natural_key`, un rancho y una parcela con el mismo id,
-    indice y fecha darian el **mismo UUIDv5** y por lo tanto la misma fila de
-    `layers`. Hoy es imposible porque los ids son uuid, pero la identidad de una
-    capa no deberia depender de eso — y cerrarlo era gratis: el worker todavia
-    no escribio contra el MinIO real, asi que no hay UUIDv5 en produccion que
-    cambiar.
-    """
-    rancho = handlers.claves_de_capa("rancho", "x", "ndvi", "2026-01-01")
-    parcela = handlers.claves_de_capa("parcela", "x", "ndvi", "2026-01-01")
-
-    assert rancho[0] != parcela[0], "distinto objeto en el bucket"
-    assert rancho[1] != parcela[1], "y distinta fila en layers"

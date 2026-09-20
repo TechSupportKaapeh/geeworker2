@@ -3,6 +3,31 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
+> **2026-09-20, sesión 10 · M.6.2b: la capa vieja desapareció** (`DECISIONS #61`). El mapa a
+> demanda corre sobre el pipeline (`handlers/mapa.py`), es de **un mes** y su key cuelga de
+> `tenants/{t}/parcelas/{p}/{receta}/{indice}/{AAAA-MM}.tif`. **Con eso, todo lo que el worker
+> escribe está bajo `tenants/`**, que es lo que M.8.1 necesitaba.
+>
+> Se borraron `ee_service.py`, `export_service.py`, `ee/ee_indices.py`, `utils_pkg/
+> visualization.py` y `services/inngest_handlers.py` enteros; `ee_client.py` pasó de 436 líneas a
+> **57**, que son sólo `init_ee`. La lista de funciones vive en `handlers/registro.py`, y lo que
+> comparten los dos handlers que bajan rásters, en `handlers/raster.py`.
+>
+> El mapa a demanda ganó de paso tres cosas que le faltaban: **declara nodata** (antes una nube se
+> pintaba como NDVI 0), su fila lleva **`receta` y `estadisticas`**, y **un mes sin un píxel
+> limpio no sube nada** en vez de un ráster de ceros.
+>
+> Contrato con Geocore: el evento trae **`periodo`** (`AAAA-MM`) e `indice`; se fueron
+> `fechaInicio`, `fechaFin` y `cloudPct` — este último el worker lo recibía y **nunca lo aplicó**.
+> **Desplegar el worker antes que Geocore.**
+>
+> Suite: **635 verdes**. `ruff check .` en la raíz, de 157 a **92**. Código de producción:
+> **−622 líneas**, y **−1.150 en todo el sprint M.6**.
+>
+> **Para M.8.1:** los rásters a demanda **que ya están** en el bucket siguen en `parcelas/{id}/`,
+> sin tenant y sin nodata, con sus filas en `layers`. Hay que decidir si se mueven, se borran o se
+> deja que el token los rechace.
+
 > **2026-09-20, sesión 10 · M.6.2: se borran los handlers a demanda** (`DECISIONS #60`).
 > Decisión del usuario, con el equipo del front avisado. Se fueron `compute_timeseries`,
 > `query_available_dates`, `export_data` y `compute_parcela_stats`, sus cinco endpoints en Geocore
@@ -235,9 +260,9 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | **Cierre de jobs fuera del handler** | ✅ 2026-09-19 (M.4.7, `DECISIONS #52`): `on_failure` de las altas y `cerrar-altas-canceladas`. Probado contra un Inngest real |
 | **Concurrencia del worker** | ✅ 2026-09-19 (M.4.8, `DECISIONS #53`): `/api/inngest` en el pool de hilos (`services/inngest_serve.py`), `ThreadedConnectionPool` y plazo de GEE contado por hilos. **Corrige `#26`** |
 | **Inngest Cloud** | 🟡 Plan Hobby: 5 steps a la vez, 50.000 ejecuciones al mes (un alta ≈ 27). Esperas de 38 a 75 s entre steps, de la plataforma (`#55`). 👥 Soporte de Inngest, o piloto autohosteado |
-| Handlers on-demand | 🟡 **Queda sólo `heatmap`**: los otros cuatro se borraron en M.6.2 (`DECISIONS #60`). El del mapa pasa al pipeline en M.6.2b |
+| Handlers on-demand | ✅ **Queda sólo `heatmap`**, y corre sobre el pipeline desde M.6.2b (`handlers/mapa.py`, `#61`): un índice, un mes, con nodata y con el tenant en la key |
 | `process_kml` | ❌ Handler muerto: su evento fue eliminado en Geocore |
-| **Capa vieja de GEE** (`services/ee/`, `ee_service.py`, `export_service.py`) | 🟡 M.6.1 borró lo que no tenía llamador (`#59`) y **M.6.2 se llevó media capa** con los cuatro handlers a demanda (`#60`). Lo que queda lo sostiene **sólo `generate_heatmap_on_demand`**: se va con M.6.2b |
+| **Capa vieja de GEE** | ✅ **Ya no existe** (M.6.2b, `#61`). `ee_service.py`, `export_service.py`, `ee/ee_indices.py`, `utils_pkg/visualization.py` y `services/inngest_handlers.py` se borraron; `ee_client.py` quedó en 57 líneas, sólo `init_ee` |
 | **`sentinel2_dates`** | ✅ **Cerrada.** El worker dejó de crearla y escribirla (M.6.1) y el usuario aplicó el `DROP TABLE` el 2026-09-20 (M.6.1b) |
 | Superficie HTTP de lectura (`routes/`, `schemas/`, `auth.py`) | ✅ **Borrada** el 2026-08-30 (`DECISIONS #23`) |
 | Firma de Inngest | ✅ 2026-09-04 — se verifica en modo cloud; 401 sin firma (`DECISIONS #25`, `W-8`) |
@@ -249,7 +274,7 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
 | **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. **El sprint M.2 está cerrado** (2026-09-17). Están las cuatro etapas (`pipeline/etapas/`, M.2.1 a M.2.4), `productos.py`, el borde `ejecucion.py` (M.2.5) y la validación contra parcelas reales (M.2.6): `DECISIONS #38` a `#45`. **La compuerta pasó**: NDVI coherente con la estación, cobertura coherente, y 2 a 8 s por mes contra los 60 que pedía. En un mes la capa vieja no devolvió nada y el pipeline cubrió el 93,6 %. La receta v1 quedó con erosión de 2 px y acotando los índices. Faltan los handlers (M.4), que son los que van a usar `ejecucion`. Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **617 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7; 386 al cerrar M.1; 612 antes de M.6.1). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **635 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7; 386 al cerrar M.1; 612 antes de M.6.1). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
 | **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 

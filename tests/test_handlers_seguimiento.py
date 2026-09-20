@@ -1,9 +1,10 @@
-"""M.4.2: `con_seguimiento`, el decorador de los handlers del pipeline mensual.
+"""M.4.2: `con_seguimiento`, el decorador de todos los handlers.
 
-El comportamiento del wrapper lo fijan los tests de `_with_job_tracking`
-(`test_inngest_handlers.py` y `test_avance_job.py`): los dos decoradores son el
-mismo `envolver_con_estado`. Lo unico propio de `con_seguimiento` es de donde
-sale `update_processing_job`, y eso es lo que se prueba aca.
+Hasta M.6.2b habia dos decoradores —este y el `_with_job_tracking` de la capa
+vieja—, que eran el mismo `envolver_con_estado` con distinta procedencia de
+`update_processing_job`. Borrada la capa vieja queda uno solo, asi que los tests
+que fijaban el comportamiento se mudaron aca desde `test_inngest_handlers.py`.
+Los de la bitacora siguen en `test_avance_job.py`.
 """
 import sys
 from pathlib import Path
@@ -87,3 +88,39 @@ def test_importar_handlers_no_abre_conexiones():
         capture_output=True, text=True, timeout=120, check=False,
     )
     assert resultado.returncode == 0, resultado.stderr
+
+
+@pytest.mark.parametrize("attempt", [0, 1, 2])
+def test_un_intento_intermedio_no_marca_failed(estados, attempt):
+    """E.4: `failed` tiene que significar "no se va a recuperar".
+
+    Antes se marcaba en cada intento y el reintento lo devolvia a `running`, asi
+    que con `retries=3` el estado mentia durante toda la ventana: un job que se
+    iba a recuperar solo aparecia como fallido, y quien lo mirara diagnosticaba
+    un problema inexistente.
+
+    La excepcion **si** se propaga igual: es lo que hace que Inngest reintente.
+    """
+    with pytest.raises(ValueError, match="revento"):
+        _handler_roto(_Ctx({"jobId": "job-2"}, attempt=attempt), _Step())
+
+    assert estados == [("job-2", "running")]
+
+
+def test_sin_job_id_no_se_toca_la_tabla(estados):
+    """Los eventos que no vienen de un pedido de Geocore no tienen job."""
+    assert _handler_ok(_Ctx({"tenantId": "t"}), _Step()) == {"tenant": "t"}
+    assert estados == []
+
+
+def test_las_claves_del_payload_se_normalizan_a_camelCase(estados):
+    """Geocore serializa en PascalCase; los handlers leen `parcelaId`."""
+    visto = {}
+
+    @seguimiento.con_seguimiento
+    def handler(ctx, step, payload):
+        visto.update(payload)
+        return {}
+
+    handler(_Ctx({"ParcelaId": "p-1", "TenantId": "t-1"}), _Step())
+    assert visto == {"parcelaId": "p-1", "tenantId": "t-1"}

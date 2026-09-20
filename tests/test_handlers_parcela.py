@@ -23,11 +23,12 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 from handlers import altas, parcela
+from handlers import registro as inngest_handlers
 from pipeline import ejecucion
 from pipeline.estadisticas import claves_de_salida
 from pipeline.receta import RECETA_VIGENTE
 from repositories import db_repository
-from services import avance_job, inngest_handlers
+from services import avance_job
 
 HOY = date(2026, 9, 18)
 MESES_V1 = [f"{2024 + (8 + i) // 12}-{(8 + i) % 12 + 1:02d}" for i in range(24)]

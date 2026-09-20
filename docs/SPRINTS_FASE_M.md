@@ -332,42 +332,42 @@ republicación.
 | M.6.1 | Borrar la capa vieja (`ARQUITECTURA` §9) y dejar de crear `sentinel2_dates` | worker | M | suite verde; líneas netas negativas | ✅ 2026-09-20 · geeworker2#54, `DECISIONS #59`. Se borró **lo que no tiene llamador**; el resto de §9 lo sostienen los handlers a demanda y se va con M.6.2. Suite 612 → 618. Código de producción −61 líneas; con el test nuevo, el repo sube 91 |
 | 👥 M.6.1b | `DROP TABLE geodata.sentinel2_dates` | GeoData | S | — | ✅ 2026-09-20 · lo aplicó el usuario |
 | M.6.2 | Los handlers a demanda. 👥 Confirmar si el front de tenants usa `timeseries`, `dates`, `stats` y `export`; borrarlos o rehacerlos. El mapa a demanda pasa al pipeline | worker, Geocore | M | decisión escrita | 🟡 2026-09-20 · geeworker2#57 y Geocore#37, `DECISIONS #60` y `#35`. **El usuario decidió borrarlos.** Se fueron los cuatro handlers, sus cinco endpoints —suma `timeseries-on-the-fly`, que habría quedado fabricando jobs `pending` eternos— y todo lo que sólo ellos sostenían: **−467 líneas de producción**. **Falta M.6.2b**, el mapa a demanda al pipeline |
-| M.6.2b | 🆕 El mapa a demanda pasa al pipeline (`ARQUITECTURA` §9). Se lleva `ee_service.py`, `export_service.py`, `ee_indices.py`, el constructor de colecciones de `ee_client.py` e `index_band_and_vis` | worker, Geocore | M | el COG a demanda sale con nodata y con el tenant en la key | ⬜ · **es lo que queda de M.6**. Resuelve además dos pendientes: los GeoTIFF de los on-demand sin nodata (`DECISIONS #51`) y sus keys sin tenant, que M.8.1 necesita |
+| M.6.2b | 🆕 El mapa a demanda pasa al pipeline (`ARQUITECTURA` §9) | worker, Geocore | M | el COG a demanda sale con nodata y con el tenant en la key | ✅ 2026-09-20 · geeworker2#59 y Geocore#39, `DECISIONS #61` y `#36`. **La capa vieja desapareció**: `ee_client.py` quedó en 57 líneas (sólo `init_ee`) y `services/inngest_handlers.py` se borró. El mapa es de **un mes** (decisión del usuario) y su key cuelga de `tenants/`, que es lo que desbloquea M.8.1. −622 líneas de producción |
 | M.6.3 | Un solo `EncolarAsync` en vez de los cinco `Request*Async` | Geocore | S | tests | ⛔ **vaciada por M.6.2**: de los cinco quedó `RequestHeatmapAsync` sola, y sin duplicación no hay nada que unificar. Se revisa después de M.6.2b |
-| M.6.4 | Excepciones explícitas en lugar de `except Exception` en lo que queda | worker | M | ruff sin hallazgos nuevos | ⬜ **desbloqueada** por M.6.2, y más chica: los de `ee_client` y los servicios borrados se fueron solos. Lo que sobreviva a M.6.2b es lo que hay que mirar; los de `db_repository.py`, `conexiones.py`, `app.py` y `check_schema.py` ya se revisaron y son deliberados |
+| M.6.4 | Excepciones explícitas en lugar de `except Exception` en lo que queda | worker | M | ruff sin hallazgos nuevos | ⬜ **es lo único que queda de M.6**, y encogió mucho: los de `ee_client`, `ee_service`, `export_service` y `ee_indices` se fueron con los módulos. Lo que sobrevive (`db_repository.py`, `conexiones.py`, `app.py`, `check_schema.py`, `pipeline/ejecucion.py`) ya se revisó uno por uno el 2026-09-20 y es deliberado: angostarlo sería una regresión. **Conviene cerrarla declarándolo, no cambiando código** |
 | M.6.5 | 🆕 El mapa del rancho, de los **cuatro** índices: un COG por índice y por mes | worker | S | tests; las keys no se pisan | ✅ 2026-09-20 · geeworker2#52, `DECISIONS #58`. Decisión del usuario. No toca la receta, pero el mes pasa de 1 a 4 descargas y de 2 a 5 llamadas a GEE. **Lo que está en producción sigue con sólo NDVI hasta que se reprocese** |
 
-**Estado al 2026-09-20 (sesión 10 y su continuación): M.6.1 y M.6.2 hechas; falta M.6.2b.**
+**Sprint cerrado el 2026-09-20 (sesión 10), salvo M.6.4.** El objetivo era «que el worker
+termine con menos código que al empezar», y se cumplió con margen: **−1.150 líneas de
+producción** entre M.6.1, M.6.2 y M.6.2b.
 
-M.6.1 (geeworker2#54, `DECISIONS #59`) borró lo que ya no tenía llamador y cortó la escritura
-de `sentinel2_dates`. **M.6.2 destrabó el sprint**: el usuario decidió borrar los handlers a
-demanda, y con ellos se fue media capa vieja — **−467 líneas de producción**.
+| | Qué se fue |
+|---|---|
+| M.6.1 | Lo que ya no tenía llamador, y la escritura de `sentinel2_dates` (−61) |
+| M.6.2 | Los cuatro handlers a demanda, cinco endpoints, y todo lo que sostenían (−467) |
+| M.6.2b | El mapa a demanda al pipeline, y con él la capa vieja entera (−622) |
 
-Lo que cambió en las otras tareas:
-- **M.6.3 quedó vaciada.** Iba a unificar cinco `Request*Async`; quedó `RequestHeatmapAsync`
-  sola. Sin duplicación no hay refactor.
-- **M.6.4 se desbloqueó y encogió.** Los `except Exception` de los módulos borrados se fueron
-  solos. Conviene hacerla **después** de M.6.2b, para no revisar dos veces.
-- **M.6.2b es lo que falta**: el mapa a demanda al pipeline. Se lleva `ee_service.py`,
-  `export_service.py`, `ee_indices.py`, el constructor de colecciones de `ee_client.py` e
-  `index_band_and_vis`. Ahí se resuelven además los GeoTIFF de los on-demand sin nodata y sus
-  keys sin tenant, que es lo que M.8.1 necesita.
+**Ya no queda nada anterior al pipeline mensual.** `ee_client.py` pasó de 436 líneas a 57 —sólo
+`init_ee`—, `services/inngest_handlers.py` se borró, y la lista de funciones vive en
+`handlers/registro.py`. El worker registra 7 funciones y **todo lo que escribe cuelga de
+`tenants/{t}/`**, que es lo que M.8.1 necesitaba.
 
-**Lo que salió al borrar, y no estaba en la lista.** `POST /api/processing/jobs/timeseries-on-the-fly`
-publica `terra/parcela.timeseries.requested`, cuyo único oyente era el handler borrado: habría
-quedado fabricando jobs `pending` eternos. Se fue con los otros, y quedó un test que compara los
-disparadores del worker contra lo que Geocore publica, en las dos direcciones.
+**Lo que queda:** sólo **M.6.4**, y conviene cerrarla declarando lo que se revisó en vez de
+cambiar código — los `except Exception` que sobreviven son deliberados y angostarlos sería una
+regresión. **M.6.3 quedó vaciada** por M.6.2: de los cinco `Request*Async` sobrevivió uno.
 
-**El orden de despliegue es el inverso del de M.5.5:** primero Geocore, que deja de publicar;
-después el worker, que deja de escuchar.
+**Tres cosas que salieron de hacerlo, y no estaban en la tarea:**
+- **`timeseries-on-the-fly` habría quedado fabricando jobs `pending` eternos.** Publicaba un
+  evento cuyo único oyente se estaba borrando. Apareció revisando **qué publica cada controlador
+  de Geocore**, no leyendo la lista. Lo cuida ahora un test que compara los disparadores del
+  worker contra lo que Geocore publica, en las dos direcciones.
+- **`cloudPct` nunca hizo nada.** El worker lo recibía y no lo aplicaba. Se fue del contrato.
+- **`test_health_responde_mientras_corre_un_step` era flaky y estaba rojo en `main`**
+  (geeworker2#55). Apareció por correr la suite antes de empezar.
 
-Fuera del tablero, la misma sesión:
-- **`test_health_responde_mientras_corre_un_step` era flaky** y se lo encontró rojo en `main`
-  (geeworker2#55): exigía que `/health` contestara en menos de 0,2 s. Ahora afirma un orden, y
-  trae el control negativo que faltaba. Importa porque el CI es la única compuerta de merge
-  mientras M.0.6 siga postergada.
-- **El panel traducía 5 de los 11 `requestType`** (Terra-admin#11), y `docs/PROCESOS.md`
-  describía las etapas anteriores a M.4.4.
+**Lo que M.6.2b deja abierto para M.8.1:** los rásters a demanda **que ya están** en el bucket
+siguen en `parcelas/{id}/`, sin tenant y sin nodata, con sus filas en `layers`. Hay que decidir
+si se mueven, se borran, o se deja que el token los rechace.
 
 ---
 
