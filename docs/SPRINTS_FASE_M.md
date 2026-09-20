@@ -11,9 +11,15 @@
 > **Vista como página:** <https://claude.ai/artifact/F4ixwF2wXa3bc6SSNpmDze>.
 > La fuente es [`TABLERO_FASE_M.html`](TABLERO_FASE_M.html). Al cerrar cada sesión:
 > 1. actualizar ahí el objeto `ESTADO` para que coincida con la columna de estado de abajo;
-> 2. republicarla pasando esa URL (`Artifact` con `url`).
+> 2. **correr `node docs/check_tablero.js`**;
+> 3. republicarla pasando esa URL (`Artifact` con `url`).
 >
 > Si no se pasa la URL, se crea otra página.
+>
+> **El paso 2 no es opcional.** La página es un HTML con un `<script>` que la dibuja
+> entera: una llave de menos sigue siendo HTML válido y se publica sin ruido, pero el
+> script no parsea y **la página sale vacía**. Pasó con la versión 27 (2026-09-20), y el
+> comprobador es lo que la habría agarrado.
 >
 > **Este archivo es el tablero.** Al cerrar una sesión se actualiza la columna de
 > estado: ⬜ pendiente · 🟡 en curso · ✅ hecho · ⛔ bloqueado. La sesión siguiente
