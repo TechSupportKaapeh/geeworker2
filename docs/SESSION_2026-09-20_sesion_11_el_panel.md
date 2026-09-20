@@ -142,9 +142,6 @@ La tarea traía una pregunta 👥: si el editor lleva capa satelital de fondo, h
 confirmar la licencia de la imagen. **El resto no dependía de eso**, así que se hizo el
 resto y quedó anotado.
 
-- **Dibujar con clics**, con los clics y el cuadro de texto como **lo mismo**: el clic
-  escribe una línea `lat,lng` y el borrador se sigue derivando del texto. Así se dibuja a
-  mano alzada y después se corrige un número, sin dos estados que se peleen.
 - **El rancho de referencia** de fondo, y con el editor vacío el mapa **arranca encuadrado
   en él**, que es donde hay que dibujar.
 - **Los vértices afuera** en rojo y nombrados por número. **No bloquea**: la autoridad es
@@ -154,6 +151,11 @@ resto y quedó anotado.
 La prueba de adentro/afuera es el método del rayo sobre lat/lng: **plana y no geodésica**,
 lo cual está dicho en el código, en el doc y en un test. A la escala de un rancho no cambia
 de lado salvo pegado al borde.
+
+**Dibujar con clics se hizo y se sacó el mismo día** (Terra-admin#18, decisión del usuario).
+Estuvo bien preguntar qué eran M.7.4 y M.7.5 en términos de pantalla: explicado así, la
+decisión salió en una línea. **La carga de geometría sigue siendo por texto o por archivo**,
+que es lo que ya servía para corregir una geometría mal cargada.
 
 ## Lo que no se verificó
 
