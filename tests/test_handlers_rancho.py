@@ -28,6 +28,8 @@ from handlers import altas, rancho
 from pipeline import ejecucion
 from pipeline.estadisticas import claves_de_salida
 from pipeline.receta import RECETA_VIGENTE
+
+INDICES = list(RECETA_VIGENTE.indices)
 from repositories import db_repository
 from services import avance_job, inngest_handlers
 
@@ -159,27 +161,59 @@ def test_un_plan_y_un_mapa_por_mes(mundo):
     assert step.ejecutados == [
         "mark-job-running", "plan", *[f"mes-{m}" for m in MESES_V1], "mark-job-completed",
     ]
-    assert resultado == {"status": "success", "receta": "s2-mensual-v1", "meses": 24, "mapas": 24}
+    # Un mapa por indice y por mes (decision del usuario, 2026-09-20).
+    assert resultado == {"status": "success", "receta": "s2-mensual-v1", "meses": 24,
+                         "mapas": 24 * len(INDICES)}
     assert [s for s, _ in mundo["jobs"]] == ["running", "completed"]
     progresos = [l["progreso"] for l in mundo["bitacora"] if l["progreso"] is not None]
     assert progresos == sorted(progresos) and progresos[-1] == 100
 
 
-def test_la_key_es_la_de_claves_cog_mensual(mundo):
-    """`tenants/{t}/ranchos/{r}/{receta}/ndvi/{AAAA-MM}.tif` (`DECISIONS #47`), nunca a mano."""
+def test_el_mapa_es_de_todos_los_indices_de_la_receta(mundo):
+    """Decision del usuario (2026-09-20): antes era solo NDVI.
+
+    Se afirma contra `RECETA_VIGENTE.indices` y no contra una lista escrita a mano:
+    sumar un indice a la receta tiene que sumar su mapa, no dejarlo afuera en silencio.
+    """
+    from handlers.rancho import indices_del_mapa
+
+    assert indices_del_mapa(RECETA_VIGENTE) == RECETA_VIGENTE.indices
+    assert len(RECETA_VIGENTE.indices) == 4
+
+
+def test_cada_capa_lleva_las_estadisticas_de_SU_indice(mundo):
+    """Si todas copiaran las del NDVI, el mapa de NDMI mentiria en su ficha."""
     _correr(_Step())
 
+    delMes = [c for c in mundo["capas"] if c["natural_key"].endswith("_2025-03")]
+    porIndice = {c["product"]: c["estadisticas"] for c in delMes}
+    # `_respuesta_de_gee` da la misma mediana a todos los indices, asi que se compara
+    # la clave que los distingue: cada capa trae la entrada de su propio indice.
+    assert set(porIndice) == set(RECETA_VIGENTE.indices)
+    for estadisticas in porIndice.values():
+        assert set(estadisticas) == {*RECETA_VIGENTE.estadisticas, "cobertura", "observaciones"}
+
+
+def test_la_key_es_la_de_claves_cog_mensual(mundo):
+    """`tenants/{t}/ranchos/{r}/{receta}/{indice}/{AAAA-MM}.tif` (`DECISIONS #47`), nunca a mano."""
+    _correr(_Step())
+
+    # El indice va en la key: cuatro mapas por mes, ninguno pisa a otro.
     assert [s["key"] for s in mundo["subidas"]] == [
-        f"tenants/{TENANT}/ranchos/{RANCHO}/s2-mensual-v1/ndvi/{m}.tif" for m in MESES_V1
+        f"tenants/{TENANT}/ranchos/{RANCHO}/s2-mensual-v1/{i}/{m}.tif"
+        for m in MESES_V1 for i in INDICES
     ]
     assert {s["tipo"] for s in mundo["subidas"]} == {"image/tiff"}
 
 
-def test_cada_mes_escribe_su_capa_mensual(mundo):
+def test_cada_mes_escribe_una_capa_por_indice(mundo):
     _correr(_Step())
 
-    assert len(mundo["capas"]) == 24
-    capa = mundo["capas"][6]  # 2025-03
+    assert len(mundo["capas"]) == 24 * len(INDICES)
+    delMes = [c for c in mundo["capas"] if c["natural_key"].endswith("_2025-03")]
+    assert [c["product"] for c in delMes] == INDICES, "uno por indice, en el orden de la receta"
+
+    capa = delMes[INDICES.index("ndvi")]
     assert capa["natural_key"] == f"rancho_mensual_ndvi_{RANCHO}_2025-03"
     assert capa["storage_key"].endswith("/ndvi/2025-03.tif")
     assert capa["acquired_ts"] == datetime(2025, 3, 1, tzinfo=UTC)
@@ -218,9 +252,11 @@ def test_la_descarga_va_a_la_escala_de_la_receta_y_por_el_borde(mundo):
 
     assert {p["scale"] for p in mundo["parametros"]} == {RECETA_VIGENTE.escala_m}
     assert {p["crs"] for p in mundo["parametros"]} == {"EPSG:4326"}
-    # Dos llamadas por mes: las estadisticas y la URL. Las cuenta el borde.
+    # Las estadisticas (una) mas una URL por indice. Las cuenta el borde, y es el
+    # numero que sube al sumar mapas: conviene verlo en un test y no en la factura.
     meses = [l for l in mundo["bitacora"] if l["etapa"].startswith("mes-")]
-    assert {l["detalle"]["llamadas"] for l in meses} == {2}
+    assert {l["detalle"]["llamadas"] for l in meses} == {1 + len(INDICES)}
+    assert {l["detalle"]["mapas"] for l in meses} == {len(INDICES)}
 
 
 def test_los_temporales_no_quedan_en_disco(mundo):
@@ -241,7 +277,7 @@ def test_un_mes_sin_un_pixel_limpio_no_tiene_mapa(mundo):
 
     resultado = _correr(_Step())
 
-    assert resultado["mapas"] == 23
+    assert resultado["mapas"] == 23 * len(INDICES)
     assert not any(s["key"].endswith("2026-05.tif") for s in mundo["subidas"])
     assert not any(c["natural_key"].endswith("2026-05") for c in mundo["capas"])
     (linea,) = [l for l in mundo["bitacora"] if l["etapa"] == "mes-2026-05"]
@@ -255,7 +291,7 @@ def test_un_mes_bajo_el_minimo_igual_tiene_mapa(mundo):
 
     resultado = _correr(_Step())
 
-    assert resultado["mapas"] == 24
+    assert resultado["mapas"] == 24 * len(INDICES)
     assert {c["estadisticas"]["cobertura"] for c in mundo["capas"]} == {0.1}
 
 

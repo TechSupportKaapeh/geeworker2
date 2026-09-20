@@ -106,7 +106,7 @@ def process_rancho_mes(
     step: inngest.StepSync,
     payload: dict,
 ) -> dict[str, Any]:
-    """El mes cerrado de un rancho: su mapa, si hubo un píxel limpio."""
+    """El mes cerrado de un rancho: un mapa por índice, si hubo un píxel limpio."""
     rancho_id = requerido(payload, "ranchoId")
     tenant_id = requerido(payload, "tenantId")
     coordenadas = requerido(payload, "coordinates")
@@ -130,5 +130,5 @@ def process_rancho_mes(
         "status": "success",
         "receta": RECETA_VIGENTE.version,
         "mes": resultado["mes"],
-        "mapas": 1 if resultado["storage_key"] else 0,
+        "mapas": len(resultado["storage_keys"]),
     }

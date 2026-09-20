@@ -187,9 +187,11 @@ def test_el_rancho_sube_el_mapa_de_ese_mes(mundo):
     resultado = _correr_rancho(step)
 
     assert step.ejecutados == ["mark-job-running", "mes-2026-08", "mark-job-completed"]
+    indices = list(RECETA_VIGENTE.indices)
     assert resultado == {"status": "success", "receta": "s2-mensual-v1",
-                         "mes": "2026-08", "mapas": 1}
-    (capa,) = mundo["capas"]
+                         "mes": "2026-08", "mapas": len(indices)}
+    assert [c["product"] for c in mundo["capas"]] == indices, "un mapa por indice"
+    capa = mundo["capas"][indices.index("ndvi")]
     assert capa["source"] == "mensual"
     assert capa["acquired_ts"] == datetime(2026, 8, 1, tzinfo=UTC)
     assert capa["storage_key"].endswith("/s2-mensual-v1/ndvi/2026-08.tif")
