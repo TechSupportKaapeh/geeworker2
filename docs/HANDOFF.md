@@ -15,9 +15,21 @@
 > `get_sentinel2_dates` siguen vivas porque las sostienen los cinco handlers a demanda. Son M.6.2,
 > que espera la confirmación 👥 de si el front de los tenants los usa.
 >
-> Código de producción: −61 líneas. Suite: **618 verdes** (612 antes), más 21 con `--gee`.
+> Código de producción: −61 líneas. Suite: **619 verdes**, más 21 con `--gee`.
 > Verificado contra Postgres de verdad: el worker arrancado contra una base vacía **no recrea la
 > tabla**.
+>
+> **El sprint M.6 no se pudo terminar, y no es sólo M.6.2.** M.6.3 unificaría cinco
+> `Request*Async` de los que cuatro se borrarían, y 38 de los ~74 `except Exception` de M.6.4
+> viven en los módulos que M.6.2 borra —los que sobreviven ya son deliberados—. Las tres quedaron
+> ⛔ colgando de la misma pregunta 👥. Crónica:
+> [`SESSION_2026-09-20_sesion_10_la_limpieza.md`](SESSION_2026-09-20_sesion_10_la_limpieza.md).
+>
+> Fuera del tablero, el mismo día: **`test_health_responde_mientras_corre_un_step` era flaky y se
+> lo encontró rojo en `main`** (geeworker2#55). Exigía que `/health` contestara en menos de 0,2 s;
+> ahora afirma un orden —el step seguía corriendo cuando `/health` contestó— y trae el control
+> negativo con el `serve` del SDK. Importa porque el CI es la única compuerta de merge mientras
+> M.0.6 siga postergada.
 
 > **2026-09-20, decisión del usuario (`DECISIONS #58`): el mapa del rancho es de los cuatro
 > índices**, un COG por índice y por mes, cada uno con su fila en `layers` y sus propias
@@ -213,7 +225,7 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
 | **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. **El sprint M.2 está cerrado** (2026-09-17). Están las cuatro etapas (`pipeline/etapas/`, M.2.1 a M.2.4), `productos.py`, el borde `ejecucion.py` (M.2.5) y la validación contra parcelas reales (M.2.6): `DECISIONS #38` a `#45`. **La compuerta pasó**: NDVI coherente con la estación, cobertura coherente, y 2 a 8 s por mes contra los 60 que pedía. En un mes la capa vieja no devolvió nada y el pipeline cubrió el 93,6 %. La receta v1 quedó con erosión de 2 px y acotando los índices. Faltan los handlers (M.4), que son los que van a usar `ejecucion`. Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **618 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7; 386 al cerrar M.1; 612 antes de M.6.1). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **619 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7; 386 al cerrar M.1; 612 antes de M.6.1). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
 | **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 

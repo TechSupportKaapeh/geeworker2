@@ -265,7 +265,7 @@
 
   <footer>
     <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
-    <span class="mono">Actualizado 2026-09-19</span>
+    <span class="mono">Actualizado 2026-09-20</span>
   </footer>
 </div>
 
@@ -337,12 +337,14 @@ const SPRINTS = [
       { id: "M.5.5", t: "Forzar el mes objetivo y reiniciar Geocore dos veces", repo: "todos", T: "S", ok: "Sin duplicados ni meses perdidos" }
     ] },
   { id: "M.6", nombre: "Limpieza", objetivo: "El worker termina con menos código que al empezar.", sesiones: "1",
+    aviso: { tipo: "equipo", texto: "<b>El sprint no se puede terminar: las tres que faltan cuelgan de la misma pregunta.</b> M.6.1 está hecha (2026-09-20, DECISIONS #59): se borró lo que ya no tenía llamador y el worker dejó de crear <code>sentinel2_dates</code>. Pero <b>M.6.3</b> unificaría cinco <code>Request*Async</code> de los que cuatro se borrarían, y 38 de los ~74 <code>except Exception</code> de <b>M.6.4</b> viven en los módulos que M.6.2 borra — los que sobreviven ya son deliberados. Por eso van en <b>bloqueado</b> y no en pendiente." },
+    aviso2: { tipo: "compuerta", texto: "<b>Para la pregunta del front, lo que se averiguó leyendo el código:</b> <code>stats</code> y el CSV de <code>export</code> <b>nunca devolvieron un dato</b> — le piden a GEE el rango <code>fecha → fecha</code>, y <code>filterDate</code> es semiabierto—; <code>timeseries</code> escribe filas con <code>receta IS NULL</code>, las que el equipo borró a mano en M.3.5; y <code>dates</code> escribía en una tabla sin lectores. Lo único que el pipeline no reemplaza es la ventana arbitraria, y recuperarla es cambiar <code>Mes</code> por un rango, no conservar este código." },
     tareas: [
-      { id: "M.6.1", t: "Borrar la capa vieja y dejar de crear sentinel2_dates", repo: "worker", T: "M", ok: "Líneas netas negativas" },
-      { id: "M.6.1b", t: "DROP TABLE sentinel2_dates", repo: "GeoData", T: "S", ok: "SQL listo", equipo: true },
+      { id: "M.6.1", t: "Borrar la capa vieja y dejar de crear sentinel2_dates", repo: "worker", T: "M", ok: "Código de producción −61 líneas; 619 tests verdes" },
+      { id: "M.6.1b", t: "DROP TABLE geodata.sentinel2_dates — calificado: el search_path no incluye geodata", repo: "GeoData", T: "S", ok: "Ya es seguro: el worker no la recrea", equipo: true },
       { id: "M.6.2", t: "Handlers a demanda: el equipo confirma si el front de tenants los usa; borrar o rehacer", repo: "worker · Geocore", T: "M", ok: "Decisión escrita", equipo: true },
-      { id: "M.6.3", t: "Un solo EncolarAsync en vez de cinco Request*Async", repo: "Geocore", T: "S", ok: "Tests" },
-      { id: "M.6.4", t: "Excepciones explícitas en lugar de except Exception", repo: "worker", T: "M", ok: "Ruff sin hallazgos nuevos" },
+      { id: "M.6.3", t: "Un solo EncolarAsync en vez de cinco Request*Async", repo: "Geocore", T: "S", ok: "Depende de M.6.2: ese patrón no existe en ningún otro lado de Geocore" },
+      { id: "M.6.4", t: "Excepciones explícitas en lugar de except Exception", repo: "worker", T: "M", ok: "Depende de M.6.2: 38 de los ~74 están en los módulos que borra" },
       { id: "M.6.5", t: "El mapa del rancho, de los cuatro índices: un COG por índice y por mes", repo: "worker", T: "S", ok: "Tests; las keys no se pisan" }
     ] },
   { id: "M.7", nombre: "Panel", objetivo: "Ver series y mapas mensuales, y cargar geometría sin sufrir.", sesiones: "2–3",
@@ -372,13 +374,20 @@ const SPRINTS = [
     ] }
 ];
 
-// Al 2026-09-20: M.0.1 a M.0.5, M.1, M.2, M.3, M.4 y M.5 enteros, M.6.5 y M.8.2. El cierre
-// de mes corre en producción. Sigue M.6.1. Fuera del tablero, el 2026-09-20 se hizo el
-// editor de geometría del panel y dos prototipos en Diagnóstico (datos por tenant con la
-// serie mensual, y el catálogo de tiles), que adelantan parte de M.7.3 y M.7.4. El cierre de mes ya está: Geocore crea
-// los jobs del último mes cerrado y el worker los procesa, pero el servicio arranca APAGADO
-// (CierreMensual__Habilitado): 👥 lo prende el equipo en Railway, con M.5.5. Queda M.0.6,
-// postergada por la demo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
+// Al 2026-09-20, cerrando la sesión 10: M.0.1 a M.0.5, M.1, M.2, M.3, M.4 y M.5 enteros,
+// M.6.1, M.6.5 y M.8.2. El cierre de mes corre en producción desde el 2026-09-19.
+//
+// **El sprint M.6 no se puede terminar hoy.** M.6.1 borró lo que ya no tenía llamador y el
+// worker dejó de crear `sentinel2_dates`. Las otras tres cuelgan de la misma pregunta 👥 —si
+// el front de los tenants usa `timeseries`, `dates`, `stats` y `export`—: M.6.2 por
+// definición; M.6.3 porque unificaría cinco `Request*Async` de los que cuatro se borrarían; y
+// M.6.4 porque 38 de sus ~74 `except Exception` viven en los módulos que M.6.2 borra, y los
+// que sobreviven ya son deliberados. Por eso van en `bloqueado` y no en `pendiente`.
+//
+// Fuera del tablero, el 2026-09-20 se hizo el editor de geometría del panel y dos prototipos
+// en Diagnóstico (datos por tenant con la serie mensual, y el catálogo de tiles), que
+// adelantan parte de M.7.3 y M.7.4. Queda M.0.6, postergada por la demo. Al cerrar cada
+// sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
 const ESTADO = {
   "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho",
   "M.1.1": "hecho", "M.1.2": "hecho", "M.1.3": "hecho", "M.1.4": "hecho", "M.1.5": "hecho",
@@ -388,7 +397,7 @@ const ESTADO = {
   "M.3.1": "hecho", "M.3.1b": "hecho", "M.3.2": "hecho", "M.3.3": "hecho", "M.3.4": "hecho", "M.3.5": "hecho",
   "M.4.1": "hecho", "M.4.2": "hecho", "M.4.3": "hecho", "M.4.4": "hecho", "M.4.5": "hecho", "M.4.6": "hecho", "M.4.7": "hecho", "M.4.8": "hecho", "M.4.9": "hecho", "M.4.10": "hecho",
   "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho", "M.5.4": "hecho", "M.5.5": "hecho",
-  "M.6.5": "hecho",
+  "M.6.1": "hecho", "M.6.3": "bloqueado", "M.6.4": "bloqueado", "M.6.5": "hecho",
   "M.8.2": "hecho"
 };
 
@@ -407,7 +416,7 @@ const DECISIONES = [
   ["La key del COG: tenants/{t}/ranchos/{r}/{receta}/{índice}/{AAAA-MM}.tif (#47)", "M.4.1", "hecho", "decidida"],
   ["Un mes del rancho sin un píxel limpio no tiene COG (#51)", "M.4.5", "hecho", "decidida"],
   ["Inngest Cloud o autohosteado (la espera entre steps, #55)", "M.5", "pendiente", "equipo"],
-  ["Handlers a demanda: ¿los usa el front de tenants?", "M.6.2", "pendiente", "equipo"],
+  ["Handlers a demanda: ¿los usa el front de tenants? Traba M.6.2, M.6.3 y M.6.4", "M.6.2", "pendiente", "equipo"],
   ["Capa satelital en el editor: licencia", "M.7.5", "pendiente", "equipo"]
 ];
 
@@ -417,7 +426,10 @@ const todas = SPRINTS.flatMap(s => s.tareas.map(t => ({ ...t, sprint: s.id })));
 // La siguiente es la primera sin hacer que no sea del equipo: las del equipo corren en paralelo a las sesiones.
 // Las marcadas «temprano» van antes que su sprint, como dice el orden sugerido de SPRINTS_FASE_M.md (desde el 2026-09-15).
 // Y una tarea en curso va antes que todo: si está empezada, es la siguiente.
-const pendienteNuestra = t => estadoDe(t.id) !== "hecho" && !t.equipo;
+// Una bloqueada tampoco puede ser la siguiente: está esperando algo de afuera. Sin esto, la
+// página mandaría a empezar M.6.3, que depende de una decisión que todavía no se tomó.
+const pendienteNuestra = t =>
+  estadoDe(t.id) !== "hecho" && estadoDe(t.id) !== "bloqueado" && !t.equipo;
 const siguiente = todas.find(t => estadoDe(t.id) === "curso" && !t.equipo)
   || todas.find(t => pendienteNuestra(t) && t.temprano)
   || todas.find(pendienteNuestra);
@@ -429,7 +441,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 11;
+const sesionProxima = 12;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>
