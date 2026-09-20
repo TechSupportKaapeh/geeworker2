@@ -37,6 +37,10 @@ from services import inngest_serve
 # que la diferencia entre serie y paralelo no sea ambigua.
 DURACION = 0.4
 
+# Tope de las esperas con `Event`. No es un presupuesto de rendimiento —ningun
+# assert lo compara—: es la red que impide que un bug cuelgue la suite.
+TOPE_S = 5.0
+
 APP_ID = "test-paralelo"
 FN_ID = "lento"
 RUTA = f"/api/inngest?fnId={APP_ID}-{FN_ID}&stepId=step"
@@ -53,11 +57,17 @@ INVOCACION = {
 }
 
 
-def _app_con(serve):
+def _app_con(serve, arrancado=None, bloqueo=None, tope=TOPE_S):
     """Una app servida por `serve`, con una funcion que bloquea su hilo.
 
-    `time.sleep` es a proposito: imita lo que hace un step de verdad, que espera
-    a GEE con una llamada sincronica y no le cede el control al event loop.
+    El bloqueo es a proposito: imita lo que hace un step de verdad, que espera a
+    GEE con una llamada sincronica y no le cede el control al event loop.
+
+    Por defecto bloquea `DURACION` segundos, que es lo que necesitan los tests
+    que comparan serie contra paralelo. Con `arrancado` y `bloqueo` —dos
+    `threading.Event`— el step avisa que empezo y espera a que lo suelten, en
+    vez de mirar el reloj: es lo que le saca el reloj de pared al test de
+    `/health`.
     """
     cliente = inngest.Inngest(app_id=APP_ID, is_production=False, event_key="dev")
 
@@ -65,7 +75,12 @@ def _app_con(serve):
         fn_id=FN_ID, trigger=inngest.TriggerEvent(event="test/lento")
     )
     def lento(ctx, step):
-        time.sleep(DURACION)
+        if arrancado is not None:
+            arrancado.set()
+        if bloqueo is not None:
+            bloqueo.wait(tope)
+        else:
+            time.sleep(DURACION)
         return {"hilo": threading.get_ident()}
 
     app = fastapi.FastAPI()
@@ -129,25 +144,76 @@ def test_la_respuesta_es_la_misma_que_la_del_sdk():
     assert nuestra.headers.get("x-inngest-framework") == "fast_api"
 
 
-def test_health_responde_mientras_corre_un_step():
-    """`/health` es la sonda de Railway: un step largo no puede tumbarla."""
-    app = _app_con(inngest_serve.serve)
+async def _salud_durante_un_step(app, arrancado, bloqueo):
+    """Pide `/health` con un step en vuelo. Devuelve `(respuesta, step_termino)`.
 
-    async def _correr():
-        transporte = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transporte, base_url="http://t") as c:
-            step = asyncio.create_task(c.post(RUTA, json=INVOCACION))
-            await asyncio.sleep(DURACION / 4)
-            inicio = time.monotonic()
+    `step_termino` es lo que distingue los dos mundos, y es lo que reemplaza al
+    reloj: si el servidor atiende en paralelo, `/health` vuelve con el step
+    todavia bloqueado; si atiende en serie, `/health` no pudo contestar hasta
+    que el step termino, y para entonces su tarea ya esta hecha.
+    """
+    transporte = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transporte, base_url="http://t") as c:
+        step = asyncio.create_task(c.post(RUTA, json=INVOCACION))
+        # Que el step este de verdad en vuelo: preguntar antes de que arranque
+        # no probaria nada. En serie esto vuelve recien cuando el step termino,
+        # que es justo el caso que el `assert` de abajo caza.
+        while not arrancado.is_set():
+            await asyncio.sleep(0.001)
+        try:
             salud = await c.get("/health")
-            demora = time.monotonic() - inicio
-            await step
-            return salud, demora
+            termino = step.done()
+        finally:
+            bloqueo.set()
+        await step
+        return salud, termino
 
-    salud, demora = asyncio.run(_correr())
+
+def test_health_responde_mientras_corre_un_step():
+    """`/health` es la sonda de Railway: un step largo no puede tumbarla.
+
+    **Sin reloj de pared.** La version anterior pedia `/health` a mitad del step
+    y exigia que contestara en menos de `DURACION / 2` — 0,2 s. Pasaba sola y
+    fallaba corriendo la suite completa, porque 0,2 s es un presupuesto de
+    rendimiento, y lo que se quiere afirmar no es cuanto tarda sino **quien la
+    atiende**. Un test flaky en la unica compuerta de merge bloquea PR al azar.
+
+    Lo que se afirma ahora es una relacion de orden, no una duracion: cuando
+    `/health` contesto, **el step seguia corriendo**. Una maquina cargada hace
+    todo mas lento sin cambiar ese orden.
+    """
+    arrancado, bloqueo = threading.Event(), threading.Event()
+    app = _app_con(inngest_serve.serve, arrancado, bloqueo)
+
+    salud, termino = asyncio.run(_salud_durante_un_step(app, arrancado, bloqueo))
 
     assert salud.status_code == 200
-    assert demora < DURACION / 2, f"/health espero al step: {demora:.2f} s"
+    assert not termino, "/health contesto recien cuando el step habia terminado"
+
+
+def test_control_negativo_con_el_serve_del_sdk_health_espera_al_step():
+    """El mismo escenario con el `serve` del SDK, que corre el step en el loop.
+
+    Es el control que hace valer al de arriba: sin el, aquel podria estar
+    afirmando algo que se cumple solo. Aca `/health` no puede contestar mientras
+    el step ocupa el event loop, asi que vuelve recien cuando el step termino —y
+    `step.done()` ya es cierto.
+
+    El tope es corto a proposito: en este test **se agota siempre**, porque el
+    `bloqueo` se suelta despues de `/health` y `/health` no llega antes. Es lo
+    que cuesta el control, no un presupuesto.
+    """
+    arrancado, bloqueo = threading.Event(), threading.Event()
+    app = _app_con(inngest.fast_api.serve, arrancado, bloqueo, tope=0.5)
+
+    salud, termino = asyncio.run(_salud_durante_un_step(app, arrancado, bloqueo))
+
+    assert salud.status_code == 200
+    assert termino, (
+        "/health contesto con el step en vuelo usando el `serve` del SDK: si "
+        "esto pasa, el SDK dejo de correr los handlers en el event loop y el "
+        "`serve` de `inngest_serve.py` podria sobrar"
+    )
 
 
 @pytest.mark.parametrize("metodo", ["GET", "POST", "PUT"])
