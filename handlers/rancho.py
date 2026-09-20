@@ -18,7 +18,7 @@ Los steps son los del alta de una parcela (``handlers/altas.py``): ``plan`` y un
    descarga, el COG y la subida a la key de ``claves_cog_mensual``;
 4. ``insert_layer`` con ``source="mensual"``, la receta y las estadísticas.
 
-Los temporales no cruzan steps: lo que sale del step es la ``storage_key``.
+Los temporales no cruzan steps: lo que sale del step son las ``storage_keys``.
 
 Reemplaza al ``process_rancho`` de la capa vieja con el mismo ``fn_id``, y a su
 ``register_layer``, que solo escuchaba el evento que emitía el viejo.
@@ -63,10 +63,19 @@ from handlers.geometria import coords_to_geometry
 from handlers.seguimiento import RETRIES, con_seguimiento
 from handlers.utilidades import borrar_temporales, entre, ms_desde
 
-# El mapa de la v1 es solo de NDVI (`ARQUITECTURA` §10). No es un parámetro de la
-# receta porque no cambia ningún número: cambia qué se dibuja. El índice va en la
-# key, así que sumar otro mapa no pisa este.
-INDICE_DEL_MAPA: Final = "ndvi"
+
+# **Un mapa por índice de la receta** (decisión del usuario, 2026-09-20). Hasta el
+# 2026-09-20 era sólo NDVI, que fue con lo que se probó el pipeline.
+#
+# No es un parámetro de la receta y por eso **no rompe el congelamiento de
+# `s2-mensual-v1`**: no cambia ningún número, cambia qué se dibuja. Los cuatro índices
+# ya se calculaban; lo que faltaba era descargarlos. El índice va en la key y en la
+# `natural_key`, así que son cuatro objetos y cuatro filas por mes, sin pisarse.
+#
+# El costo es de descargas: cuatro por mes en vez de una.
+def indices_del_mapa(receta: Receta) -> tuple[str, ...]:
+    """Los índices que se suben como mapa: todos los de la receta."""
+    return receta.indices
 
 # Lo que en el COG significa "sin dato". **El GeoTIFF de GEE no declara nodata**:
 # lo enmascarado llega como 0, que en NDVI es suelo desnudo (medido el 2026-09-18:
@@ -87,10 +96,10 @@ def _parametros(roi: object, receta: Receta) -> dict[str, Any]:
     return {**parametros_de_descarga(roi), "scale": receta.escala_m}
 
 
-def _estadisticas_de_la_capa(reduccion: Any) -> dict[str, float | None]:  # noqa: ANN401 - una Reduccion
-    """Los números del mapa: las del índice, más cobertura y observaciones (D-2)."""
+def _estadisticas_de_la_capa(reduccion: Any, indice: str) -> dict[str, float | None]:  # noqa: ANN401 - una Reduccion
+    """Los números del mapa: los de su índice, con cobertura y observaciones (D-2)."""
     return {
-        **reduccion.estadisticas[INDICE_DEL_MAPA],
+        **reduccion.estadisticas[indice],
         "cobertura": reduccion.cobertura,
         "observaciones": reduccion.observaciones,
     }
@@ -139,16 +148,20 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
             píxeles, un rancho que no entra en una descarga).
     """
     t0 = time.monotonic()
-    # Las claves primero: validan los uuid antes de pedirle nada a GEE. Un id que
-    # no es un uuid no se arregla reintentando.
+    indices = indices_del_mapa(receta)
+    # Las claves primero, las de **todos** los índices: validan los uuid antes de
+    # pedirle nada a GEE. Un id que no es un uuid no se arregla reintentando.
     try:
-        claves = claves_cog_mensual(
-            tenant_id=tenant_id,
-            rancho_id=rancho_id,
-            receta=receta,
-            indice=INDICE_DEL_MAPA,
-            mes=mes,
-        )
+        claves_por_indice = {
+            indice: claves_cog_mensual(
+                tenant_id=tenant_id,
+                rancho_id=rancho_id,
+                receta=receta,
+                indice=indice,
+                mes=mes,
+            )
+            for indice in indices
+        }
     except (TypeError, ValueError) as error:
         msg = f"el evento no trae ids válidos para la key del mapa: {error}"
         raise inngest.NonRetriableError(msg) from error
@@ -169,42 +182,63 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
                 llamadas=conteo.llamadas,
                 ms=ms_desde(t0),
             )
-            return {"mes": str(mes), "cobertura": 0.0, "storage_key": None}
-        imagen = mapa_del_mes(roi, mes, receta, INDICE_DEL_MAPA).unmask(
-            NODATA_COG, sameFootprint=False
-        )
-        url = url_de_descarga(imagen, _parametros(roi, receta))
+            return {"mes": str(mes), "cobertura": 0.0, "storage_keys": []}
 
-    bbox, megas = _subir_cog(url, claves.storage_key)
+        # Las URL de todos, dentro del mismo bloque: las llamadas a GEE del mes
+        # quedan contadas juntas y traducidas por el mismo manejador.
+        parametros = _parametros(roi, receta)
+        urls = {
+            indice: url_de_descarga(
+                mapa_del_mes(roi, mes, receta, indice).unmask(
+                    NODATA_COG, sameFootprint=False
+                ),
+                parametros,
+            )
+            for indice in indices
+        }
+
     inicio, _ = rango(mes)
-    insert_layer(
-        natural_key=claves.natural_key,
-        product=INDICE_DEL_MAPA,
-        storage_key=claves.storage_key,
-        acquired_ts=inicio,
-        ingested_ts=datetime.now(UTC),
-        tenant_id=tenant_id,
-        rancho_id=rancho_id,
-        bbox=bbox,
-        source="mensual",
-        receta=receta.version,
-        estadisticas=_estadisticas_de_la_capa(reduccion),
-    )
+    subidos: list[str] = []
+    megas_total = 0.0
+    # Uno por uno, y cada uno con su fila: si el step se reintenta, las keys son las
+    # mismas y se sobrescribe lo mismo. Un fallo a mitad deja los anteriores subidos,
+    # que es exactamente lo que el reintento vuelve a pisar.
+    for indice in indices:
+        claves = claves_por_indice[indice]
+        bbox, megas = _subir_cog(urls[indice], claves.storage_key)
+        megas_total += megas
+        insert_layer(
+            natural_key=claves.natural_key,
+            product=indice,
+            storage_key=claves.storage_key,
+            acquired_ts=inicio,
+            ingested_ts=datetime.now(UTC),
+            tenant_id=tenant_id,
+            rancho_id=rancho_id,
+            bbox=bbox,
+            source="mensual",
+            receta=receta.version,
+            estadisticas=_estadisticas_de_la_capa(reduccion, indice),
+        )
+        subidos.append(claves.storage_key)
+
     reportar(
         f"mes-{mes}",
-        f"Mes {posicion} de {total} ({mes}): mapa de {INDICE_DEL_MAPA.upper()} "
-        f"subido, cobertura {porcentaje(reduccion.cobertura)}",
+        f"Mes {posicion} de {total} ({mes}): {len(subidos)} mapas subidos "
+        f"({', '.join(i.upper() for i in indices)}), "
+        f"cobertura {porcentaje(reduccion.cobertura)}",
         progreso=progreso,
         mes=str(mes),
         cobertura=reduccion.cobertura,
-        megas=megas,
+        megas=round(megas_total, 2),
+        mapas=len(subidos),
         llamadas=conteo.llamadas,
         ms=ms_desde(t0),
     )
     return {
         "mes": str(mes),
         "cobertura": reduccion.cobertura,
-        "storage_key": claves.storage_key,
+        "storage_keys": subidos,
     }
 
 
@@ -257,5 +291,5 @@ def process_rancho(
         "status": "success",
         "receta": plan["receta"],
         "meses": len(resultados),
-        "mapas": sum(1 for r in resultados if r["storage_key"]),
+        "mapas": sum(len(r["storage_keys"]) for r in resultados),
     }

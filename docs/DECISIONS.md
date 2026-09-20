@@ -2578,3 +2578,55 @@ equivocarse hacia el descarte pierde el mes—, pero cada familia que aparece ha
 cálculo suyo va a servir mientras siga así. Es de quien carga los datos, no del pipeline. Sigue
 abierto, de M.4.5, qué hacer con un rancho legítimamente enorme, que es otro problema: ese no
 entra en **una** descarga y pide partirla.
+
+---
+
+## 58. El mapa del rancho es de los cuatro índices, uno por COG (2026-09-20)
+
+> Decisión del usuario, después de ver el primer cierre de mes en producción. Hasta acá el mapa
+> era sólo de NDVI, que fue con lo que se probó el pipeline (`ARQUITECTURA` §10).
+
+**Cada mes del rancho sube un COG por índice de la receta** —NDVI, EVI, NDRE y NDMI en la v1—,
+cada uno con su fila en `layers`.
+
+**No rompe el congelamiento de `s2-mensual-v1`.** Los cuatro índices ya se calculaban: son los
+mismos números, la misma máscara y el mismo compuesto. Lo único que cambia es **qué se descarga**.
+`INDICE_DEL_MAPA` era una constante del handler, no un campo de la receta, y por eso la huella no
+se toca.
+
+**Un COG por índice y no uno multibanda** (decisión del usuario). La key ya tenía el lugar desde
+M.4.1 (`tenants/{t}/ranchos/{r}/{receta}/{indice}/{AAAA-MM}.tif`) y la `natural_key` también, así
+que son cuatro objetos y cuatro filas sin pisarse, el selector de índice del panel mapea uno a
+uno, y TiTiler sirve un COG de una banda sin parámetros extra. Un multibanda ahorraría descargas,
+pero cambiaría la forma de la key y de `layers`, obligaría al panel a pedir la banda con `bidx=`
+y habría que reprocesar lo que ya está en producción.
+
+**Cada capa lleva las estadísticas de SU índice**, no las del NDVI: si todas copiaran las mismas,
+la ficha del mapa de NDMI mentiría. Hay un test que lo cuida.
+
+**Un step por mes, con las cuatro descargas adentro.** No se parte en un step por índice: con la
+espera de Inngest Cloud entre steps (38 a 75 s, `#55`), 96 steps por alta serían más de una hora
+de espera pura. Un fallo a mitad deja subidos los anteriores, y el reintento los vuelve a pisar
+con la misma key.
+
+**El costo, que es lo que hay que mirar:** de 1 a 4 descargas por mes. El alta de un rancho pasa
+de ~24 a ~96 descargas y de ~4 a ~15 minutos; el cierre mensual, de 1 a 4 por rancho. El
+almacenamiento es menor (0,62 MB por COG en el rancho de prueba). **Las llamadas a GEE por mes
+pasan de 2 a 5**, y hay un test que lo afirma: ese número conviene verlo en la suite y no en la
+factura.
+
+**Los colores los decide el panel** (decisión del usuario): cada índice con su `rescale` y su
+paleta, en una tabla de `src/lib/`. El tileserver no fija ninguno —la plantilla de tiles sale sin
+`rescale` ni `colormap`—, y los rangos útiles son distintos: NDMI suele ser negativo y EVI está
+acotado a [-1, 1] desde `#45`. Se escribe cuando M.7.4 construya el mapa; antes sería código sin
+uso.
+
+**Cómo se probó.** La suite pasó de 610 a 612, y se reescribieron los seis tests que afirmaban un
+mapa por mes: ahora afirman cuatro, con sus keys, sus filas, las estadísticas de cada índice y el
+conteo de llamadas. Los dos nuevos fijan la decisión: que los índices del mapa salen de
+`RECETA_VIGENTE.indices` —sumar un índice a la receta suma su mapa, no lo deja afuera en
+silencio— y que cada capa trae los números de su propio índice.
+
+**Lo que queda abierto:**
+- **Lo que ya está en producción sigue teniendo sólo NDVI.** Los meses viejos no se rehacen
+  solos: hay que reprocesar el rancho (`#32` de Geocore) para que aparezcan los otros tres.

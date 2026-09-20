@@ -334,6 +334,7 @@ republicación.
 | M.6.2 | Los handlers a demanda. 👥 Confirmar si el front de tenants usa `timeseries`, `dates`, `stats` y `export`; borrarlos o rehacerlos. El mapa a demanda pasa al pipeline | worker, Geocore | M | decisión escrita | ⬜ |
 | M.6.3 | Un solo `EncolarAsync` en vez de los cinco `Request*Async` | Geocore | S | tests | ⬜ |
 | M.6.4 | Excepciones explícitas en lugar de `except Exception` en lo que queda | worker | M | ruff sin hallazgos nuevos | ⬜ |
+| M.6.5 | 🆕 El mapa del rancho, de los **cuatro** índices: un COG por índice y por mes | worker | S | tests; las keys no se pisan | ✅ 2026-09-20 · geeworker2#52, `DECISIONS #58`. Decisión del usuario. No toca la receta, pero el mes pasa de 1 a 4 descargas y de 2 a 5 llamadas a GEE. **Lo que está en producción sigue con sólo NDVI hasta que se reprocese** |
 
 ---
 
@@ -346,7 +347,7 @@ republicación.
 | M.7.1 | Un `Selector` que envuelve el Select de Base UI con `items` obligatorio: cierra la clase de bug del 09-12 | S | los selects del panel lo usan | ⬜ |
 | M.7.2 | Partir `RanchosPage` en hooks de datos y componentes, con pedidos cancelables | M | sin cambio visible; build | ⬜ |
 | M.7.3 | La serie mensual de una parcela: mediana con banda p10–p90, meses de baja cobertura marcados, huecos en los nulos, selector de índice | M | prueba en `vite dev` con datos reales | ⬜ |
-| M.7.4 | El mapa del rancho por mes: selector de mes, COG con token de mapa, parcelas encima y la métrica del rancho | M | ídem | ⬜ |
+| M.7.4 | El mapa del rancho por mes: selector de mes, COG con token de mapa, parcelas encima y la métrica del rancho. **Desde M.6.5 hay un COG por índice**, así que suma el selector de índice y la **tabla de `rescale` y paleta por índice** (decisión del usuario, 2026-09-20: los colores los define el panel, no la API) | M | ídem | ⬜ |
 | M.7.5 | Editor de geometría: dibujar con clics, el polígono en vivo, el rancho de referencia y aviso de vértices afuera. ¿Capa satelital? Confirmar la licencia | M | ídem | ⬜ |
 | M.7.6 | Primeros tests (vitest) de `src/lib/` | S | corren en el CI | ⬜ |
 

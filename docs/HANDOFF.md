@@ -3,7 +3,13 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
-> **2026-09-20:** el primer cierre de mes real sacó un bug de clasificación (`DECISIONS #57`):
+> **2026-09-20, decisión del usuario (`DECISIONS #58`): el mapa del rancho es de los cuatro
+> índices**, un COG por índice y por mes, cada uno con su fila en `layers` y sus propias
+> estadísticas. No toca la receta —los cuatro ya se calculaban—, pero el mes pasa de 1 a 4
+> descargas y de 2 a 5 llamadas a GEE. Lo que ya está en producción sigue con sólo NDVI hasta
+> que se reprocese. Suite: 612 verdes.
+>
+> Antes, el mismo día: el primer cierre de mes real sacó un bug de clasificación (`DECISIONS #57`):
 > `Pixel grid dimensions ... must be less than or equal to 32768` se trataba como pasajero y se
 > reintentaba cuatro veces —el primer intento gastó 144 s de GEE— cuando la misma geometría da
 > siempre el mismo error. Ya está en `_DEFINITIVOS`. Lo levantó un rancho de 13 x 111332 px, o
