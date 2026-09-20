@@ -350,13 +350,14 @@ const SPRINTS = [
     ] },
   { id: "M.7", nombre: "Panel", objetivo: "Ver series y mapas mensuales, y cargar geometría sin sufrir.", sesiones: "2–3",
     tareas: [
-      { id: "M.7.1", t: "Selector con items obligatorio: cierra el bug de los ids en los selects", repo: "panel", T: "S", ok: "Todos los selects lo usan" },
-      { id: "M.7.2", t: "Partir RanchosPage en hooks y componentes; pedidos cancelables", repo: "panel", T: "M", ok: "Sin cambio visible" },
-      { id: "M.7.3", t: "Serie mensual: mediana con banda p10–p90, cobertura y huecos. Hay prototipo en Diagnóstico → Datos (2026-09-20), SVG sin librería", repo: "panel", T: "M", ok: "Probado con datos reales" },
-      { id: "M.7.4", t: "Mapa del rancho por mes, con las parcelas encima y su métrica. La escala por índice ya existe (src/lib/indices.ts); falta el mapa en sí y la métrica del rancho", repo: "panel", T: "M", ok: "Probado con datos reales" },
-      { id: "M.7.5", t: "Editor de geometría: dibujar con clics, polígono en vivo, rancho de referencia", repo: "panel", T: "M", ok: "Probado en vite dev" },
-      { id: "M.7.6", t: "Primeros tests (vitest) de src/lib", repo: "panel", T: "S", ok: "Corren en el CI" }
-    ] },
+      { id: "M.7.1", t: "Selector con items obligatorio: cierra el bug de los ids en los selects", repo: "panel", T: "S", ok: "Los 13 selects lo usan; eslint prohíbe el Select crudo" },
+      { id: "M.7.2", t: "Partir RanchosPage en hooks y componentes; pedidos cancelables", repo: "panel", T: "M", ok: "De 438 líneas a 217; se fue la carrera entre tenants" },
+      { id: "M.7.3", t: "Serie mensual: mediana con banda p10–p90, cobertura y huecos", repo: "panel", T: "M", ok: "Panel lateral desde la tabla de parcelas; SVG sin librería" },
+      { id: "M.7.4", t: "Mapa del rancho por mes, con las parcelas encima y su métrica", repo: "panel", T: "M", ok: "Deslizador de meses, un COG por índice y la fracción del área con dato" },
+      { id: "M.7.5", t: "Editor de geometría: dibujar con clics, polígono en vivo, rancho de referencia", repo: "panel", T: "M", ok: "Sin capa satelital: falta la licencia" },
+      { id: "M.7.6", t: "Primeros tests (vitest) de src/lib", repo: "panel", T: "S", ok: "51 tests, en el CI, con control negativo" }
+    ],
+    aviso: { tipo: "compuerta", texto: "<b>Sprint cerrado el 2026-09-20 (sesión 11), en una sesión y no en tres.</b> Las seis tareas, cada una por PR con el CI en verde (Terra-admin#12 a #17). Lo que más valía: <code>Selector</code> vuelve <b>imposible</b> el bug de los ids —la prop es obligatoria y el lint prohíbe el Select crudo—, y los hooks de datos cierran una carrera que se veía en pantalla: <b>elegir un tenant y enseguida otro podía dejar los ranchos del primero con el segundo elegido</b>. El panel pasó de no tener ningún test a <b>51</b>, corriendo en el CI. Queda 👥 la licencia de la capa satelital del editor, que es lo único de M.7.5 que no se hizo." },
   { id: "M.8", nombre: "Seguridad", objetivo: "Cerrar lo que la revisión OWASP del 2026-09-12 dejó en rojo y naranja.", sesiones: "2",
     tareas: [
       { id: "M.8.1", t: "A01: el token de mapa lleva el tenant, y TiTiler exige ese prefijo en la key", repo: "Geocore · tileserver", T: "M", ok: "Un token de otro tenant da 403" },
@@ -383,10 +384,11 @@ const SPRINTS = [
 // que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
 // y no se va a hacer así; M.6.4 cerró con menos código, no con más.
 //
-// Fuera del tablero, la misma sesión: el test flaky de `/health` que estaba rojo en `main`, y el
-// panel traduciendo 5 de los 11 tipos de proceso. Queda M.0.6, postergada hasta después de la
-// demo (decisión del usuario, 2026-09-20). Al cerrar cada sesión se cambia acá lo que diga
-// SPRINTS_FASE_M.md.
+// Sesión 11 (2026-09-20): el sprint M.7 entero, las seis tareas por PR con el CI en verde. El
+// panel ya muestra lo que el pipeline produce —la serie de una parcela y el mapa mensual de un
+// rancho— y tiene sus primeros 51 tests. Queda M.0.6, postergada hasta después de la demo, y
+// 👥 la licencia de la capa satelital del editor. Al cerrar cada sesión se cambia acá lo que
+// diga SPRINTS_FASE_M.md.
 const ESTADO = {
   "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho",
   "M.1.1": "hecho", "M.1.2": "hecho", "M.1.3": "hecho", "M.1.4": "hecho", "M.1.5": "hecho",
@@ -397,6 +399,7 @@ const ESTADO = {
   "M.4.1": "hecho", "M.4.2": "hecho", "M.4.3": "hecho", "M.4.4": "hecho", "M.4.5": "hecho", "M.4.6": "hecho", "M.4.7": "hecho", "M.4.8": "hecho", "M.4.9": "hecho", "M.4.10": "hecho",
   "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho", "M.5.4": "hecho", "M.5.5": "hecho",
   "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.2b": "hecho", "M.6.3": "bloqueado", "M.6.4": "hecho", "M.6.5": "hecho",
+  "M.7.1": "hecho", "M.7.2": "hecho", "M.7.3": "hecho", "M.7.4": "hecho", "M.7.5": "hecho", "M.7.6": "hecho",
   "M.8.2": "hecho"
 };
 
@@ -416,7 +419,11 @@ const DECISIONES = [
   ["Un mes del rancho sin un píxel limpio no tiene COG (#51)", "M.4.5", "hecho", "decidida"],
   ["Inngest: se sigue en Cloud por el momento (la espera entre steps, #55)", "M.5", "hecho", "decidida"],
   ["Handlers a demanda: se borran (el front, avisado)", "M.6.2", "hecho", "decidida"],
-  ["Capa satelital en el editor: licencia", "M.7.5", "pendiente", "equipo"]
+  ["La serie y el mapa se miran desde la tabla, en un panel lateral (#39)", "M.7.3", "hecho", "decidida"],
+  ["El número del rancho va arriba del mapa, con la fracción del área con dato (#39)", "M.7.4", "hecho", "decidida"],
+  ["Los tests del panel corren en su CI (M.0.6 sigue sin tocarse) (#40)", "M.7.6", "hecho", "decidida"],
+  ["Capa satelital en el editor: licencia", "M.7.5", "pendiente", "equipo"],
+  ["Qué hacer con los rásters a demanda viejos, fuera de tenants/", "M.8.1", "pendiente", "equipo"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
@@ -440,7 +447,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 12;
+const sesionProxima = 15;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

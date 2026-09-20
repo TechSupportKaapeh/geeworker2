@@ -1,5 +1,25 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-20, sesión 11: el sprint M.7 (el panel), cerrado. El worker no cambió.** Lo que
+> importa desde acá: **el panel ya muestra lo que el pipeline produce**, y eso pone a la
+> vista dos cosas que el worker decide.
+>
+> - **Un mes sin un píxel limpio no tiene COG** (`DECISIONS #51`): en el deslizador de meses
+>   del mapa del rancho, ese mes **no está**. La lista tiene huecos a propósito, y el panel
+>   lo dice con palabras.
+> - **Un mes puede tener ráster del rancho y no tener métrica**: el rancho tuvo píxeles
+>   limpios pero ninguna parcela llegó a la cobertura mínima de la receta. El panel lo
+>   escribe así, en vez de mostrar un guión.
+> - **El mapa del rancho es de los cuatro índices** (`#58`), y el panel tiene el selector:
+>   lo que se procesó antes de esa decisión sólo tiene NDVI hasta que se reprocese, y ahí se
+>   ve como "este rancho no tiene ningún mapa de EVI".
+> - El panel dibuja con `receta`/`estadisticas` y `valor` nulo tal como los escribe el
+>   worker: **`valor` null es un mes procesado sin dato** y se dibuja distinto de un mes
+>   ausente.
+>
+> Crónica: [`SESSION_2026-09-20_sesion_11_el_panel.md`](SESSION_2026-09-20_sesion_11_el_panel.md).
+> Decisiones: `#37` a `#41` de Geocore, que es donde viven las del panel.
+
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
