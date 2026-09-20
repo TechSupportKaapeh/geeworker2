@@ -342,14 +342,15 @@ const SPRINTS = [
       { id: "M.6.1b", t: "DROP TABLE sentinel2_dates", repo: "GeoData", T: "S", ok: "SQL listo", equipo: true },
       { id: "M.6.2", t: "Handlers a demanda: el equipo confirma si el front de tenants los usa; borrar o rehacer", repo: "worker · Geocore", T: "M", ok: "Decisión escrita", equipo: true },
       { id: "M.6.3", t: "Un solo EncolarAsync en vez de cinco Request*Async", repo: "Geocore", T: "S", ok: "Tests" },
-      { id: "M.6.4", t: "Excepciones explícitas en lugar de except Exception", repo: "worker", T: "M", ok: "Ruff sin hallazgos nuevos" }
+      { id: "M.6.4", t: "Excepciones explícitas en lugar de except Exception", repo: "worker", T: "M", ok: "Ruff sin hallazgos nuevos" },
+      { id: "M.6.5", t: "El mapa del rancho, de los cuatro índices: un COG por índice y por mes", repo: "worker", T: "S", ok: "Tests; las keys no se pisan" }
     ] },
   { id: "M.7", nombre: "Panel", objetivo: "Ver series y mapas mensuales, y cargar geometría sin sufrir.", sesiones: "2–3",
     tareas: [
       { id: "M.7.1", t: "Selector con items obligatorio: cierra el bug de los ids en los selects", repo: "panel", T: "S", ok: "Todos los selects lo usan" },
       { id: "M.7.2", t: "Partir RanchosPage en hooks y componentes; pedidos cancelables", repo: "panel", T: "M", ok: "Sin cambio visible" },
-      { id: "M.7.3", t: "Serie mensual: mediana con banda p10–p90, cobertura y huecos", repo: "panel", T: "M", ok: "Probado con datos reales" },
-      { id: "M.7.4", t: "Mapa del rancho por mes, con las parcelas encima y su métrica", repo: "panel", T: "M", ok: "Probado con datos reales" },
+      { id: "M.7.3", t: "Serie mensual: mediana con banda p10–p90, cobertura y huecos. Hay prototipo en Diagnóstico → Datos (2026-09-20), SVG sin librería", repo: "panel", T: "M", ok: "Probado con datos reales" },
+      { id: "M.7.4", t: "Mapa del rancho por mes, con las parcelas encima y su métrica. La escala por índice ya existe (src/lib/indices.ts); falta el mapa en sí y la métrica del rancho", repo: "panel", T: "M", ok: "Probado con datos reales" },
       { id: "M.7.5", t: "Editor de geometría: dibujar con clics, polígono en vivo, rancho de referencia", repo: "panel", T: "M", ok: "Probado en vite dev" },
       { id: "M.7.6", t: "Primeros tests (vitest) de src/lib", repo: "panel", T: "S", ok: "Corren en el CI" }
     ] },
@@ -371,8 +372,10 @@ const SPRINTS = [
     ] }
 ];
 
-// Al 2026-09-19 (cierre de la sesión 9): M.0.1 a M.0.5, M.1, M.2, M.3, M.4 y M.5 enteros,
-// más M.8.2. El sprint M.5 salió en una sesión y no en dos, así que sigue M.6.1. El cierre de mes ya está: Geocore crea
+// Al 2026-09-20: M.0.1 a M.0.5, M.1, M.2, M.3, M.4 y M.5 enteros, M.6.5 y M.8.2. El cierre
+// de mes corre en producción. Sigue M.6.1. Fuera del tablero, el 2026-09-20 se hizo el
+// editor de geometría del panel y dos prototipos en Diagnóstico (datos por tenant con la
+// serie mensual, y el catálogo de tiles), que adelantan parte de M.7.3 y M.7.4. El cierre de mes ya está: Geocore crea
 // los jobs del último mes cerrado y el worker los procesa, pero el servicio arranca APAGADO
 // (CierreMensual__Habilitado): 👥 lo prende el equipo en Railway, con M.5.5. Queda M.0.6,
 // postergada por la demo. Al cerrar cada sesión se cambia acá lo que diga SPRINTS_FASE_M.md.
@@ -385,6 +388,7 @@ const ESTADO = {
   "M.3.1": "hecho", "M.3.1b": "hecho", "M.3.2": "hecho", "M.3.3": "hecho", "M.3.4": "hecho", "M.3.5": "hecho",
   "M.4.1": "hecho", "M.4.2": "hecho", "M.4.3": "hecho", "M.4.4": "hecho", "M.4.5": "hecho", "M.4.6": "hecho", "M.4.7": "hecho", "M.4.8": "hecho", "M.4.9": "hecho", "M.4.10": "hecho",
   "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho", "M.5.4": "hecho", "M.5.5": "hecho",
+  "M.6.5": "hecho",
   "M.8.2": "hecho"
 };
 

@@ -346,8 +346,8 @@ republicación.
 |---|---|---|---|---|
 | M.7.1 | Un `Selector` que envuelve el Select de Base UI con `items` obligatorio: cierra la clase de bug del 09-12 | S | los selects del panel lo usan | ⬜ |
 | M.7.2 | Partir `RanchosPage` en hooks de datos y componentes, con pedidos cancelables | M | sin cambio visible; build | ⬜ |
-| M.7.3 | La serie mensual de una parcela: mediana con banda p10–p90, meses de baja cobertura marcados, huecos en los nulos, selector de índice | M | prueba en `vite dev` con datos reales | ⬜ |
-| M.7.4 | El mapa del rancho por mes: selector de mes, COG con token de mapa, parcelas encima y la métrica del rancho. **Desde M.6.5 hay un COG por índice**, así que suma el selector de índice y la **tabla de `rescale` y paleta por índice** (decisión del usuario, 2026-09-20: los colores los define el panel, no la API) | M | ídem | ⬜ |
+| M.7.3 | La serie mensual de una parcela: mediana con banda p10–p90, meses de baja cobertura marcados, huecos en los nulos, selector de índice | M | prueba en `vite dev` con datos reales | ⬜ · **hay prototipo** en Diagnóstico → Datos (Terra-admin#7, 2026-09-20): SVG sin librería, con la línea cortada en los meses sin dato y el punto hueco en los de baja cobertura. Falta la pantalla del cliente, y decidir si trae librería |
+| M.7.4 | El mapa del rancho por mes: selector de mes, COG con token de mapa, parcelas encima y la métrica del rancho. **Desde M.6.5 hay un COG por índice**, así que suma el selector de índice | M | ídem | ⬜ · **la escala por índice ya está** (`src/lib/indices.ts`, Terra-admin#10): rango y paleta de cada uno, con NDMI centrado en 0. Y el catálogo en cascada con deslizador de fechas (#8, #9) es el patrón de navegación. Falta el mapa en la pantalla del cliente, las parcelas encima y la métrica del rancho |
 | M.7.5 | Editor de geometría: dibujar con clics, el polígono en vivo, el rancho de referencia y aviso de vértices afuera. ¿Capa satelital? Confirmar la licencia | M | ídem | ⬜ |
 | M.7.6 | Primeros tests (vitest) de `src/lib/` | S | corren en el CI | ⬜ |
 
