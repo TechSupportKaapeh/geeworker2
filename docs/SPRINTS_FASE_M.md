@@ -329,9 +329,9 @@ republicación.
 
 | | Tarea | Repo | T | Aceptación | Estado |
 |---|---|---|---|---|---|
-| M.6.1 | Borrar la capa vieja (`ARQUITECTURA` §9) y dejar de crear `sentinel2_dates` | worker | M | suite verde; líneas netas negativas | ⬜ |
-| 👥 M.6.1b | `DROP TABLE sentinel2_dates` (SQL listo) | GeoData | S | — | ⬜ |
-| M.6.2 | Los handlers a demanda. 👥 Confirmar si el front de tenants usa `timeseries`, `dates`, `stats` y `export`; borrarlos o rehacerlos. El mapa a demanda pasa al pipeline | worker, Geocore | M | decisión escrita | ⬜ |
+| M.6.1 | Borrar la capa vieja (`ARQUITECTURA` §9) y dejar de crear `sentinel2_dates` | worker | M | suite verde; líneas netas negativas | ✅ 2026-09-20 · geeworker2#54, `DECISIONS #59`. Se borró **lo que no tiene llamador**; el resto de §9 lo sostienen los handlers a demanda y se va con M.6.2. Suite 612 → 618. Código de producción −61 líneas; con el test nuevo, el repo sube 91 |
+| 👥 M.6.1b | `DROP TABLE geodata.sentinel2_dates` (SQL listo en `DECISIONS #59`) | GeoData | S | — | ⬜ · **ya es seguro**: desde M.6.1 el worker no la recrea al arrancar. El nombre va **calificado**: el `search_path` por defecto no incluye `geodata` y sin calificar el `DROP` no borra nada |
+| M.6.2 | Los handlers a demanda. 👥 Confirmar si el front de tenants usa `timeseries`, `dates`, `stats` y `export`; borrarlos o rehacerlos. El mapa a demanda pasa al pipeline | worker, Geocore | M | decisión escrita | ⬜ · **acá está el borrado grande** (`ee_service.py`, `export_service.py`, `ee_indices.py`, el constructor de colecciones de `ee_client.py`, `index_band_and_vis`). Dos de los cuatro **nunca devolvieron datos**: `stats` y el CSV de `export` piden a GEE el rango `fecha → fecha`, que es vacío. Y `timeseries` escribe filas `receta IS NULL`, las que el equipo borró en M.3.5 |
 | M.6.3 | Un solo `EncolarAsync` en vez de los cinco `Request*Async` | Geocore | S | tests | ⬜ |
 | M.6.4 | Excepciones explícitas en lugar de `except Exception` en lo que queda | worker | M | ruff sin hallazgos nuevos | ⬜ |
 | M.6.5 | 🆕 El mapa del rancho, de los **cuatro** índices: un COG por índice y por mes | worker | S | tests; las keys no se pisan | ✅ 2026-09-20 · geeworker2#52, `DECISIONS #58`. Decisión del usuario. No toca la receta, pero el mes pasa de 1 a 4 descargas y de 2 a 5 llamadas a GEE. **Lo que está en producción sigue con sólo NDVI hasta que se reprocese** |

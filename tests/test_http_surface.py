@@ -62,8 +62,8 @@ def test_el_worker_arranca_aunque_falten_las_credenciales(monkeypatch):
     diagnosticarse**.
 
     En el primer deploy a Railway faltaban las variables de GEE. `init_ee()`
-    estaba fuera del `try` —`init_db()` si estaba adentro— asi que levanto,
-    uvicorn aborto, Railway reinicio, y el ciclo se repitio: logs de varios
+    estaba fuera del `try` —el `init_db()` de entonces si estaba adentro— asi
+    que levanto, uvicorn aborto, Railway reinicio, y el ciclo se repitio: logs de varios
     procesos entrelazados y `/health` sin responder nunca. Es exactamente la
     patologia que `DECISIONS #21` describe para los chequeos de salud, y el
     criterio de `DECISIONS #16`: un secreto faltante degrada una funcionalidad,
@@ -75,8 +75,8 @@ def test_el_worker_arranca_aunque_falten_las_credenciales(monkeypatch):
 
     **Y sin tocar la red** (2026-09-15). `_startup()` termina en
     `registrar_conexiones()`, que importa su propio `init_ee` y verifica el
-    disco, MinIO, `geodata`, GEE e Inngest. Reemplazar solo `app.init_ee` y
-    `app.init_db` no alcanzaba: con el `.env` local, este test le hablaba de
+    disco, MinIO, `geodata`, GEE e Inngest. Reemplazar solo los que arranca
+    `_startup()` no alcanzaba: con el `.env` local, este test le hablaba de
     verdad a GEE, a la base y a MinIO, y en el CI pasaba solo porque ahi no
     hay `.env`. El socket saboteado lo vuelve comprobable: una conexion HTTP
     que se escape (GEE, MinIO, Inngest) queda anotada y el test falla, aunque
@@ -86,7 +86,8 @@ def test_el_worker_arranca_aunque_falten_las_credenciales(monkeypatch):
     **Lo que el guardia no ve:** la base. psycopg2 se conecta desde libpq, en
     C, sin pasar por el `socket` de Python; en ese control no aparecio ningun
     intento a Postgres. Lo que impide llegar a la base es reemplazar
-    `init_db` y `registrar_conexiones`, no el guardia.
+    `registrar_conexiones`, no el guardia. Hasta M.6.1 habia que reemplazar
+    tambien `init_db`, que el arranque ya no llama.
     """
     import socket
 
@@ -104,7 +105,6 @@ def test_el_worker_arranca_aunque_falten_las_credenciales(monkeypatch):
     reportes = []
     monkeypatch.setattr(socket.socket, "connect", _sin_red)
     monkeypatch.setattr(modulo, "init_ee", _revienta)
-    monkeypatch.setattr(modulo, "init_db", _revienta)
     monkeypatch.setattr(modulo, "registrar_conexiones", reportes.append)
 
     # No debe propagar: si lo hiciera, uvicorn abortaria el arranque.

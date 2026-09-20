@@ -17,8 +17,7 @@ from services.cog_converter import convert_to_cog
 # de GEE y las dos llamadas de abajo le pasaban un ROI donde espera un
 # geometry_id. La del repositorio se elimino en FASE D; el alias, aca.
 from repositories.db_repository import (update_processing_job, insert_layer,
-                                       insert_measurement, insert_measurements,
-                                       insert_sentinel2_date)
+                                       insert_measurement, insert_measurements)
 from services.avance_job import paso, reportar
 # M.4.2: el wrapper de jobs, el ROI y las utilidades viven en `handlers/`, para que
 # los handlers del pipeline mensual no importen este modulo, que es la capa vieja
@@ -204,17 +203,14 @@ def query_available_dates(ctx: inngest.Context, step: inngest.StepSync, payload:
     def _query_dates():
         init_ee()
         roi = coords_to_geometry(payload["coordinates"])
-        dates = get_sentinel2_dates(roi, payload["fechaInicio"], payload["fechaFin"], payload.get("cloudPct", 30))
-        for d in dates:
-            insert_sentinel2_date(
-                geometry_id=payload['parcelaId'],
-                user_id=payload['tenantId'],
-                date=d.get("date"),
-                system_time_start=d.get("system_time_start"),
-                cloud_cover=d.get("cloud_cover"),
-                tile_id=d.get("tile_id")
-            )
-        return {"dates": dates}
+        # M.6.1: las fechas se devuelven en el resultado del job y **no se
+        # persisten**. Antes cada una se escribia en `sentinel2_dates`, una
+        # tabla que no tenia una sola consulta de lectura (`§9`, A-4). El
+        # llamador siempre las leyo de aca, no de la tabla.
+        return {"dates": get_sentinel2_dates(
+            roi, payload["fechaInicio"], payload["fechaFin"],
+            payload.get("cloudPct", 30),
+        )}
     res = step.run("query-dates", _query_dates)
     return res
 

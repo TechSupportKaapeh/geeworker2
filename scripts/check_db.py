@@ -227,10 +227,11 @@ def main():
         cur.execute("SHOW search_path")
         print("  search_path      : %s" % cur.fetchone()[0])
 
-        # Las tres tablas que el worker toca. `layers` y `measurements` las crea
-        # EF Core desde Geocore; `sentinel2_dates` la crea el `init_db` del
-        # worker, que es la unica tabla que EF no administra.
-        for tabla in ("layers", "measurements", "sentinel2_dates"):
+        # Las dos tablas que el worker toca, las dos creadas por EF Core desde
+        # Geocore. Hasta M.6.1 habia una tercera, `sentinel2_dates`, que creaba
+        # el `init_db` del worker: era la unica que EF no administraba, y nadie
+        # la leia.
+        for tabla in ("layers", "measurements"):
             cur.execute("SELECT to_regclass(%s)", ("geodata." + tabla,))
             existe = cur.fetchone()[0] is not None
             print("  %-16s : %s" % (tabla, "existe" if existe else "NO EXISTE"))

@@ -216,7 +216,7 @@ def verificar_geodata(get_connection, release_connection):
         usuario, base = cur.fetchone()
 
         faltantes = []
-        for tabla in ("layers", "measurements", "sentinel2_dates"):
+        for tabla in ("layers", "measurements"):
             cur.execute("SELECT to_regclass(%s)", ("geodata." + tabla,))
             if cur.fetchone()[0] is None:
                 faltantes.append(tabla)
@@ -225,14 +225,16 @@ def verificar_geodata(get_connection, release_connection):
         detalle = "conectado como %s a %s" % (usuario, base)
         if faltantes:
             # Conecta pero le faltan tablas: es un fallo distinto del de
-            # credenciales y hay que poder distinguirlo de un vistazo. `layers`
-            # y `measurements` las crea EF Core desde Geocore.
+            # credenciales y hay que poder distinguirlo de un vistazo. Las dos
+            # las crea EF Core desde Geocore, asi que el mensaje ya es cierto
+            # para todas: hasta M.6.1 la lista incluia `sentinel2_dates`, que la
+            # creaba el worker, y el detalle mentia cuando faltaba justo esa.
             return Resultado(
                 "geodata", FALLA,
                 "%s, pero NO existen: %s. Las crea EF Core desde Geocore"
                 % (detalle, ", ".join(faltantes)),
                 _ms(inicio), "conexion, auth y consulta")
-        return Resultado("geodata", OK, detalle + ", con las 3 tablas",
+        return Resultado("geodata", OK, detalle + ", con las 2 tablas",
                          _ms(inicio), "conexion, auth y consulta")
     except Exception as e:  # noqa: BLE001 - un chequeo no puede levantar
         return Resultado("geodata", FALLA, "%s: %s" % (type(e).__name__, e),

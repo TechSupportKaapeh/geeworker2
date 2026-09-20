@@ -55,9 +55,6 @@ def apply_scsc(image):
     return image.addBands(corrected, overwrite=True)
 
 
-# Import index computations from ee_indices (keeps compatibility)
-from services.ee.ee_indices import compute_sentinel2_index  # noqa: F401 - re-export de services.ee
-
 # El parseo de KML se borro el 2026-09-04. `parse_kml_to_geojson` no tenia
 # llamadores desde que se elimino `process_kml` (E.2), y duplicaba algo que
 # **Geocore ya hace y el worker decidio no hacer**: `DECISIONS #17` puso el
@@ -67,16 +64,15 @@ from services.ee.ee_indices import compute_sentinel2_index  # noqa: F401 - re-ex
 # XML si fallaba. Un parser de input no confiable, sin llamadores, es la peor
 # combinacion posible: nadie lo mira y sigue disponible.
 
-def composite_embedding(roi, start, end, cloud_pct=None):
-    """Crea una composición de embeddings para el área y fechas especificadas"""
-    col = (
-        ee.ImageCollection('GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL')
-        .filterBounds(roi)
-        .filterDate(start, end)
-    )
-    # Para embeddings, tomamos la primera imagen disponible en el rango
-    return col.first().clip(roi)
-
+# M.6.1 (`DECISIONS #59`): se borraron `composite_embedding`, `maskS2clouds` y
+# la re-exportacion de `compute_sentinel2_index`, las tres sin ningun llamador
+# (`ARQUITECTURA_PIPELINE` §9). Ojo con la segunda: se lee como "la mascara de
+# nubes" y no es la que usa nadie — la de aca es `mask_s2cloudless_and_shadows`
+# y la del pipeline vive en `pipeline/etapas/nubes.py`.
+#
+# Lo que queda —`get_sentinel2_collection`, `get_sentinel2_time_series` y sus
+# ayudantes— sigue vivo **solo por los handlers a demanda**. §9 los da por
+# borrados; los borra M.6.2, cuando se sepa si el front de los tenants los usa.
 
 # --------- Funciones auxiliares para Sentinel-2 (Heatmaps y Series) ---------
 def add_cloud_probability(img):
@@ -140,19 +136,6 @@ def check_roi_coverage(img, roi):
         0.0
     )
     return img.set('roi_coverage', coverage)
-
-def maskS2clouds(image):
-    """
-    Aplica máscara de nubes básica usando Scene Classification Layer (SCL) como respaldo
-    """
-    scl = image.select('SCL')
-    # Máscara para excluir: sombras(3), nubes med(8), nubes altas(9), cirrus(10), nieve/hielo(11)
-    mask = (scl.neq(3)
-           .And(scl.neq(8))
-           .And(scl.neq(9))
-           .And(scl.neq(10))
-           .And(scl.neq(11)))
-    return image.updateMask(mask)
 
 def get_sentinel2_collection(roi, start, end, cloud_pct=30, min_coverage=0.5):
     """

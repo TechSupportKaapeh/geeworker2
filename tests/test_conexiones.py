@@ -138,7 +138,8 @@ class _ConexionFalsa:
         return self._cursor
 
 
-TODAS = ("layers", "measurements", "sentinel2_dates")
+# M.6.1: eran tres. `sentinel2_dates` la creaba el worker y no la leia nadie.
+TODAS = ("layers", "measurements")
 
 
 def test_geodata_ok_informa_usuario_y_base():
@@ -148,11 +149,13 @@ def test_geodata_ok_informa_usuario_y_base():
     # Que diga *que* encontro del otro lado es el punto: prueba que la conexion
     # se hizo, no que la configuracion parecia correcta.
     assert "postgres" in r.detalle
-    assert "3 tablas" in r.detalle
+    assert "2 tablas" in r.detalle
 
 
 def test_geodata_conecta_pero_le_faltan_tablas_es_falla_distinta():
-    conn = _ConexionFalsa(_CursorFalso(tablas=("sentinel2_dates",)))
+    # Una tabla cualquiera que no sea de las dos: la base responde, pero no es
+    # la base que el worker espera.
+    conn = _ConexionFalsa(_CursorFalso(tablas=("otra_cosa",)))
     r = verificar_geodata(lambda: conn, lambda c: None)
     assert r.estado == FALLA
     assert "layers" in r.detalle and "measurements" in r.detalle
