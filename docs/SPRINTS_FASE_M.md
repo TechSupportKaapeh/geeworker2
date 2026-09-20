@@ -383,12 +383,31 @@ si se mueven, se borran, o se deja que el token los rechace.
 
 | | Tarea | T | Aceptación | Estado |
 |---|---|---|---|---|
-| M.7.1 | Un `Selector` que envuelve el Select de Base UI con `items` obligatorio: cierra la clase de bug del 09-12 | S | los selects del panel lo usan | ⬜ |
-| M.7.2 | Partir `RanchosPage` en hooks de datos y componentes, con pedidos cancelables | M | sin cambio visible; build | ⬜ |
-| M.7.3 | La serie mensual de una parcela: mediana con banda p10–p90, meses de baja cobertura marcados, huecos en los nulos, selector de índice | M | prueba en `vite dev` con datos reales | ⬜ · **hay prototipo** en Diagnóstico → Datos (Terra-admin#7, 2026-09-20): SVG sin librería, con la línea cortada en los meses sin dato y el punto hueco en los de baja cobertura. Falta la pantalla del cliente, y decidir si trae librería |
-| M.7.4 | El mapa del rancho por mes: selector de mes, COG con token de mapa, parcelas encima y la métrica del rancho. **Desde M.6.5 hay un COG por índice**, así que suma el selector de índice | M | ídem | ⬜ · **la escala por índice ya está** (`src/lib/indices.ts`, Terra-admin#10): rango y paleta de cada uno, con NDMI centrado en 0. Y el catálogo en cascada con deslizador de fechas (#8, #9) es el patrón de navegación. Falta el mapa en la pantalla del cliente, las parcelas encima y la métrica del rancho |
-| M.7.5 | Editor de geometría: dibujar con clics, el polígono en vivo, el rancho de referencia y aviso de vértices afuera. ¿Capa satelital? Confirmar la licencia | M | ídem | ⬜ |
-| M.7.6 | Primeros tests (vitest) de `src/lib/` | S | corren en el CI | ⬜ |
+| M.7.1 | Un `Selector` que envuelve el Select de Base UI con `items` obligatorio: cierra la clase de bug del 09-12 | S | los selects del panel lo usan | ✅ 2026-09-20 · Terra-admin#12. Los **13** desplegables lo usan, y **eslint prohíbe importar el Select crudo** fuera del propio `Selector.tsx`: la prop es obligatoria (olvidarla es `TS2741`) y el componente dibuja las opciones desde esa misma lista, así etiqueta y opción no pueden divergir. Seis de los trece no tenían `items` |
+| M.7.2 | Partir `RanchosPage` en hooks de datos y componentes, con pedidos cancelables | M | sin cambio visible; build | ✅ 2026-09-20 · Terra-admin#13. De **438 líneas a 217**. Lo cancelable no era orden: elegir el tenant A y enseguida el B podía dejar **los ranchos de A con B elegido**. Y salió un segundo bug de la misma familia: cambiar de tenant no limpiaba el rancho elegido |
+| M.7.3 | La serie mensual de una parcela: mediana con banda p10–p90, meses de baja cobertura marcados, huecos en los nulos, selector de índice | M | prueba en `vite dev` con datos reales | ✅ 2026-09-20 · Terra-admin#14. **Panel lateral desde la tabla de parcelas** (decisión del usuario), no una pestaña nueva. El gráfico del prototipo se mudó a `components/series/` y lo usan los dos. **Sin librería de gráficos**, confirmado al abrir la tarea |
+| M.7.4 | El mapa del rancho por mes: selector de mes, COG con token de mapa, parcelas encima y la métrica del rancho. **Desde M.6.5 hay un COG por índice**, así que suma el selector de índice | M | ídem | ✅ 2026-09-20 · Terra-admin#15. Panel lateral con deslizador de meses (con pausa de 250 ms) y selector de índice. **La métrica va arriba del mapa con la fracción del área con dato al lado**: el promedio divide por el área con dato (`#29`), así que el número solo se lee mal. `useMapToken` y el deslizador quedan compartidos con el catálogo de Tiles |
+| M.7.5 | Editor de geometría: dibujar con clics, el polígono en vivo, el rancho de referencia y aviso de vértices afuera. ¿Capa satelital? Confirmar la licencia | M | ídem | ✅ 2026-09-20 · Terra-admin#17, **sin la capa satelital**: falta la licencia (👥). Los clics y el cuadro de texto son lo mismo; el rancho va de fondo y el mapa arranca encuadrado en él; los vértices afuera se ven en rojo y se nombran, sin bloquear —la autoridad es el 422 de Geocore |
+| M.7.6 | Primeros tests (vitest) de `src/lib/` | S | corren en el CI | ✅ 2026-09-20 · Terra-admin#16. **51 tests** donde no había ninguno, en un paso propio del CI del panel (con la confirmación del usuario: M.0.6 sigue sin tocarse). Entorno `node`, sin jsdom. **Control negativo corrido**: tres invariantes rotos a propósito, cada uno puso en rojo su test y sólo ése |
+
+**Cierre (2026-09-20, sesión 11): el sprint entero en una sesión, no en tres.** Las seis
+tareas por PR con el CI en verde (Terra-admin#12 a #17).
+
+Lo que deja, más allá de las pantallas:
+
+- **El bug de los ids ya no se puede cometer.** M.7.1 no arregló seis desplegables: cerró
+  la clase. La prop obligatoria la agarra el compilador y el import prohibido, el lint,
+  y las dos compuertas corren en el CI. Control negativo corrido.
+- **Los pedidos cancelables taparon una carrera visible en pantalla**, y de paso mostraron
+  que el mismo descuido estaba en otros dos lados (el rancho elegido que sobrevivía al
+  cambio de tenant, y el `fetch` sin cancelar del prototipo de Diagnóstico).
+- **El panel tiene tests por primera vez**, y el CI los corre.
+- **Tres piezas quedaron compartidas en vez de duplicadas**: el gráfico de la serie, el
+  token de mapa y el deslizador de meses. Las tres tenían ya un segundo llamador el mismo
+  día en que se escribieron.
+
+**Lo único que quedó afuera: la capa satelital del editor** (👥, la licencia). El resto de
+M.7.5 no dependía de ella.
 
 ---
 
