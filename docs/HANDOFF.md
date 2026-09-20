@@ -3,6 +3,22 @@
 > Estado del repo, no crónica. Lo que pasó en cada sesión va en los
 > `SESSION_*.md`. Cómo funciona el servicio, en [`FUNCIONAMIENTO.md`](FUNCIONAMIENTO.md).
 >
+> **2026-09-20, sesión 10: M.6.1, la capa vieja empieza a irse** (`DECISIONS #59`). Se borró lo
+> que `ARQUITECTURA_PIPELINE` §9 lista y hoy **no tiene ningún llamador**: `composite_embedding`,
+> `maskS2clouds`, la re-exportación de `compute_sentinel2_index`, los cinco nombres de
+> `services/ee/__init__.py`, `config.SUPPORTED_INDICES`, `init_db` e `insert_sentinel2_date`. Y el
+> worker **dejó de crear y de escribir `sentinel2_dates`**, que es lo que hace seguro el
+> `DROP TABLE` de 👥 M.6.1b.
+>
+> **El resto de §9 no se pudo borrar:** `get_sentinel2_collection`, `get_sentinel2_time_series`,
+> `compute_sentinel2_index`, `apply_scsc`, `check_roi_coverage`, `una_por_dia` y
+> `get_sentinel2_dates` siguen vivas porque las sostienen los cinco handlers a demanda. Son M.6.2,
+> que espera la confirmación 👥 de si el front de los tenants los usa.
+>
+> Código de producción: −61 líneas. Suite: **618 verdes** (612 antes), más 21 con `--gee`.
+> Verificado contra Postgres de verdad: el worker arrancado contra una base vacía **no recrea la
+> tabla**.
+
 > **2026-09-20, decisión del usuario (`DECISIONS #58`): el mapa del rancho es de los cuatro
 > índices**, un COG por índice y por mes, cada uno con su fila en `layers` y sus propias
 > estadísticas. No toca la receta —los cuatro ya se calculaban—, pero el mes pasa de 1 a 4
@@ -185,6 +201,8 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | **Inngest Cloud** | 🟡 Plan Hobby: 5 steps a la vez, 50.000 ejecuciones al mes (un alta ≈ 27). Esperas de 38 a 75 s entre steps, de la plataforma (`#55`). 👥 Soporte de Inngest, o piloto autohosteado |
 | Handlers on-demand (heatmap, timeseries, dates, export, stats) | 🟡 Igual que `process_parcela` |
 | `process_kml` | ❌ Handler muerto: su evento fue eliminado en Geocore |
+| **Capa vieja de GEE** (`services/ee/`, `ee_service.py`, `export_service.py`) | 🟡 M.6.1 (2026-09-20, `DECISIONS #59`) borró lo que no tenía llamador. Lo que queda lo sostienen **sólo los handlers a demanda**: se va con ellos en M.6.2 |
+| **`sentinel2_dates`** | ✅ **El worker ya no la crea ni la escribe** (M.6.1). 👥 Falta el `DROP TABLE geodata.sentinel2_dates` en GeoData (M.6.1b), con el nombre calificado: el `search_path` por defecto no incluye `geodata` |
 | Superficie HTTP de lectura (`routes/`, `schemas/`, `auth.py`) | ✅ **Borrada** el 2026-08-30 (`DECISIONS #23`) |
 | Firma de Inngest | ✅ 2026-09-04 — se verifica en modo cloud; 401 sin firma (`DECISIONS #25`, `W-8`) |
 | Criterio de entorno | ✅ Uno solo (`config.IS_PRODUCTION`); lo desconocido cuenta como producción |
@@ -195,7 +213,7 @@ Su única superficie HTTP es `/health` y `/api/inngest`. No expone API de lectur
 | Commits del worker | ✅ Commiteado desde el 2026-08-30, sin pushear |
 | **Bitácora de jobs** (`processing_job_events` + `progress`) | 🟡 2026-09-12 — migración aplicada; **corrió contra Inngest y la base real** y mostró cada intento. Falta una corrida que termine bien (`DECISIONS #29`) |
 | **Pipeline mensual** | 🟡 **Núcleo hecho el 2026-09-15** (sprint M.1, `DECISIONS #35`): `pipeline/` con meses, fórmulas, registros de índices y estadísticas, y la receta `s2-mensual-v1` con su huella. No usa GEE ni la red, y lo cuida el ruff estricto de `pipeline/ruff.toml`. **El sprint M.2 está cerrado** (2026-09-17). Están las cuatro etapas (`pipeline/etapas/`, M.2.1 a M.2.4), `productos.py`, el borde `ejecucion.py` (M.2.5) y la validación contra parcelas reales (M.2.6): `DECISIONS #38` a `#45`. **La compuerta pasó**: NDVI coherente con la estación, cobertura coherente, y 2 a 8 s por mes contra los 60 que pedía. En un mes la capa vieja no devolvió nada y el pipeline cubrió el 93,6 %. La receta v1 quedó con erosión de 2 px y acotando los índices. Faltan los handlers (M.4), que son los que van a usar `ejecucion`. Diseño: [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md); tablero: [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) |
-| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **386 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
+| Entorno ejecutable + `pytest` | ✅ `.venv` sobre Python 3.13 (`DECISIONS #22`); **618 tests con `pytest tests`** (203 antes de M.1; 352 antes de M.1.6 y M.1.7; 386 al cerrar M.1; 612 antes de M.6.1). La raíz también junta los scripts de `scratch/`, que piden GEE. Desde geeworker2#14, el test de arranque ya no sale a la red con el `.env` local (§4, `DECISIONS #37`) |
 | **CI** (`.github/workflows/ci.yml`) | ✅ 2026-09-14 — verde en `main` ([PR #1](https://github.com/TechSupportKaapeh/geeworker2/pull/1)), y un PR con un test roto sale rojo en pytest (#2, cerrado). `main` todavía sin proteger (M.0.6, equipo). [`CI.md`](CI.md), `DECISIONS #34` |
 | `.venv` == los requirements | ✅ 2026-09-02 — `requirements-dev.txt` con `pytest`, `httpx`, `ruff` y `pip-audit` (F.15) |
 

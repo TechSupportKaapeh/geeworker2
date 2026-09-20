@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from services.ee.ee_client import init_ee
-from repositories.db_repository import init_db
 
 load_dotenv()
 
@@ -79,10 +78,10 @@ def _startup():
     requisito. Sin credenciales, cada invocación falla por separado y la
     reintenta Inngest, que es el comportamiento correcto.
     """
-    for nombre, arranca in (("Google Earth Engine", init_ee),
-                            # Crea `sentinel2_dates`, que es tabla del worker y
-                            # EF Core no administra.
-                            ("la base geodata", init_db)):
+    # M.6.1: `init_db` se borro. Precalentaba la base y creaba `sentinel2_dates`;
+    # la tabla no la lee nadie y el precalentamiento lo hace igual
+    # `registrar_conexiones()`, unas lineas mas abajo, que ademas **reporta**.
+    for nombre, arranca in (("Google Earth Engine", init_ee),):
         try:
             arranca()
         except Exception as e:  # noqa: BLE001 - un precalentamiento atrapa todo a proposito
@@ -94,16 +93,15 @@ def _startup():
 
     # Y recién ahora, si las conexiones se hicieron de verdad.
     #
-    # Va **después** de los precalentamientos porque no los reemplaza: `init_db`
-    # crea `sentinel2_dates` y `init_ee` deja las credenciales listas. Corriendo
-    # después, el chequeo de `geodata` puede además confirmar que esa tabla
-    # quedó creada.
+    # Va **después** del precalentamiento porque no lo reemplaza: `init_ee` deja
+    # las credenciales listas, y esto verifica además el disco, MinIO, `geodata`
+    # e Inngest.
     #
-    # Y hace falta porque el bucle de arriba **no puede distinguir** una
-    # dependencia que anda de una que no: `init_db()` atrapa su propia excepción
-    # y la loguea, así que este `try` nunca la ve y el precalentamiento termina
-    # sin quejarse aunque la base esté caída. Un arranque que no dice nada
-    # cuando algo está roto es peor que uno que falla.
+    # Y es lo único que **reporta**: el bucle de arriba no puede distinguir una
+    # dependencia que anda de una que no, porque cada `arranca()` puede atrapar
+    # su propia excepción y loguearla sin que este `try` la vea. Un arranque que
+    # no dice nada cuando algo está roto es peor que uno que falla. Era el caso
+    # de `init_db`, que se borró en M.6.1.
     registrar_conexiones(logger)
 
 

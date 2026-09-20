@@ -285,30 +285,13 @@ def registrar_evento_job(job_id: str, attempt: int, stage: str, level: str, mess
         release_connection(conn)
 
 
-def init_db():
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        # Create sentinel2_dates since EF Core doesn't manage it
-        cur.execute('''
-        CREATE TABLE IF NOT EXISTS sentinel2_dates (
-            "Id" serial PRIMARY KEY,
-            "GeometryId" text,
-            "UserId" text,
-            "Date" text,
-            "SystemTimeStart" bigint,
-            "CloudCover" double precision,
-            "TileId" text,
-            "RoiGeojson" jsonb,
-            UNIQUE("GeometryId", "Date", "SystemTimeStart")
-        )
-        ''')
-        conn.commit()
-    except Exception as e:
-        logger.error("No se pudo inicializar la DB: %s", e)
-    finally:
-        release_connection(conn)
+# `init_db()` se borro en M.6.1 (`DECISIONS #59`). Hacia un `SELECT 1` y el
+# `CREATE TABLE IF NOT EXISTS sentinel2_dates`.
+#
+# La tabla se va entera (§9, A-4): nadie la leia. Dejar de crearla es lo que
+# impide que el `DROP TABLE` de 👥 M.6.1b la vea volver en el proximo deploy.
+# El `SELECT 1` ya estaba reemplazado por `registrar_conexiones()`, que corre
+# enseguida sobre el mismo pool y ademas **reporta** lo que encuentra.
 
 
 def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: str,
@@ -565,30 +548,6 @@ def insert_measurements(mediciones) -> int:
         release_connection(conn)
 
 
-def insert_sentinel2_date(geometry_id: str, user_id: str = None, date: str = None,
-                           system_time_start: int = None, cloud_cover: float = None,
-                           tile_id: str = None, roi_geojson: dict = None):
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute('''
-        INSERT INTO sentinel2_dates("GeometryId", "UserId", "Date", "SystemTimeStart", "CloudCover", "TileId", "RoiGeojson")
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT ("GeometryId", "Date", "SystemTimeStart") DO NOTHING
-        RETURNING "Id"
-        ''', (
-            geometry_id,
-            user_id,
-            date,
-            system_time_start,
-            cloud_cover,
-            tile_id,
-            Json(roi_geojson) if roi_geojson is not None else None
-        ))
-        row = cur.fetchone()
-        conn.commit()
-        return row[0] if row else None
-    except Exception:
-        return None
-    finally:
-        release_connection(conn)
+# `insert_sentinel2_date()` se borro en M.6.1, con la tabla. Ademas de escribir
+# donde nadie leia, tragaba **cualquier** excepcion y devolvia `None`: un fallo
+# de red, de permisos o de esquema se veia igual que "esta fila ya estaba".

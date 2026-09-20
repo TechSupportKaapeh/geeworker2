@@ -2630,3 +2630,96 @@ silencio— y que cada capa trae los números de su propio índice.
 **Lo que queda abierto:**
 - **Lo que ya está en producción sigue teniendo sólo NDVI.** Los meses viejos no se rehacen
   solos: hay que reprocesar el rancho (`#32` de Geocore) para que aparezcan los otros tres.
+
+---
+
+## 59. M.6.1: se borra lo que no tiene llamador, y `sentinel2_dates` deja de crearse (2026-09-20)
+
+> Sprint M.6, primera tarea. `ARQUITECTURA_PIPELINE` §9 lista lo que el pipeline mensual
+> reemplaza; esta decisión fija **qué parte de esa lista se puede borrar hoy** y por qué el
+> resto no.
+
+**El criterio: se borra lo que hoy no tiene ningún llamador.** §9 se escribió en M.0, antes de
+que existieran las altas mensuales, y da por borradas varias funciones que **siguen vivas**
+—`get_sentinel2_collection`, `get_sentinel2_time_series`, `compute_sentinel2_index`,
+`apply_scsc`, `check_roi_coverage`, `una_por_dia`, `get_sentinel2_dates`— porque las sostienen
+los cinco handlers a demanda. Ésos son M.6.2, que espera la confirmación 👥 de si el front de
+los tenants los usa. Borrarlas ahora sería cambiar en silencio lo que devuelven endpoints
+documentados en `api-frontend.html`.
+
+Lo que se borró:
+
+| Qué | Por qué |
+|---|---|
+| `ee_client.composite_embedding` | Componía `GOOGLE/SATELLITE_EMBEDDING`. Nada en el worker usa embeddings |
+| `ee_client.maskS2clouds` | La máscara por SCL, "el respaldo" de s2cloudless. Nunca se llamó |
+| La re-exportación de `compute_sentinel2_index` en `ee_client` | Existía sólo para `services/ee/__init__.py`, y creaba un ciclo de imports con `ee_indices` que sólo se sostenía porque el import de vuelta está dentro de la función |
+| Los cinco nombres de `services/ee/__init__.py` | Ningún módulo hace `from services.ee import …`; todos importan del módulo concreto |
+| `config.SUPPORTED_INDICES` | 20 nombres que nadie consultaba |
+| `db_repository.insert_sentinel2_date` | Escribía en una tabla sin lectores |
+| `db_repository.init_db` | Su única función real era crear esa tabla |
+| La escritura de fechas en `query_available_dates` | Ídem; el llamador siempre las leyó del resultado del job |
+| `sentinel2_dates` en las verificaciones de conexión | `utils_pkg/conexiones.py` y `scripts/check_db.py` |
+
+**`SUPPORTED_INDICES` era peor que no tenerla.** Se lee como un contrato de validación y no lo
+era: ninguna función la consultaba, así que un índice de afuera de la lista se procesaba igual
+—`add_index_band_fast` cae a NDVI para lo que no reconoce— y uno de adentro podía no estar
+implementado. La fuente única es el registro de `pipeline/indices.py`, que sí falla con lo que
+no conoce.
+
+**`init_db` se borra entero, no sólo el `CREATE TABLE`.** Lo que quedaba era un `SELECT 1` de
+precalentamiento, y ya estaba reemplazado: `registrar_conexiones()` corre inmediatamente
+después en el arranque, abre una conexión del mismo pool, consulta y **reporta**. `init_db`
+atrapaba su propia excepción y la logueaba, así que el `try` de `_startup()` nunca la veía y un
+arranque contra una base caída terminaba sin quejarse — el comentario de `app._startup()` ya lo
+decía.
+
+**Dejar de crear la tabla es lo que hace seguro el `DROP TABLE` de 👥 M.6.1b.** Mientras el
+worker la creara al arrancar, el primer deploy después del `DROP` la traía de vuelta. Por eso el
+test no se conforma con que falten las dos funciones: recorre el repo con `ast` y **falla si
+cualquier módulo nombra la tabla en código**. Distingue código de comentario a propósito —el
+comentario que explica el borrado es lo que se quiere conservar—, y para identificadores compara
+exacto, porque `get_sentinel2_dates` contiene la cadena y no toca la tabla: consulta GEE.
+
+**El mensaje de las conexiones dejó de mentir.** Decía «Las crea EF Core desde Geocore» de las
+tres tablas, y `sentinel2_dates` la creaba el worker: cuando faltaba justo ésa, el reporte
+mandaba a buscar el problema al repo equivocado. Ahora las dos que quedan sí son de EF Core.
+
+**Cómo se probó.** La suite pasó de 612 a 618. Y contra Postgres de verdad (el contenedor
+`terra-geodata`), que es lo que pide el `WORKFLOW`:
+- `verificar_geodata` contra la base `geodata`: `OK … con las 2 tablas`;
+- el worker arrancado contra una base **vacía y descartable**: `/health` 200, el reporte nombra
+  `layers, measurements` como faltantes, y `to_regclass('sentinel2_dates')` sigue en `NO EXISTE`
+  después del arranque. Es la verificación de que la tabla no vuelve;
+- control negativo del test de `ast`: con un `INSERT INTO sentinel2_dates` agregado a mano en
+  `db_repository`, sale rojo nombrando el archivo.
+
+**Las líneas.** El código de producción baja 61 líneas; los tests suben 152, casi todas del
+archivo nuevo. **El total del repo sube 91**, así que el criterio de aceptación de M.6.1
+—"líneas netas negativas"— se cumple en el código y no en el repo. El borrado grande es M.6.2:
+son `ee_service.py`, `export_service.py`, `ee_indices.py`, el constructor de colecciones de
+`ee_client.py` e `index_band_and_vis`, más de mil líneas que hoy sostienen cinco handlers.
+
+**Lo que queda abierto:**
+- 👥 **M.6.1b**, el `DROP TABLE` en GeoData. Ya es seguro hacerlo:
+
+  ```sql
+  DROP TABLE IF EXISTS geodata.sentinel2_dates;
+  ```
+
+  **El nombre va calificado con el esquema, y no es un detalle de estilo.** `init_db` la creaba
+  sin calificar, o sea en el esquema que dijera el `search_path` de esa conexión, y en la base
+  local terminó en `geodata` — pero el `search_path` por defecto de ese servidor es
+  `"$user", public, topology, tiger`, que **no incluye `geodata`**. Un `DROP TABLE IF EXISTS
+  sentinel2_dates` sin calificar no encuentra nada y sale con éxito sin borrar nada. Antes de
+  darlo por hecho conviene confirmar en qué esquema quedó en producción:
+
+  ```sql
+  SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE c.relname = 'sentinel2_dates';
+  ```
+
+  Verificado contra la base local, donde la tabla existe: **0 claves foráneas entrantes, 0
+  vistas dependientes y 0 filas**. Ningún lector en ninguno de los cuatro repos.
+- 👥 **M.6.2** sigue esperando si el front de los tenants usa `timeseries`, `dates`, `stats` y
+  `export`.

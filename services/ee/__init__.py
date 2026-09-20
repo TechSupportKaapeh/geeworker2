@@ -1,3 +1,6 @@
-from .ee_client import init_ee, composite_embedding, compute_sentinel2_index, get_sentinel2_collection, get_sentinel2_time_series
+"""Capa vieja de Google Earth Engine, la que precede al pipeline mensual.
 
-__all__ = ["init_ee", "composite_embedding", "compute_sentinel2_index", "get_sentinel2_collection", "get_sentinel2_time_series"]
+**No re-exporta nada** desde M.6.1 (`DECISIONS #59`): los cinco nombres que
+tenia en `__all__` no los importaba nadie —todos los modulos importan de
+`services.ee.ee_client` o `services.ee.ee_indices`— y dos ya no existen.
+"""

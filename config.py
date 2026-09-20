@@ -132,10 +132,7 @@ INNGEST_EVENT_KEY = os.getenv("INNGEST_EVENT_KEY", "dev-local-key")
 INNGEST_BASE_URL = os.getenv("INNGEST_BASE_URL", "http://localhost:8288")
 INNGEST_SIGNING_KEY = os.getenv("INNGEST_SIGNING_KEY", "")
 
-# Supported vegetation indices (Soil_pH removed)
-SUPPORTED_INDICES = [
-    "ndvi", "ndwi", "ndmi", "ndre", "evi", "savi", "lai",
-    "gndvi", "reci", "gci", "svhi", "vegetation_health",
-    "mndwi", "water_detection", "ndbi", "urban_index",
-    "nsmi", "soil_moisture", "rgb", "change_detection"
-]
+# `SUPPORTED_INDICES` se borro en M.6.1 (`DECISIONS #59`). Nadie la consultaba,
+# asi que se leia como un contrato sin serlo: un indice de afuera se procesaba
+# igual y uno de adentro podia no estar implementado. La fuente unica es el
+# registro de `pipeline/indices.py`, que si falla con lo que no conoce.
