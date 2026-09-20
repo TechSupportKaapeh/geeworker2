@@ -64,6 +64,10 @@ def test_lo_que_se_resuelve_solo(frase):
     [
         "Image.reduceRegion: Too many pixels in the region.",
         "User memory limit exceeded.",
+        # Tal como llego el 2026-09-20 en produccion, en el cierre de mes de un
+        # rancho con geometria desproporcionada (13 x 111332 px). Se reintento
+        # cuatro veces sin sentido antes de sumar la familia a `_DEFINITIVOS`.
+        "Pixel grid dimensions (13x111332) must be less than or equal to 32768.",
     ],
 )
 def test_los_mensajes_tal_como_llegan_de_gee(mensaje):

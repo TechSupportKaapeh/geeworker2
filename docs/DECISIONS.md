@@ -2550,3 +2550,31 @@ test no prueba:
   donde el cierre corre de verdad.
 - **Hasta que el equipo prenda `CierreMensual__Habilitado` en Geocore** (M.5.5), estas dos
   funciones están registradas y nunca reciben un evento.
+
+---
+
+## 57. La grilla de salida de GEE es un error definitivo, no uno para reintentar (2026-09-20)
+
+> Salió del primer cierre de mes real en producción, unas horas después de M.5.3.
+
+**El caso.** El cierre de mes de un rancho falló con
+`Pixel grid dimensions (13x111332) must be less than or equal to 32768`. A 10 m, eso es una
+geometría de **130 m de ancho por 1113 km de largo**: un polígono mal cargado, no un rancho
+grande. Como la familia no estaba en `_DEFINITIVOS`, `es_reintentable` la trató como pasajera
+—que es el default deliberado— e Inngest la reintentó: **el primer intento gastó 144 s de GEE**
+y los siguientes dieron exactamente el mismo error.
+
+**El cambio:** `"pixel grid dimensions"` entra en `_DEFINITIVOS`, así que el job queda `failed`
+al primer intento y a la vista en Procesos. El test que recorre la lista lo cubre solo, y además
+se sumó **el mensaje tal como llegó de producción** al test de mensajes completos: la frase
+suelta y el mensaje real son dos cosas distintas, y el que importa es el segundo.
+
+**Por qué importa más de lo que parece:** con el cierre de mes andando, un rancho así falla
+**todos los meses**, y cada mes gastaba cuatro intentos. El default de tratar lo desconocido
+como reintentable sigue siendo el correcto —equivocarse hacia el reintento cuesta una llamada y
+equivocarse hacia el descarte pierde el mes—, pero cada familia que aparece hay que nombrarla.
+
+**Lo que queda del lado de los datos:** ese rancho tiene una geometría degenerada y ningún
+cálculo suyo va a servir mientras siga así. Es de quien carga los datos, no del pipeline. Sigue
+abierto, de M.4.5, qué hacer con un rancho legítimamente enorme, que es otro problema: ese no
+entra en **una** descarga y pide partirla.

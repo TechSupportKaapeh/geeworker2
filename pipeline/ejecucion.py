@@ -58,6 +58,12 @@ _DEFINITIVOS: Final = (
     "total request size",
     "must be a descendant",
     "parameter 'element' is required",
+    # La grilla de salida no puede pasar de 32768 px de lado. Lo levanta una
+    # geometría desproporcionada —el 2026-09-20, en producción, un rancho de
+    # 13 x 111332 px, o sea 130 m de ancho por 1113 km de largo— y la misma
+    # geometría da el mismo error siempre: reintentarlo cuatro veces gastó
+    # 144 s de GEE en el primer intento y no cambió nada.
+    "pixel grid dimensions",
 )
 
 # Lo que se resuelve solo: capacidad, concurrencia o un corte de red.
