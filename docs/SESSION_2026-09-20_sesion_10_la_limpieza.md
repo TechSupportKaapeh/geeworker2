@@ -1,12 +1,12 @@
 # 2026-09-20 — sesión 10: la limpieza
 
-> Sprint M.6. Se hicieron **M.6.1** y, después de que el usuario contestara la pregunta que
-> trababa el sprint, **M.6.2**: los handlers a demanda se borran. Queda **M.6.2b**, el mapa a
-> demanda al pipeline. Fuera del tablero salieron dos cosas: un test flaky en `main` y el panel
+> **El sprint M.6 se cerró entero.** M.6.1, M.6.2, M.6.2b y M.6.4; sólo M.6.3 quedó sin hacer,
+> y sin objeto. **−1.150 líneas de código de producción**, y ya no queda nada anterior al
+> pipeline mensual. Fuera del tablero salieron dos cosas: un test flaky en `main` y el panel
 > traduciendo 5 de 11 tipos de proceso.
 >
-> Decisiones: `DECISIONS #59` y `#60` del worker, `#35` de Geocore.
-> PR: geeworker2#54, #55, #56 y #57; Geocore#36 y #37; Terra-admin#11.
+> Decisiones: `DECISIONS #59`, `#60`, `#61` y `#62` del worker; `#35` y `#36` de Geocore.
+> PR: geeworker2#54, #55, #56, #57, #59 y #60; Geocore#36, #37 y #39; Terra-admin#11.
 > Sesión anterior: [`SESSION_2026-09-19_sesion_9_el_cierre_de_mes.md`](SESSION_2026-09-19_sesion_9_el_cierre_de_mes.md)
 > y, el mismo día 20, `geocore/docs/SESSION_2026-09-20_el_cierre_en_produccion_y_las_geometrias.md`.
 
@@ -302,3 +302,102 @@ on-demand siguen sin nodata, y sus keys no llevan tenant — que es lo que M.8.1
 **M.6.3 quedó vaciada**: de los cinco `Request*Async` sobrevivió uno, y sin duplicación no hay
 refactor. **M.6.4 se desbloqueó y encogió**, y conviene hacerla después de M.6.2b para no
 revisar dos veces.
+
+---
+
+# Tercera parte: M.6.2b y M.6.4, y el sprint cierra
+
+## 15. El mapa a demanda al pipeline (M.6.2b)
+
+Antes de escribir nada, el usuario preguntó **dónde vive el ráster a demanda**, si en el mismo
+espacio que el histórico y si lo que cambia es la metadata. La respuesta era que no: el
+sistemático estaba en `tenants/{t}/ranchos/…` y el a demanda en `parcelas/{id}/…`, **en la raíz
+del bucket**. Y eso no era un detalle de orden: **era lo que impedía cerrar A01**, porque el
+token de mapa de M.8.1 autoriza comparando el prefijo contra el `tenant_id`.
+
+Así que el diseño quedó: misma forma de key, un nivel al lado, y lo que los distingue es
+`layers.source` — que es exactamente lo que el usuario había intuido. Un comentario que M.4.1
+había dejado en el código ya lo decía: «estaban separados por *por qué se pidió*, no por *qué
+son*».
+
+**El período lo decidió el usuario: un mes.** Era la única decisión que cambiaba el trabajo,
+entre aceptar un rango libre (generalizar `Mes` en todas las etapas) y borrar el handler.
+
+De paso el mapa a demanda ganó tres cosas que le faltaban desde siempre: declara **nodata**
+—antes una nube se pintaba como NDVI 0—, su fila lleva **receta y estadísticas**, y un mes sin un
+píxel limpio **no sube nada** en vez de un ráster de ceros.
+
+**Y con él se fue la capa vieja entera.** `ee_client.py` pasó de 436 líneas a 57: hoy es sólo
+`init_ee`. Cada función borrada se llevó su epitafio, porque explica por qué no se extraña:
+`apply_scsc` decía ser SCS+C y no lo era, y `check_roi_coverage` **agregaba** nulos en un
+compuesto mensual.
+
+**Lo que costó más que el handler fue repartir los tests.** `test_inngest_handlers.py` probaba el
+módulo que se borraba. Antes de moverlos hubo que averiguar qué cubría cada uno y dónde quedaba:
+el wrapper de jobs se fue a `test_avance_job.py` y `test_handlers_seguimiento.py` —eran el mismo
+`envolver_con_estado`—, las claves a `test_pipeline_claves.py`, el registro a
+`test_handlers_registro.py`. El test de colisión con la capa vieja ahora compara contra
+**literales**: lo que no se puede pisar son las cadenas que ya están en `layers`, no lo que
+devuelva un módulo que se borró.
+
+## 16. M.6.4: la tarea decía una cosa y la regla decía otra
+
+«Excepciones explícitas en lugar de `except Exception` en lo que queda». Quedaban 35.
+
+Lo que resolvió el alcance fue **correr la regla en vez de contarlos a ojo**:
+`ruff check . --select BLE` marca **8**. No marca los que **relanzan**, y ahí está la distinción
+que la tarea no hacía: atrapar ancho para anotar el fallo y dejarlo subir es el patrón correcto;
+angostarlo dejaría pasar sin registrar lo que no estuviera en la lista. Lo que ruff marca son los
+que **absorben**.
+
+Y de los 8, tres estaban en `utils_pkg/cache.py` e `io.py`, **sin un solo llamador**. O sea que
+la tarea se cerró **borrando dos módulos y justificando cinco líneas**, no reescribiendo 35
+bloques.
+
+El invariante quedó en un test que corre la regla sobre el repo entero, porque el CI sólo la
+corre sobre `pipeline/` y esto no podía depender de que alguien se acordara del comando.
+
+## 17. Lo que el sprint M.6 terminó siendo
+
+| | Líneas de producción |
+|---|---|
+| M.6.1 · lo que ya no tenía llamador, y `sentinel2_dates` | −61 |
+| M.6.2 · los cuatro handlers a demanda y sus cinco endpoints | −467 |
+| M.6.2b · el mapa a demanda al pipeline, y la capa vieja entera | −622 |
+| M.6.4 · `utils_pkg/cache.py` e `io.py` | ~−90 |
+| **Total** | **−1.150** |
+
+| | Al abrir la sesión | Al cerrar |
+|---|---|---|
+| Suite del worker | 612, con 1 flaky | **637** |
+| Suite de Geocore | 447 | **452** |
+| `ruff check .` en la raíz | 199 | **77** |
+| `ruff --select BLE` | 8 | **0** |
+| Funciones registradas en Inngest | 11 | **7** |
+
+**Y lo que no se mide en líneas:** todo lo que el worker escribe cuelga de `tenants/{t}/`, que
+era el requisito de M.8.1; no queda una segunda copia de las fórmulas de índices; y no queda
+ningún camino que mida distinto que el pipeline.
+
+## 18. Las tres cosas que salieron de hacerlo y no estaban en ninguna tarea
+
+1. **`timeseries-on-the-fly` habría quedado fabricando jobs `pending` eternos.** Apareció
+   revisando qué publica cada controlador de Geocore, no leyendo la lista de la tarea.
+2. **`cloudPct` nunca hizo nada.** El worker lo recibía y no lo aplicaba. Un parámetro que el
+   cliente cree que controla algo y no controla nada es peor que no tenerlo.
+3. **El test de `/health` era flaky y estaba rojo en `main`.** Apareció por correr la suite antes
+   de empezar.
+
+Las tres son la misma lección con tres caras: **lo que hay que hacer no siempre está escrito en
+la tarea.** Está en quién produce el evento, en qué hace el parámetro, y en lo que la suite dice
+antes de que uno toque nada.
+
+## 19. Lo que queda
+
+- **M.6.3** no se va a hacer así: quedó con un solo `Request*Async`.
+- **Para M.8.1:** los rásters a demanda **que ya están** en el bucket siguen en `parcelas/{id}/`,
+  sin tenant y sin nodata, con sus filas en `layers`. Hay que decidir si se mueven, se borran, o
+  se deja que el token los rechace.
+- **Anotado y no actuado:** si nada escribe en `BASE_OUTPUT_DIR`, `verificar_outputs` chequea una
+  carpeta que no usa nadie.
+- **Lo siguiente es M.7**, el panel.
