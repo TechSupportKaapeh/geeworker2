@@ -423,11 +423,47 @@ M.7.5 no dependía de ella.
 
 | | Tarea | Repo | T | Aceptación | Estado |
 |---|---|---|---|---|---|
-| M.8.1 | 🔴 **A01:** el token de mapa lleva `tenant_id`, y TiTiler exige que la key empiece con ese tenant (depende de M.4.1) | Geocore, tileserver | M | un token de otro tenant da 403 | ⬜ |
+| M.8.1 | 🔴 **A01:** el token de mapa lleva `tenant_id`, y TiTiler exige que la key empiece con ese tenant (depende de M.4.1) | Geocore, tileserver | M | un token de otro tenant da 403 | ✅ 2026-09-20 · Terra-admin#20, Geocore#46 y terra-tileserver#3; `DECISIONS #42` y `#43` de Geocore. **Tres repos y tres PR, en el orden en que se pueden desplegar**: el panel manda `X-Tenant-ID`, Geocore firma el claim, y el tileserver —el que **exige**— va último. Los **185** tests del tileserver incluyen uno que levanta la app entera con TiTiler montado: es lo único que prueba el cableado |
 | M.8.2 | Proyecto `Geocore.API.Tests` con `WebApplicationFactory`: políticas `TerraAdmin` y `TerraStaff`, 401 y 403. **Temprano** (sesión 3) | Geocore | M | en el CI | ✅ 2026-09-15 · Geocore#7 |
 | M.8.3 | **A04:** rate limiting (ASP.NET `RateLimiter`) en escritura y admin | Geocore | S | tests | ⬜ |
 | M.8.4 | **A09:** registro de auditoría de acciones privilegiadas: roles, altas de usuarios, reprocesos | Geocore | M | tests | ⬜ |
 | M.8.5 | Retención de `processing_job_events` | Geocore | S | decisión y job | ⬜ |
+
+**Cierre de M.8.1 (2026-09-20, sesión 12).** Era el 🔴 más viejo —de la revisión del
+2026-09-12— y lo que esperaba era M.6.2b: hasta que **todo** lo que el worker escribe no
+colgó de `tenants/{t}/`, no había con qué comparar.
+
+El agujero: el token decía **quién** pedía tiles y no decía **cuáles**. Validados firma,
+emisor, audiencia y `type: map-access`, el tileserver servía cualquier COG del bucket, y la
+key viaja a la vista en la URL del tile. Un usuario con su token legítimo y la key de otro
+tenant veía los rásters de ese otro tenant.
+
+Lo que quedó, más allá del 403:
+
+- **El orden de despliegue es el que hizo que no se rompiera nada**, y es el opuesto al de
+  M.5.5: **el que exige va último**. El panel mandando `X-Tenant-ID` a la Geocore de antes
+  no cambia nada; el tileserver exigiendo el claim antes de que Geocore lo firme deja
+  **todos** los mapas en 403.
+- **Los dos controles del tileserver dejaron de ser independientes.** El de ruta recibe el
+  de token por `Depends`, y se le pasa **la misma función, no otra igual**: FastAPI la
+  resuelve una vez por pedido y no hay dos lecturas del claim que puedan discrepar.
+- **400 y 403 dicen cosas distintas**: una ruta que no puede pedir nadie (SSRF) y una que
+  no puede pedir *éste*. Y el `..` se mira **antes** que el tenant, o
+  `tenants/{mío}/../{ajeno}/` pasaría.
+- **El cableado es lo que ningún test unitario prueba.** `tests/test_app_tenant.py` levanta
+  la app con TiTiler montado y sin red, y cubre `/cog` **y** `/mosaic`. Con la comparación
+  por tenant sacada caen 12 tests; y hay un control negativo del control, porque un
+  validador que rechazara todo dejaría verdes a los otros once.
+- **Lo que no alcanza, escrito**: los assets listados *dentro* de un MosaicJSON (hallazgo
+  **T-3**). Desde M.8.1, lo que se saltearía ahí es el aislamiento entre tenants, no sólo
+  el filtro anti-SSRF.
+- **Dos consumidores que nadie había mirado**: `scripts/check_prod.py` —que ahora verifica
+  el 403 desde afuera, sin necesitar un segundo token— y el piloto del front, que pedía el
+  token sin `X-Tenant-ID` y habría quedado en 400 apenas se desplegó Geocore.
+
+**Las capas viejas ya no se pueden servir** (`DECISIONS #43`, decisión del usuario): las
+keys `parcelas/{id}/…` y `ranchos/{id}/…` no tienen tenant. **Se borran**, objetos y filas,
+con `geocore/docs/sql/2026-09-20_capas_sin_tenant.sql`. 👥, y **después** del deploy.
 
 **M.8.2 hecha el 2026-09-15** (sesión 3, Geocore#7, `DECISIONS #26` de Geocore). La
 cadena JWT de `Program.cs` corre de verdad, y solo la clave es de prueba. Son 35 tests de
@@ -458,3 +494,4 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | La forma de la key con tenant | M.4 | ✅ 2026-09-17 · `DECISIONS #47` |
 | Los handlers a demanda | M.6.2 | 👥 |
 | La capa satelital en el editor (licencia) | M.7.5 | 👥 |
+| Los rásters viejos, fuera de `tenants/` | M.8.1 | ✅ 2026-09-20 · se borran con sus filas (`DECISIONS #43` de Geocore) |

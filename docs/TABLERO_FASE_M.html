@@ -384,10 +384,15 @@ const SPRINTS = [
 // que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
 // y no se va a hacer así; M.6.4 cerró con menos código, no con más.
 //
+// Sesión 12 (2026-09-20): M.8.1, el hallazgo rojo A01. El token de mapa lleva el tenant y el
+// tileserver exige ese prefijo en la key: tres repos, tres PR, en el orden en que se pueden
+// desplegar (panel, Geocore, tileserver). Las capas viejas, que tienen la key sin tenant, se
+// borran (👥). Queda M.0.6, postergada hasta después de la demo, y 👥 la licencia de la capa
+// satelital del editor.
+//
 // Sesión 11 (2026-09-20): el sprint M.7 entero, las seis tareas por PR con el CI en verde. El
 // panel ya muestra lo que el pipeline produce —la serie de una parcela y el mapa mensual de un
-// rancho— y tiene sus primeros 51 tests. Queda M.0.6, postergada hasta después de la demo, y
-// 👥 la licencia de la capa satelital del editor. Al cerrar cada sesión se cambia acá lo que
+// rancho— y tiene sus primeros 51 tests. Al cerrar cada sesión se cambia acá lo que
 // diga SPRINTS_FASE_M.md.
 const ESTADO = {
   "M.0.1": "hecho", "M.0.2": "hecho", "M.0.3": "hecho", "M.0.4": "hecho", "M.0.5": "hecho",
@@ -400,7 +405,7 @@ const ESTADO = {
   "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho", "M.5.4": "hecho", "M.5.5": "hecho",
   "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.2b": "hecho", "M.6.3": "bloqueado", "M.6.4": "hecho", "M.6.5": "hecho",
   "M.7.1": "hecho", "M.7.2": "hecho", "M.7.3": "hecho", "M.7.4": "hecho", "M.7.5": "hecho", "M.7.6": "hecho",
-  "M.8.2": "hecho"
+  "M.8.1": "hecho", "M.8.2": "hecho"
 };
 
 const RUTA = [
@@ -423,7 +428,8 @@ const DECISIONES = [
   ["El número del rancho va arriba del mapa, con la fracción del área con dato (#39)", "M.7.4", "hecho", "decidida"],
   ["Los tests del panel corren en su CI (M.0.6 sigue sin tocarse) (#40)", "M.7.6", "hecho", "decidida"],
   ["Capa satelital en el editor: licencia", "M.7.5", "pendiente", "equipo"],
-  ["Qué hacer con los rásters a demanda viejos, fuera de tenants/", "M.8.1", "pendiente", "equipo"]
+  ["Los rásters viejos, fuera de tenants/: se borran con sus filas (#43)", "M.8.1", "hecho", "decidida"],
+  ["El token de mapa lleva el tenant; el tileserver exige ese prefijo (#42)", "M.8.1", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };

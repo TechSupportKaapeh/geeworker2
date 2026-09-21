@@ -1,5 +1,29 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-20, sesión 12: M.8.1, el token de mapa lleva el tenant. El worker no cambió.**
+> Pero lo que el worker escribe pasó a ser **la otra mitad de un control de seguridad**, y
+> eso cambia qué significa equivocarse en una key.
+>
+> - **La key es ahora el criterio de autorización del tileserver.** El token de mapa lleva
+>   `tenant_id` y el tileserver sólo sirve lo que cuelga de `tenants/{ese tenant}/`. Una key
+>   armada a mano, o con el tenant de otra entidad, **no da un error al escribir**: da un
+>   COG que nadie puede mirar, o —peor— uno que mira el tenant equivocado.
+> - **Por eso `claves_cog_mensual()` y sus hermanas no son una comodidad.** El uuid
+>   canónico de `_uuid_canonico()` es exactamente lo que Geocore firma con
+>   `Guid.ToString()`: minúsculas y con guiones. El tileserver compara **texto**.
+> - **`prefijo_de_tenant()` tiene un espejo del otro lado**: `prefijo_del_tenant()` en
+>   `terra_tiles/security.py`. Las dos arman `tenants/{id}/` **con la barra**, y por el
+>   mismo motivo.
+> - **Lo que el worker escribe fuera de `tenants/` ya no se puede servir.** No queda nada en
+>   el código que lo haga desde M.6.2b; lo que había en el bucket se borra (Geocore
+>   `DECISIONS #43`).
+> - **`/mosaic` sigue con el hallazgo T-3 abierto**, y ahora pesa más: el tenant se compara
+>   contra la URL del MosaicJSON, no contra los assets que lista. Hoy lo contiene que sólo
+>   `worker-rw` escriba en el bucket.
+>
+> Crónica: [`SESSION_2026-09-20_sesion_12_el_token_con_tenant.md`](SESSION_2026-09-20_sesion_12_el_token_con_tenant.md).
+> Suite: **637 verdes**, sin cambios.
+
 > **2026-09-20, sesión 11: el sprint M.7 (el panel), cerrado. El worker no cambió.** Lo que
 > importa desde acá: **el panel ya muestra lo que el pipeline produce**, y eso pone a la
 > vista dos cosas que el worker decide.
