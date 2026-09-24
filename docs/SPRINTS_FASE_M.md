@@ -507,11 +507,99 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 
 | | Qué | Qué toca |
 |---|---|---|
+| M.9.0 | **Medir cuántas pasadas limpias hay por mes**, parcela por parcela y mes por mes. Es la compuerta de todo lo que sigue | worker |
+| M.9.0b | **El agrupamiento es un dato de la receta**: la ventana deja de estar cableada al mes. Refactor **sin cambio de comportamiento** | worker |
+| M.9.0c | **`s2-pasada-v2`**: estadísticas por pasada, ráster mensual. Convive con `s2-mensual-v1` | worker, Geocore |
+| M.9.0d | El panel: eje de fechas y el interruptor mensual / por pasada | panel |
 | M.9.1 | El cultivo en la parcela, y la métrica del rancho agrupada por cultivo (`DECISIONS #22` de Geocore) | Geocore, panel |
 | M.9.2 | `analitica/`: anomalía contra la mediana histórica del mismo mes, tendencia y alerta de caída | worker o Geocore |
 | M.9.3 | Más índices, una entrada de registro cada uno: SAVI (cultivo joven, suelo expuesto), GNDVI o CIre (clorofila), MSI (estrés hídrico), NDWI (agua) | worker |
 | M.9.4 | Sentinel-1 (radar) para los meses de lluvia | worker |
 | M.9.5 | El mes en curso, como provisorio | worker, panel |
+
+**Por qué el `0`.** M.9 no tiene orden fijo, pero estas cuatro sí van antes que el resto:
+**M.9.2** (anomalía y tendencia) y **M.9.5** (el mes en curso) mejoran mucho con una serie
+más fina, y hacerlas primero sobre 24 puntos mensuales es trabajo que después se rehace. Los
+ids llevan `0` y sufijo en vez de renumerar, como `M.3.1b` y `M.6.2b`.
+
+### La ventana de observación: por qué se reabre
+
+**Lo que hay hoy.** Por cada mes, GEE enmascara nubes y sombras, calcula el índice **por
+pasada** y después toma la **mediana por píxel** entre todas. De ahí salen las estadísticas
+de la parcela y el COG del rancho. Las pasadas sueltas no se guardan: se calculan y se
+tiran. Es la opción B de `DECISIONS #31`, decidida el 2026-09-12, que reemplazó a `#19`
+—"se guarda por pasada, no por composite"—.
+
+**La decisión fue correcta por lo que miraba, y se llevó puesto algo que no miraba.** La
+tabla de `#31` compara: 146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile contra
+uno solo, y el MosaicJSON con tres preguntas abiertas encima. Todo eso es del **ráster**, y
+todo eso sigue siendo cierto. Pero en ese diseño las estadísticas salen de la misma imagen
+que el mapa, así que **los números viajaron con la decisión del ráster sin que nadie hiciera
+la cuenta por separado** — y para los números no hay descargas, ni MosaicJSON, ni TiTiler: es
+un `reduceRegion`.
+
+**Lo que cuesta, en concreto:**
+
+- **Los eventos desaparecen.** Granizo, helada, una falla de riego: una caída de diez días la
+  absorbe la mediana del mes.
+- **Dos meses con el mismo nombre no son comparables.** Uno con seis pasadas limpias y otro
+  con dos dan un número que se llama igual. `n_obs` lo registra, pero el valor no lo
+  incorpora.
+- **La cobertura mínima descarta el mes entero** cuando alcanzaría con descartar las pasadas
+  malas. De ahí salen buena parte de los `valor = null`.
+- **La mediana supone que lo que varía dentro del mes es ruido.** Para un mosaico eso es
+  cierto; para algo que crece, la variación intramensual **es la señal**, y la mediana de las
+  pasadas cae cerca de mitad de mes con un error que depende de cuándo hubo cielo.
+
+**Cuánto de esto importa depende de qué hay en las parcelas**, y es lo primero a contestar. Con
+pastura —que es lo que sugieren los números de M.2.6, NDVI 0,30–0,35 en seca y 0,54–0,56 en
+lluvias— la dinámica es más lenta que un mes y lo que se pierde es sobre todo la detección de
+eventos. Con cultivo anual, donde el NDVI se mueve de 0,3 a 0,8 en tres semanas, se está
+borrando la parte informativa de la curva.
+
+**Lo que este bloque NO propone:**
+
+- **no propone dejar de componer.** En lluvias una pasada sola no da nada: M.2.6 midió un mes
+  en que la capa vieja no devolvió nada y el pipeline cubrió el 93,6 %. Componer ahí gana;
+- **no propone cambiar el ráster.** El mapa sigue siendo un compuesto mensual, por los mismos
+  motivos de `#31`;
+- **no reabre el mapa a demanda**, que es de un mes y no de un rango por decisión del usuario.
+  El agrupamiento lo haría posible; que se use o no es otra conversación.
+
+**El costo de partir la decisión, y hay que decirlo:** `#31` cerró la pregunta B-1 "por
+construcción" —el número y el mapa salen de la misma imagen, así que no pueden discrepar—. Si
+las estadísticas pasan a ser por pasada y el ráster sigue mensual, **eso se rompe**: la
+mediana de las medianas por pasada no es la mediana del compuesto. La salida es que **v2
+escriba las dos cosas** —la fila mensual del compuesto, que es la que se muestra al lado del
+mapa, y las filas por pasada, que son la serie— y que la fila diga a qué ventana pertenece.
+Cuesta un `reduceRegion` más por mes, y es el punto que M.9.0c tiene que resolver.
+
+### Qué hace cada tarea
+
+**M.9.0 — medir (S, compuerta).** Sin el número, esto es una discusión de opiniones. Sale de
+`scripts/check_pipeline_real.py`, que ya hace comparaciones lado a lado: para las parcelas
+reales, mes por mes, cuántas pasadas hay, cuántas quedan limpias y con qué cobertura.
+**Termina cuando** hay una tabla y una decisión escrita en `PREGUNTAS_ABIERTAS` B-3. Si en
+seca son 5–6 y en lluvias 1, ya se sabe exactamente cuánto se está tirando y cuándo. **Si
+resulta que casi siempre son 1 o 2, el mensual está bien y este bloque se cierra acá**, que
+también es un resultado.
+
+**M.9.0b — el agrupamiento (M, sin cambio de comportamiento).** Ver
+[`ARQUITECTURA_PIPELINE.md` §3.5](ARQUITECTURA_PIPELINE.md). Hoy "el mes" está cableado en
+cinco lugares: `periodos.Mes`, el `median()` de `compuesto()`, la `fecha` de `filas.py`, el
+`{AAAA-MM}` de `claves.py` y el `periodo` de los jobs. La tarea convierte eso en **un dato de
+la receta**. **Termina cuando `s2-mensual-v1` produce exactamente las mismas filas que antes**
+—control negativo obligatorio, comparando filas antes y después—. Vale la pena **aunque nunca
+se cambie la cadencia**: saca un supuesto escondido y es lo que hace barato cualquier
+respuesta.
+
+**M.9.0c — `s2-pasada-v2` (M).** La receta nueva agrupa **por pasada** para las estadísticas y
+**por mes** para el ráster. Convive con v1 porque la receta ya va en la key del COG y en cada
+fila. Lo que tiene que resolver: la columna que dice a qué ventana pertenece una fila, y qué
+número se muestra al lado del mapa.
+
+**M.9.0d — el panel (M).** El eje pasa a ser una fecha y no un índice de mes, y aparece el
+interruptor. La serie ya sabe dibujar huecos, así que el cambio es del eje, no del gráfico.
 
 ---
 
@@ -526,3 +614,4 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | Los handlers a demanda | M.6.2 | 👥 |
 | La capa satelital en el editor (licencia) | M.7.5 | 👥 |
 | Los rásters viejos, fuera de `tenants/` | M.8.1 | ✅ 2026-09-20 · se borran con sus filas (`DECISIONS #43` de Geocore) |
+| **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3, reabierta) | M.9.0c | ⬜ La contesta **M.9.0 con datos**, no una discusión |

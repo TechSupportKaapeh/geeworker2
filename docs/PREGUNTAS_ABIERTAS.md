@@ -590,13 +590,50 @@ explicar es caro cada vez que alguien mira el gráfico.
 
 ## B-3 · Cadencia: ¿mensual, quincenal o semanal?
 
-**Bloquea:** C.5 · **Se vuelve caro:** poco — es un `GROUP BY`
+**Bloquea:** M.9.0c · **Se vuelve caro:** ya no es un `GROUP BY`
 
-Con lluvias de junio a septiembre, la semanal va a tener huecos.
+### ⚠️ Esta ficha quedó vieja, y decía lo contrario de lo que se hizo
 
-**Recomendación:** guardar por pasada (ya decidido en `DECISIONS #19`) y dejar la
-cadencia como parámetro de consulta. Esta pregunta solo importa para el **valor
-por defecto** del front. Empezar en mensual.
+Lo de abajo es lo que decía hasta el 2026-09-24:
+
+> Con lluvias de junio a septiembre, la semanal va a tener huecos.
+>
+> **Recomendación:** guardar por pasada (ya decidido en `DECISIONS #19`) y dejar la
+> cadencia como parámetro de consulta. Esta pregunta solo importa para el **valor
+> por defecto** del front. Empezar en mensual.
+
+**`DECISIONS #19` fue reemplazada por `#31`** el 2026-09-12: GEE arma un compuesto mensual y
+**las pasadas sueltas no se guardan**. Con lo cual la frase clave de arriba —"dejar la cadencia
+como parámetro de consulta"— **dejó de ser cierta**: la cadencia no es un `GROUP BY` sobre
+datos guardados, es un reproceso contra GEE. La ficha se quedó describiendo un diseño que ya
+no existe, y eso importa porque es la ficha que alguien lee para saber cuánto cuesta cambiar
+la cadencia.
+
+### Reabierta el 2026-09-24, con otra pregunta
+
+La pregunta ya no es "¿mensual, quincenal o semanal?" sino **¿la unidad de observación tiene
+que ser una ventana de calendario?**. Lo que la mediana mensual se lleva puesto, además de la
+ventana arbitraria: los **eventos** —una caída de diez días la absorbe—, la **comparabilidad**
+entre un mes de seis pasadas limpias y uno de dos, y los meses que la cobertura mínima
+descarta enteros cuando alcanzaría con descartar las pasadas malas.
+
+**Cuánto de eso importa depende de qué hay en las parcelas**, y de cuántas pasadas limpias hay
+de verdad. Con pastura, la dinámica es más lenta que el mes y lo que se pierde es sobre todo
+la detección de eventos; con cultivo anual, el NDVI se mueve de 0,3 a 0,8 en tres semanas y se
+está borrando la parte informativa de la curva.
+
+**Recomendación: no decidir esto discutiéndolo.** `M.9.0` mide, con
+`scripts/check_pipeline_real.py`, cuántas pasadas limpias hay por parcela y por mes. Con ese
+número la respuesta sale sola:
+
+- si en seca son 5–6 y en lluvias 1, el mensual está tirando bastante en media estación y ahí
+  sí conviene `s2-pasada-v2`;
+- **si casi siempre son 1 o 2, el mensual está bien y esta ficha se cierra**, que también es un
+  resultado.
+
+Y el diseño para que la respuesta sea barata **sea cual sea** está en
+[`ARQUITECTURA_PIPELINE.md` §3.5](ARQUITECTURA_PIPELINE.md): el agrupamiento como dato de la
+receta. Ese refactor (M.9.0b) vale aunque la cadencia no cambie nunca.
 
 ---
 
@@ -753,6 +790,15 @@ aplica.
 ## C-5 · Retención de pasadas
 
 **Bloquea:** nada · **Se vuelve caro:** lento y en silencio
+
+> **Al día 2026-09-24.** Esta ficha suponía que se guardaban pasadas sueltas (`#19`). Desde
+> `#31` **no se guardan**: `measurements` tiene una fila por parcela, índice y mes, o sea 96
+> por parcela en dos años. La pregunta queda **latente**, no cerrada: si M.9.0c trae
+> `s2-pasada-v2`, vuelven las ~760 filas por parcela en dos años y con ellas esta pregunta.
+>
+> Lo que **sí** se decidió el 2026-09-24 es la retención de la **bitácora de jobs**, que es
+> otra tabla: 90 días (`DECISIONS #46` de Geocore, M.8.5). Y la retención de los **objetos de
+> MinIO** sigue abierta, que es la tercera cosa distinta que esta ficha llegó a mezclar.
 
 ~73 pasadas por año, por índice, por entidad. Es barato, pero sin política es
 "para siempre".

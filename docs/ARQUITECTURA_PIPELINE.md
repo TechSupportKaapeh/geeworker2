@@ -131,6 +131,112 @@ cambia los datos tiene que quedar en el historial de git y pasar por revisión. 
 test fija el contenido de la receta vigente: si alguien cambia un parámetro sin
 subir la versión, el test falla.
 
+### 3.5 El agrupamiento: la ventana como dato (propuesto, M.9.0b)
+
+> **Propuesto, no hecho.** Hoy la ventana es el mes y está cableada. Esta sección es el
+> diseño de M.9.0b, y el porqué está en [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) §M.9.
+
+**El problema.** "El mes" no vive en un lugar: vive en cinco.
+
+| Dónde | Qué supone |
+|---|---|
+| `pipeline/periodos.py` | la unidad es un mes calendario |
+| `compuesto()` | todas las pasadas colapsan en **una** imagen, con `median()` |
+| `pipeline/filas.py` | una fila por índice y mes, con `fecha` = primer instante del mes |
+| `pipeline/claves.py` | la key termina en `{AAAA-MM}.tif` |
+| los jobs y la bitácora | `periodo` con formato `AAAA-MM` |
+
+Mientras el supuesto esté repartido, cambiar la cadencia es tocar cinco módulos y esperar no
+haberse olvidado de ninguno. Es la misma forma de problema que M.7.1 y `#44`: **una regla
+repartida en instancias**.
+
+**La idea.** Una sola abstracción, que es la que el compuesto ya es sin decirlo: **una función
+que va de una colección de pasadas limpias a una lista de observaciones**.
+
+```python
+class Ventana(NamedTuple):
+    etiqueta: str        # "2026-08" · "2026-08-19T15:42Z" · "2026-08-d1"
+    inicio: datetime     # semiabierto, como `Mes`
+    fin: datetime
+
+# Lo único que hay que implementar para una cadencia nueva.
+Agrupamiento = Callable[[ee.ImageCollection, Receta], list[tuple[Ventana, ee.Image]]]
+```
+
+Cuatro implementaciones cubren todo lo que se pidió alguna vez, y **la de hoy es un caso
+particular** —que es la prueba de que la abstracción es la correcta—:
+
+| Agrupamiento | Qué devuelve | Para qué |
+|---|---|---|
+| `mensual` | 1 imagen, mediana por píxel | **lo de hoy**, sin cambios |
+| `por_pasada` | N imágenes, sin reducir | la serie fina, los eventos |
+| `por_dias(n)` | 1 imagen por bin de n días | decadal, si el mensual es mucho y el por pasada es poco |
+| `rango_libre(inicio, fin)` | 1 imagen del rango | un pedido a demanda con fechas arbitrarias |
+
+**`etiqueta` es la única pieza que sale del agrupamiento y llega a todos lados**: es lo que va
+en la key del COG, en la `fecha` de la fila y en el `periodo` del job. Con eso, los otros
+cuatro lugares dejan de saber qué es un mes.
+
+**El agrupamiento es por producto, no por receta.** El ráster y las estadísticas tienen costos
+distintos —el ráster son descargas y COG, los números son un `reduceRegion`— y `DECISIONS #31`
+eligió mensual con la cuenta del ráster. La receta debe poder decir `estadisticas:
+por_pasada` y `raster: mensual` al mismo tiempo. Si la receta tuviera un solo agrupamiento
+global, se estaría repitiendo el error que M.9 viene a corregir.
+
+### Las dos cosas que este diseño tiene que resolver
+
+**1. Hay agrupamientos que no se conocen antes de tocar GEE.** `mensual` y `rango_libre` salen
+del calendario: se saben antes de preguntar nada. `por_pasada` y `por_dias` **dependen de qué
+pasadas existen**, y eso sólo lo sabe GEE.
+
+Eso choca con la regla de `DECISIONS #32`: **`pipeline/ejecucion.py` es el único lugar que
+llama a `getInfo()`**. Las dos salidas razonables:
+
+- el agrupamiento devuelve una **descripción perezosa** y `ejecucion.py` la resuelve con la
+  única llamada que ya hace. Mantiene el borde intacto, a costa de que el agrupamiento no sea
+  una función pura de Python;
+- `ejecucion.py` crece **una** llamada, `fechas_de(coleccion)`, declarada como parte del
+  borde.
+
+La segunda es más simple y más honesta; la primera es más pura. **Es lo primero que M.9.0b
+tiene que elegir**, porque decide la forma de la firma.
+
+**2. Una fila tiene que decir a qué ventana pertenece.** Si `s2-pasada-v2` escribe la fila
+mensual del compuesto *y* las filas por pasada, `(parcela, índice, fecha)` alcanza para que no
+choquen —una pasada nunca cae a las 00:00 del día 1— pero **no alcanza para leerlas**: no hay
+forma de pedir "la serie mensual" sin adivinar por la hora. Dos opciones:
+
+- una columna **`ventana`** con la etiqueta del agrupamiento (`mes`, `pasada`, `decada`). Es
+  una migración de una columna, y hace que la consulta sea `WHERE ventana = 'mes'`. Tiene la
+  ventaja de que **la fila y la key del COG dicen lo mismo**;
+- una columna **`fecha_fin`**, que es más general —expresa cualquier ventana sin enumerar—
+  pero deja la consulta más incómoda.
+
+`ventana` es la recomendación. La decisión es de M.9.0c.
+
+### Lo que este diseño **no** cambia
+
+- **El ráster sigue siendo mensual.** Los motivos de `#31` —146 descargas contra 24, TiTiler
+  abriendo 3 a 6 COG por tile, el MosaicJSON con sus preguntas abiertas— no cambiaron.
+- **El mapa a demanda sigue siendo de un mes**, por decisión del usuario. `rango_libre` lo
+  haría posible; que se use o no es otra conversación.
+- **Los jobs y el cierre de mes no se tocan.** Un job sigue siendo "procesá agosto de esta
+  parcela"; lo único que cambia es **cuántas filas escribe**. Por eso esto no toca M.4 ni M.5,
+  y es la mitad de la razón por la que es barato.
+- **La cuota de Inngest no se mueve**: mismo step por mes.
+
+### Lo que sí cuesta
+
+- **GEE:** el enmascarado y el índice ya se calculan por pasada, así que eso no cambia. Lo que
+  se multiplica es la reducción: un `reduceRegion` por pasada en vez de uno por mes. Con ~8
+  pasadas por mes (sondeo del 2026-09-15), del orden de 3–5× el tiempo de reducción, sobre los
+  2–8 s por mes que midió M.2.6.
+- **Filas:** de 96 por parcela (24 meses × 4 índices) a unas 760 en dos años. Nada para
+  Postgres, y la retención de M.8.5 no las toca —es de la bitácora, no de `measurements`—.
+- **El panel:** el eje pasa a ser una fecha.
+
+---
+
 ### Lo que se descartó: un framework de pipelines
 
 Kedro, Dagster y Airflow resuelven la orquestación, los reintentos y la
@@ -366,8 +472,13 @@ tenants (`api-frontend.html`), así que antes hay que confirmar que nadie los us
 
 ## 10. Riesgos y lo que falta decidir
 
-- ✅ **`#31` confirmada** (opción B). Lo que se pierde es poder elegir una ventana
-  arbitraria sin volver a GEE.
+- ⚠️ **`#31` confirmada** (opción B), y **reabierta en parte el 2026-09-24** (M.9.0, §3.5).
+  Lo que se pierde no es sólo "poder elegir una ventana arbitraria sin volver a GEE": con la
+  mediana del mes también se pierden **los eventos** —una caída de diez días la absorbe—, la
+  **comparabilidad entre meses** con distinta cantidad de pasadas limpias, y los meses que la
+  cobertura mínima descarta enteros cuando alcanzaría con descartar las pasadas malas. La
+  decisión se tomó con la cuenta del **ráster**, que sigue siendo válida, y **se llevó a los
+  números, que tienen otra cuenta**. Lo contesta M.9.0 con datos, no con argumentos.
 - ✅ **La receta v1, decidida:**
   - índices NDVI, EVI, NDRE y NDMI: cuestan casi lo mismo que uno, porque salen de
     la misma colección;
