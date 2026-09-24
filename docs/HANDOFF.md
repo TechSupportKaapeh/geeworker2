@@ -1,5 +1,21 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-24, sesión 13: el sprint M.8 está cerrado. El worker no cambió.** Tres cosas de
+> Geocore que le tocan igual:
+>
+> - **`POST /api/admin/procesos/reprocesar` tiene techo: 10 por minuto y por usuario**
+>   (`DECISIONS #44` de Geocore, nivel `Encolado`). Es el nivel más estricto y está ahí por la
+>   cuota del worker: un alta cuesta ~27 ejecuciones de Inngest y un reproceso alcanza 200
+>   entidades. Lo mismo para las altas, los mapas a demanda y los KML.
+> - **Un `429` no es un fallo del worker.** Si alguien reprocesa en bucle, lo corta Geocore
+>   antes de publicar el evento; no hay job ni corrida.
+> - **La bitácora de jobs se borra a los 90 días** (`DECISIONS #46`). El worker la sigue
+>   escribiendo igual —`registrar_evento_job`— pero **lo que escriba hoy no está dentro de tres
+>   meses**. Los jobs no se borran: lo que se vence es el detalle de por dónde pasó.
+>
+> Crónica: [`SESSION_2026-09-24_sesion_13_el_sprint_de_seguridad.md`](SESSION_2026-09-24_sesion_13_el_sprint_de_seguridad.md).
+> Suite: **637 verdes**, sin cambios.
+
 > **2026-09-20, sesión 12: M.8.1, el token de mapa lleva el tenant. El worker no cambió.**
 > Pero lo que el worker escribe pasó a ser **la otra mitad de un control de seguridad**, y
 > eso cambia qué significa equivocarse en una key.

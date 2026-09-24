@@ -179,8 +179,8 @@ poco, y que el riesgo real esté en **credenciales, permisos y configuración**.
 | A05 | tileserver | **T-6**: consola de MinIO pública (root) | Medio | Cerrarla: `mc admin info` ya cubre el monitoreo |
 | A06 | tileserver | **T-5**: `rasterio`/GDAL sin pinnear | Medio | `PREGUNTAS_ABIERTAS` C-2 |
 | A01 | Geocore | N-1: separación TerraAdmin/TerraSupport | Alto (si Support debe ser acotado) | Diferido — esperando definición del equipo |
-| A04 | Geocore | Rate limiting en login/create-user | Medio | Por planificar |
-| A09 | Geocore | Audit log de acciones privilegiadas | Medio | Por planificar |
+| A04 | Geocore | Rate limiting en el **login y la edge function `create-user`**. La API quedó cubierta en M.8.3 (`DECISIONS #44`): tres niveles por usuario y por minuto, con una regla y no un atributo por endpoint | Medio | Superficie de Supabase, no de Geocore |
+| A09 | Geocore | ~~Audit log de acciones privilegiadas~~ | — | ✅ M.8.4 (`DECISIONS #45`): tabla `audit_log`, escrita por un middleware que registra también los intentos rechazados. Falta 👥 aplicar la migración |
 | A06 | Geocore/admin | Proceso de auditoría de dependencias | Bajo | Por planificar |
 
 ## El patrón que este documento hace visible

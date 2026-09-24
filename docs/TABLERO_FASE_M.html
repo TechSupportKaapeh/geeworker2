@@ -105,7 +105,7 @@
   .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; margin-bottom: 14px; }
   .section-head h2 { font-size: 24px; font-weight: 720; }
   .section-head p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
-  .ruta { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; }
+  .ruta { display: grid; grid-template-columns: repeat(17, minmax(0, 1fr)); gap: 4px; }
   .sesion {
     display: grid; gap: 4px; align-content: start; min-height: 92px; padding: 8px 8px 10px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
@@ -212,7 +212,7 @@
     <div class="stats" aria-label="Resumen">
       <div class="stat"><span class="label">Tareas</span><b id="st-total">—</b></div>
       <div class="stat"><span class="label">Hechas</span><b id="st-hechas">—</b></div>
-      <div class="stat"><span class="label">Sesiones</span><b>~16</b></div>
+      <div class="stat"><span class="label">Sesiones</span><b>~17</b></div>
     </div>
     <div class="next" id="siguiente"></div>
   </header>
@@ -384,6 +384,11 @@ const SPRINTS = [
 // que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
 // y no se va a hacer así; M.6.4 cerró con menos código, no con más.
 //
+// Sesión 13 (2026-09-24): el sprint M.8, cerrado. Rate limiting (M.8.3), registro de auditoría
+// (M.8.4) y retención de la bitácora (M.8.5), las tres en Geocore y por PR. Los dos controles
+// nuevos son una REGLA y no una llamada por endpoint: un endpoint nuevo queda cubierto por
+// existir. Queda 👥 aplicar la migración de audit_log. Geocore pasó de 452 a 559 tests.
+//
 // Sesión 12 (2026-09-20): M.8.1, el hallazgo rojo A01. El token de mapa lleva el tenant y el
 // tileserver exige ese prefijo en la key: tres repos, tres PR, en el orden en que se pueden
 // desplegar (panel, Geocore, tileserver). Las capas viejas, que tienen la key sin tenant, se
@@ -405,7 +410,7 @@ const ESTADO = {
   "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho", "M.5.4": "hecho", "M.5.5": "hecho",
   "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.2b": "hecho", "M.6.3": "bloqueado", "M.6.4": "hecho", "M.6.5": "hecho",
   "M.7.1": "hecho", "M.7.2": "hecho", "M.7.3": "hecho", "M.7.4": "hecho", "M.7.5": "hecho", "M.7.6": "hecho",
-  "M.8.1": "hecho", "M.8.2": "hecho"
+  "M.8.1": "hecho", "M.8.2": "hecho", "M.8.3": "hecho", "M.8.4": "hecho", "M.8.5": "hecho"
 };
 
 const RUTA = [
@@ -413,7 +418,7 @@ const RUTA = [
   ["M.2", "Etapas"], ["M.2", "Validación real"], ["M.3", "API y métrica del rancho"],
   ["M.4", "Altas I"], ["M.4", "Altas II"], ["M.5", "Reconciliador"], ["M.5", "Handlers y reproceso"],
   ["M.6", "Limpieza"], ["M.7", "Selector y series"], ["M.7", "Mapa mensual"], ["M.7", "Editor de geometría"],
-  ["M.8", "A01 y A04"], ["M.8", "A09 y retención"]
+  ["M.8", "A01 y A04"], ["M.8", "A09 y retención"], ["M.9", "Analítica · sin orden fijo"]
 ];
 
 const DECISIONES = [
@@ -429,7 +434,10 @@ const DECISIONES = [
   ["Los tests del panel corren en su CI (M.0.6 sigue sin tocarse) (#40)", "M.7.6", "hecho", "decidida"],
   ["Capa satelital en el editor: licencia", "M.7.5", "pendiente", "equipo"],
   ["Los rásters viejos, fuera de tenants/: se borran con sus filas (#43)", "M.8.1", "hecho", "decidida"],
-  ["El token de mapa lleva el tenant; el tileserver exige ese prefijo (#42)", "M.8.1", "hecho", "decidida"]
+  ["El token de mapa lleva el tenant; el tileserver exige ese prefijo (#42)", "M.8.1", "hecho", "decidida"],
+  ["El rate limiting es una regla, no un atributo por endpoint (#44)", "M.8.3", "hecho", "decidida"],
+  ["La auditoría va por fuera de ExceptionMiddleware, y registra los intentos (#45)", "M.8.4", "hecho", "decidida"],
+  ["La bitácora de jobs se conserva 90 días, y la retención arranca prendida (#46)", "M.8.5", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
@@ -453,7 +461,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 15;
+const sesionProxima = 17;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

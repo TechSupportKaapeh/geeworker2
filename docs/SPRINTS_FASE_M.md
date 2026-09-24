@@ -425,9 +425,9 @@ M.7.5 no dependía de ella.
 |---|---|---|---|---|---|
 | M.8.1 | 🔴 **A01:** el token de mapa lleva `tenant_id`, y TiTiler exige que la key empiece con ese tenant (depende de M.4.1) | Geocore, tileserver | M | un token de otro tenant da 403 | ✅ 2026-09-20 · Terra-admin#20, Geocore#46 y terra-tileserver#3; `DECISIONS #42` y `#43` de Geocore. **Tres repos y tres PR, en el orden en que se pueden desplegar**: el panel manda `X-Tenant-ID`, Geocore firma el claim, y el tileserver —el que **exige**— va último. Los **185** tests del tileserver incluyen uno que levanta la app entera con TiTiler montado: es lo único que prueba el cableado |
 | M.8.2 | Proyecto `Geocore.API.Tests` con `WebApplicationFactory`: políticas `TerraAdmin` y `TerraStaff`, 401 y 403. **Temprano** (sesión 3) | Geocore | M | en el CI | ✅ 2026-09-15 · Geocore#7 |
-| M.8.3 | **A04:** rate limiting (ASP.NET `RateLimiter`) en escritura y admin | Geocore | S | tests | ⬜ |
-| M.8.4 | **A09:** registro de auditoría de acciones privilegiadas: roles, altas de usuarios, reprocesos | Geocore | M | tests | ⬜ |
-| M.8.5 | Retención de `processing_job_events` | Geocore | S | decisión y job | ⬜ |
+| M.8.3 | **A04:** rate limiting (ASP.NET `RateLimiter`) en escritura y admin | Geocore | S | tests | ✅ 2026-09-21 · Geocore#48, `DECISIONS #44`. **Un limitador global con una regla**, no un atributo por endpoint: un `POST` nuevo queda limitado por existir, y un test lo comprueba contra los endpoints que la app registra. Tres niveles por usuario y por minuto —`Escritura` 120, `Admin` 20, `Encolado` 10— y el limitador va **antes** de `TenantMiddleware`, que consulta la base en cada request |
+| M.8.4 | **A09:** registro de auditoría de acciones privilegiadas: roles, altas de usuarios, reprocesos | Geocore | M | tests | ✅ 2026-09-21 · Geocore#49, `DECISIONS #45`. Tabla `audit_log` y un middleware **por fuera de `ExceptionMiddleware`**: adentro, una acción que lanza no dejaba fila, que son justo los casos interesantes. Un 403 y un 429 también dejan rastro. 👥 Falta aplicar la migración |
+| M.8.5 | Retención de `processing_job_events` | Geocore | S | decisión y job | ✅ 2026-09-24 · Geocore#50, `DECISIONS #46`. **90 días**, un `DELETE` por día, y **arranca prendida**: apagada de más no hace nada, y una retención que hay que acordarse de prender no es una retención. Se borra la bitácora, **no** los jobs |
 
 **Cierre de M.8.1 (2026-09-20, sesión 12).** Era el 🔴 más viejo —de la revisión del
 2026-09-12— y lo que esperaba era M.6.2b: hasta que **todo** lo que el worker escribe no
@@ -464,6 +464,37 @@ Lo que quedó, más allá del 403:
 **Las capas viejas ya no se pueden servir** (`DECISIONS #43`, decisión del usuario): las
 keys `parcelas/{id}/…` y `ranchos/{id}/…` no tienen tenant. **Se borran**, objetos y filas,
 con `geocore/docs/sql/2026-09-20_capas_sin_tenant.sql`. 👥, y **después** del deploy.
+
+**Cierre del sprint M.8 (2026-09-24, sesión 13).** Las tres que faltaban entraron en una
+sesión, cada una por PR con el CI en verde. Geocore pasó de **452 a 559 tests**.
+
+Lo que dejan, más allá de cerrar los hallazgos:
+
+- **La misma forma para los dos controles nuevos: una regla, no una llamada por endpoint.**
+  El rate limiting decide el nivel mirando método y ruta; la auditoría decide qué registrar
+  igual. En los dos casos **un endpoint nuevo queda cubierto por existir**, y en los dos hay
+  un test que recorre los endpoints que la aplicación **registra de verdad** en vez de una
+  lista escrita a mano. Es la lección de M.7.1 aplicada a propósito.
+- **El lugar en el pipeline es parte del diseño, y los dos tienen su test.** El limitador va
+  **antes** de `TenantMiddleware` —que consulta la base en cada request autenticado— así que
+  lo rechazado no llega a la base; la auditoría va **por fuera de `ExceptionMiddleware`**,
+  porque adentro una acción que lanza no deja fila. Mover cualquiera de los dos pone tests en
+  rojo.
+- **Los tests encontraron tres cosas que la revisión no habría encontrado leyendo:** que
+  `Encolado` (30) era más permisivo que `Admin` (20) contradiciendo la regla de «gana el más
+  estricto»; que la auditoría adentro de `ExceptionMiddleware` perdía justo los 409 y los 500;
+  y que **`config.GetValue<int?>` lanza** ante un valor que no entiende, con lo cual un typo
+  en una env var habría tumbado la API al arrancar.
+- **Lo que M.8 no cubre, y quedó escrito en vez de tapado:** el login y la edge function
+  `create-user` son superficie de Supabase, no de Geocore; las lecturas fuera de `api/admin`
+  no tienen techo; el estado del limitador vive en el proceso, así que con más de una
+  instancia el techo se multiplica; y los assets de un MosaicJSON siguen sin pasar por la
+  comparación de tenant (T-3).
+
+**👥 Queda una cosa de producción:** aplicar la migración de `audit_log`
+(`geocore/docs/sql/2026-09-21_RegistroDeAuditoria.sql`), sobre la base de **identidad**. Hasta
+entonces cada acción privilegiada deja un `LogError` en Railway en vez de una fila, y la API
+sigue funcionando.
 
 **M.8.2 hecha el 2026-09-15** (sesión 3, Geocore#7, `DECISIONS #26` de Geocore). La
 cadena JWT de `Program.cs` corre de verdad, y solo la clave es de prueba. Son 35 tests de
