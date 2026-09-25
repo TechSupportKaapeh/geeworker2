@@ -29,7 +29,7 @@ from dataclasses import dataclass
 
 from pipeline.estadisticas import ESTADISTICAS, claves_de_salida
 from pipeline.indices import BANDAS, INDICES
-from pipeline.ventanas import AGRUPAMIENTOS, ENTERO
+from pipeline.ventanas import AGRUPAMIENTOS, ENTERO, POR_PASADA
 
 # Va en la columna `receta` de cada fila: minúsculas, dígitos y guiones.
 _VERSION = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
@@ -51,8 +51,17 @@ class Receta:
         indices: nombres de ``INDICES``.
         estadisticas: nombres de ``ESTADISTICAS``.
         cobertura_minima: la fracción de la parcela, de 0 a 1, con al menos una
-            observación limpia en el mes. Por debajo, ``valor`` queda nulo y la
-            fila se escribe igual (``ARQUITECTURA`` §6).
+            observación limpia en la ventana. Qué se hace con ella lo decide
+            :attr:`umbral_al_escribir`.
+        umbral_al_escribir: si una observación por debajo de
+            :attr:`cobertura_minima` se guarda con ``valor`` nulo. ``True`` es lo
+            que hizo el pipeline siempre (``ARQUITECTURA`` §6); ``False`` guarda
+            el valor igual y deja el umbral para quien lee (``DECISIONS #63``).
+
+            **Descartar al escribir es una reducción con pérdida que no se puede
+            deshacer**: el día que 0,3 resulte mal puesto, con ``False`` se cambia
+            el número y con ``True`` se reprocesa el histórico. La fila lleva su
+            cobertura en las dos, así que filtrar al leer es un ``WHERE``.
         meses_historico: cuántos meses cerrados trae un alta.
         escala_m: el tamaño de píxel. Es uno solo para el compuesto, el mapa y
             las estadísticas (``ARQUITECTURA`` §8.5).
@@ -98,6 +107,7 @@ class Receta:
     indices: tuple[str, ...]
     estadisticas: tuple[str, ...]
     cobertura_minima: float
+    umbral_al_escribir: bool
     meses_historico: int
     escala_m: int
     remuestreo: str
@@ -273,4 +283,30 @@ RECETA_VIGENTE = Receta(
     # de re-fijarla sin subir la versión está en `tests/test_pipeline_receta.py`.
     agrupamiento_estadisticas=ENTERO,
     agrupamiento_raster=ENTERO,
+    # Lo que v1 hizo siempre. M.9.0c lo saca en v2, no acá.
+    umbral_al_escribir=True,
+)
+
+
+# Receta v2 (M.9.0c, `DECISIONS #63` y `#66`). **No es la vigente**: existe,
+# tiene tests y se verificó contra GEE, pero las altas y el cierre de mes siguen
+# escribiendo con v1. El cambio de vigente es su propia decisión, y va **después**
+# de que `/api/measurements` sepa agregar y el panel sepa dibujarlo — es la regla
+# de despliegue de M.8.1, con el que lee en el lugar del que exige: si el worker
+# empezara antes, habría filas que nadie sabe leer.
+#
+# Contra v1 cambian exactamente dos cosas, y las dos salieron de M.9.0:
+#
+# - **las estadísticas se agrupan por pasada** en vez de por mes. La mediana de
+#   3 pasadas limpias por mes que midió M.9.0 es lo que hace que valga la pena, y
+#   el `0 de 72` —ningún mes llega al umbral con todas sus pasadas por debajo— es
+#   lo que dice que no se pierde ninguno (`#66`);
+# - **el umbral deja de descartar al escribir**.
+#
+# **El ráster sigue mensual** (`#63`): los motivos de `#31` no cambiaron.
+RECETA_POR_PASADA = dataclasses.replace(
+    RECETA_VIGENTE,
+    version="s2-pasada-v2",
+    agrupamiento_estadisticas=POR_PASADA,
+    umbral_al_escribir=False,
 )

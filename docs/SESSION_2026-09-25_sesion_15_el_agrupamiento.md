@@ -124,3 +124,58 @@ ventana y las dos entran en la misma `natural_key`.
 | `ruff check pipeline/` y `ruff format --check pipeline/` | limpios |
 | `ruff check --select BLE .` | limpio |
 | `scripts/check_pipeline_real.py --pasadas` | corrido contra GEE después del refactor, mismos números |
+
+---
+
+# Y después: M.9.0c, la mitad del worker
+
+> **geeworker2#74**, `DECISIONS #69`. `s2-pasada-v2` existe, está verificada contra GEE y
+> **no es la vigente**. Producción no cambia.
+
+## Lo que entró
+
+La receta v2 es **v1 con dos campos cambiados y ninguno más** —hay un test que lo fija—:
+`agrupamiento_estadisticas: por_pasada` y `umbral_al_escribir: False`. El ráster sigue mensual
+en las dos.
+
+`umbral_al_escribir` es un **campo de la receta** y no una rama en `filas.py`: así entra en la
+huella y queda escrito por receta. Descartar al escribir es la reducción con pérdida que no se
+puede deshacer.
+
+Y entró el arreglo que M.9.0b había dejado anotado: **el filtro de fecha de la colección de
+nubes pasa a ser un superconjunto del pedido**, un día de cada lado. Quien decide qué escena
+entra es el join por `system:index`, que es exacto.
+
+## Dos cosas que se midieron antes de darlas por buenas
+
+**El arreglo del filtro se aplicó a las dos recetas**, porque era un bug y no una diferencia de
+receta: una escena de los primeros minutos de un mes tenía su imagen de nubes en el mes anterior
+y se descartaba entera. La condición para hacerlo era medir el efecto sobre v1, y se midió:
+**576 escenas unidas antes, 576 después, 0 meses en que cambie algo** sobre 3 parcelas reales ×
+24 meses. Con el paso a las 15:11 UTC ninguna escena cae en los primeros minutos de un mes.
+
+**Y el control negativo de siempre**, contra el `main` de ahora: las 129 entradas, idénticas.
+Cubre las dos cosas que podían haber movido v1 sin querer — el filtro ancho y el campo nuevo.
+
+## Lo que se ve al correrlo contra GEE, y conviene saber antes del switch
+
+| Mes | Pasadas | Qué salió |
+|---|---|---|
+| 2026-07 | 9 | 36 filas, 36 claves distintas |
+| 2025-02 | 5 | 20 filas. NDVI de 0,443 a **0,107** dentro del mes — el evento que la mediana mensual (0,377) borra |
+| 2026-05 | 10 | 40 filas, **todas sin valor** |
+
+El último es el costo concreto de «por pasada puro»: **un mes enteramente nublado pasa de 4
+filas a 40**, todas con cobertura 0. Entra en la estimación de `#63` y es información —«hubo una
+pasada el día 3 y no sirvió» no es «no hubo pasada»—, pero es lo que hay que tener a la vista
+antes de poner v2 vigente.
+
+Armar las ventanas cuesta **una sola llamada** a GEE, la de `fechas_de`.
+
+## Lo que falta
+
+`/api/measurements` tiene que agregar, con **`mensual` por defecto**: eso es lo que hace que
+poner v2 vigente **no rompa el panel de hoy**, y es la regla de M.8.1 con el que lee en el lugar
+del que exige. El número mensual es la **mediana de las medianas por pasada**, que es la que
+`#66` ya midió. Va con SQL crudo, porque `percentile_cont` no lo traduce EF Core y agregar en
+memoria pediría traer ~3.800 filas contra un techo de 2.000.

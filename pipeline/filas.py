@@ -10,9 +10,12 @@ y la fila es exactamente la misma de antes.
   índices. Sobre un pedido mensual eso es el día 1 a las 00:00, que es lo que se
   venía escribiendo; con ``por_pasada`` sería el instante de la adquisición, y
   por eso la clave ``(parcela, índice, fecha)`` sirve sin migrar (``#63``);
-- ``valor`` es la mediana, **o nulo si la cobertura quedó bajo el mínimo de la
-  receta**. La fila se escribe igual: el front dibuja el hueco (B-6), y el cierre
-  de mes sabe que ese mes ya se procesó;
+- ``valor`` es la mediana. Con ``receta.umbral_al_escribir``, queda **nulo si la
+  cobertura no llegó al mínimo** y la fila se escribe igual: el front dibuja el
+  hueco (B-6), y el cierre de mes sabe que ese mes ya se procesó. Sin él —que es
+  lo que hace ``s2-pasada-v2``— el valor va siempre y **el umbral es de quien
+  lee** (``DECISIONS #63``). La fila lleva su ``cobertura`` en las dos, así que
+  filtrar al leer es un ``WHERE``;
 - ``estadisticas`` va siempre, aunque ``valor`` sea nulo. Son los números que se
   calcularon, y descartarlos es perder información que ya se pagó. Quien los
   use filtra por ``valor`` o por ``cobertura``: la métrica del rancho ya lo hace
@@ -38,13 +41,14 @@ ESTADISTICA_VALOR = "mediana"
 
 
 @dataclass(frozen=True, slots=True)
-class FilaMensual:
+class Fila:
     """Una fila de ``measurements``, con los nombres de sus columnas.
 
-    Sigue llamándose ``FilaMensual`` porque es lo que la tabla guarda hoy: con
-    ``entero`` sobre un pedido mensual, cada fila es un mes. El nombre se cambia
-    cuando cambie el dato, en M.9.0c, y no antes: renombrarlo acá tocaría el
-    repositorio y los tests sin que ninguna fila cambiara.
+    Se llamaba ``FilaMensual`` hasta M.9.0c, y dejó de ser cierto: con
+    ``s2-pasada-v2`` una fila es una pasada. Lo que no cambia es que
+    :attr:`fecha` es el primer instante de su ventana, así que la clave
+    ``(parcela, índice, fecha)`` sirve para las dos sin migrar (``DECISIONS
+    #63``).
     """
 
     parcela_id: str
@@ -78,7 +82,7 @@ def filas_de(
     ventana: Ventana,
     reduccion: Reduccion,
     receta: Receta,
-) -> tuple[FilaMensual, ...]:
+) -> tuple[Fila, ...]:
     """Las filas de una parcela en una ventana, una por índice de la receta.
 
     Raises:
@@ -97,7 +101,11 @@ def filas_de(
 
     cobertura = _finito(reduccion.cobertura, "cobertura")
     observaciones = _finito(reduccion.observaciones, "observaciones")
-    alcanza = cobertura is not None and cobertura >= receta.cobertura_minima
+    # Sin `umbral_al_escribir` el valor va siempre: descartar acá es una reducción
+    # con pérdida antes de guardar, y es la que no se puede deshacer.
+    alcanza = not receta.umbral_al_escribir or (
+        cobertura is not None and cobertura >= receta.cobertura_minima
+    )
 
     filas = []
     for indice in receta.indices:
@@ -106,7 +114,7 @@ def filas_de(
             for nombre, valor in reduccion.estadisticas[indice].items()
         }
         filas.append(
-            FilaMensual(
+            Fila(
                 parcela_id=parcela_id,
                 tenant_id=tenant_id,
                 indice=indice,

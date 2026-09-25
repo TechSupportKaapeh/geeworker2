@@ -20,7 +20,7 @@ sys.path.insert(0, str(RAIZ))
 import pipeline.receta as modulo_receta
 from pipeline.estadisticas import ESTADISTICAS, Estadistica, Tipo
 from pipeline.indices import INDICES, Indice
-from pipeline.receta import RECETA_VIGENTE
+from pipeline.receta import RECETA_POR_PASADA, RECETA_VIGENTE
 from pipeline.registro import registro
 
 # Una linea por version. Si este test sale rojo porque cambiaste un parametro:
@@ -61,8 +61,20 @@ from pipeline.registro import registro
 #     control negativo de M.9.0b, que comparo las filas de 24 meses x 4 coberturas
 #     y 9 meses de parcela contra GEE, antes y despues, y dieron identicas
 #     (`DECISIONS #67`).
+#   - 2026-09-25 (M.9.0c): se sumo `umbral_al_escribir`, en `True`, que es lo que
+#     v1 hizo siempre. Mismo caso que el anterior: un supuesto que estaba en el
+#     codigo paso a estar en la receta, con el valor que ya tenia, y **ningun
+#     numero cambia**. Lo prueba el control negativo de M.9.0c, que comparo las
+#     mismas 129 entradas contra el codigo de `main` (`DECISIONS #68`).
+#     4a4f24dab9075e4f7d9868e6368b19e972bc6b15dd1fefca66c5e70dc8efa161
+#
+# Y desde M.9.0c hay una SEGUNDA receta, `s2-pasada-v2`. **No es la vigente**:
+# existe, tiene tests y se verifico contra GEE, pero las altas y el cierre siguen
+# escribiendo con v1. Su huella se fija igual, porque el dia que se use va a
+# escribir filas y ahi si queda congelada.
 HUELLAS = {
-    "s2-mensual-v1": "b61d454f646393e29e6983a4752a0f57e8b162e3c6805f3cfb48dd848b04662f",
+    "s2-mensual-v1": "4a4f24dab9075e4f7d9868e6368b19e972bc6b15dd1fefca66c5e70dc8efa161",
+    "s2-pasada-v2": "ca953783ff1b487cf38e0175cbf10aed93f5ba5b10f1a77425fd5771a0d482fd",
 }
 
 # Un cambio por campo de Receta, salvo la version. Si se suma un campo, tiene
@@ -73,6 +85,7 @@ CAMBIOS = {
     "indices": ("ndvi", "evi", "ndre"),
     "estadisticas": ("mediana", "media", "min", "max", "p10", "p90"),
     "cobertura_minima": 0.31,
+    "umbral_al_escribir": False,
     "meses_historico": 25,
     "agrupamiento_estadisticas": "por_pasada",
     "agrupamiento_raster": "por_pasada",
@@ -91,12 +104,44 @@ CAMBIOS = {
 # --- La huella fijada -----------------------------------------------------
 
 
-def test_la_huella_de_la_receta_vigente_esta_fijada():
-    assert RECETA_VIGENTE.version in HUELLAS, "version nueva sin huella en HUELLAS"
-    assert RECETA_VIGENTE.huella() == HUELLAS[RECETA_VIGENTE.version], (
-        "cambio el contenido de la receta sin cambiar la version: subi la version "
+@pytest.mark.parametrize("receta", [RECETA_VIGENTE, RECETA_POR_PASADA])
+def test_la_huella_de_cada_receta_esta_fijada(receta):
+    assert receta.version in HUELLAS, "version nueva sin huella en HUELLAS"
+    assert receta.huella() == HUELLAS[receta.version], (
+        f"{receta.version} cambio de parametros: subi la version "
         "y agrega su huella a HUELLAS"
     )
+
+
+def test_las_dos_recetas_de_verdad_no_comparten_huella():
+    """v1 y v2 difieren en dos campos, y los dos entran en la huella."""
+    assert RECETA_VIGENTE.huella() != RECETA_POR_PASADA.huella()
+
+
+def test_v2_es_v1_con_dos_cambios_y_nada_mas():
+    """Lo que hace que la comparacion entre las dos signifique algo."""
+    distintos = {
+        campo.name
+        for campo in dataclasses.fields(RECETA_VIGENTE)
+        if getattr(RECETA_VIGENTE, campo.name) != getattr(RECETA_POR_PASADA, campo.name)
+    }
+    assert distintos == {"version", "agrupamiento_estadisticas", "umbral_al_escribir"}
+
+
+def test_v2_deja_el_raster_mensual():
+    """`DECISIONS #63`: los motivos de `#31` para el raster no cambiaron."""
+    assert RECETA_POR_PASADA.agrupamiento_raster == RECETA_VIGENTE.agrupamiento_raster
+
+
+def test_la_vigente_sigue_siendo_v1():
+    """M.9.0c escribe v2 pero NO la pone a correr.
+
+    El que lee se despliega primero: `/api/measurements` tiene que saber agregar
+    y el panel dibujarlo antes de que existan filas por pasada. Es la regla de
+    M.8.1 con el que lee en el lugar del que exige.
+    """
+    assert RECETA_VIGENTE.version == "s2-mensual-v1"
+    assert RECETA_VIGENTE.umbral_al_escribir is True
 
 
 def test_dos_versiones_no_comparten_huella():
