@@ -207,3 +207,44 @@ def test_un_pedido_que_no_entra_falla_en_vez_de_bajar_la_escala(gee_inicializado
 
     with pytest.raises(ee.EEException, match="Too many pixels|maxPixels"):
         reduccion.valores(mes, roi, RECETA_VIGENTE).getInfo()
+
+
+# --- El ruido de float de `observaciones` ---------------------------------
+
+
+def test_las_observaciones_pierden_el_ruido_de_float():
+    """GEE devuelve `n_obs` en float32 y el paso a float64 inventa decimales.
+
+    En la base habia `2.9999999999999947` donde el numero es 3, en la columna
+    `observaciones` de `measurements` y en el `estadisticas` de `layers`.
+    """
+    leida = reduccion.leer(_respuesta(observaciones=2.9999999999999947), RECETA_VIGENTE)
+
+    assert leida.observaciones == 3.0
+
+
+def test_un_entero_y_medio_sobrevive():
+    """El control del arreglo: `n_obs` es una cuenta, pero su MEDIANA no.
+
+    Redondear a entero seria perder un valor legitimo. Con tres decimales no se
+    pierde ninguno, y por eso redondear aca es exacto y no una aproximacion.
+    """
+    leida = reduccion.leer(_respuesta(observaciones=2.5), RECETA_VIGENTE)
+
+    assert leida.observaciones == 2.5
+
+
+def test_las_estadisticas_de_los_indices_no_se_redondean():
+    """Solo `observaciones` se redondea: los indices tienen decimales de verdad."""
+    fino = 0.6072839472847362
+    leida = reduccion.leer(_respuesta(valor=fino), RECETA_VIGENTE)
+
+    assert leida.estadisticas["ndvi"]["mediana"] == fino
+
+
+def test_sin_observaciones_sigue_siendo_none():
+    leida = reduccion.leer(
+        _respuesta(valor=None, cobertura=0.0, observaciones=None), RECETA_VIGENTE
+    )
+
+    assert leida.observaciones is None
