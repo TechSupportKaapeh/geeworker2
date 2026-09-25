@@ -44,10 +44,11 @@ from typing import Any, Final
 import inngest
 from pipeline import ejecucion
 from pipeline.claves import claves_cog_adhoc, claves_cog_parcela_a_demanda
-from pipeline.ejecucion import reduccion_del_mes, url_de_descarga
-from pipeline.periodos import Mes, rango
-from pipeline.productos import mapa_del_mes
+from pipeline.ejecucion import reduccion_de, url_de_descarga
+from pipeline.periodos import Mes
+from pipeline.productos import mapa_de
 from pipeline.receta import RECETA_VIGENTE, Receta
+from pipeline.ventanas import Ventana, del_mes
 from repositories.db_repository import insert_layer
 from services.avance_job import AVISO, paso, reportar
 from services.ee.ee_client import init_ee
@@ -93,7 +94,7 @@ def _indice_pedido(payload: dict, receta: Receta) -> str:
 
 
 def _claves_del_pedido(
-    *, payload: dict, tenant_id: str, receta: Receta, indice: str, mes: Mes
+    *, payload: dict, tenant_id: str, receta: Receta, indice: str, ventana: Ventana
 ) -> tuple[Any, str | None]:
     """Las claves de la capa y el ``parcela_id`` de la fila (``None`` si es libre).
 
@@ -109,7 +110,7 @@ def _claves_del_pedido(
                 parcela_id=parcela_id,
                 receta=receta,
                 indice=indice,
-                mes=mes,
+                ventana=ventana,
             )
             return claves, parcela_id
         claves = claves_cog_adhoc(
@@ -117,7 +118,7 @@ def _claves_del_pedido(
             job_id=requerido(payload, "jobId"),
             receta=receta,
             indice=indice,
-            mes=mes,
+            ventana=ventana,
         )
     except (TypeError, ValueError) as error:
         msg = f"el evento no trae ids válidos para la key del mapa: {error}"
@@ -129,7 +130,7 @@ def _registrar(  # noqa: PLR0913 - una fila de `layers`, todo por nombre
     *,
     claves: Any,  # noqa: ANN401 - una ClavesDeCapa
     indice: str,
-    mes: Mes,
+    ventana: Ventana,
     tenant_id: str,
     parcela_id: str | None,
     bbox: list[float] | None,
@@ -141,12 +142,11 @@ def _registrar(  # noqa: PLR0913 - una fila de `layers`, todo por nombre
     Corre también cuando el objeto ya estaba en el bucket: si existía sin su fila
     —o la fila apuntaba a otro lado— hay que registrarla igual.
     """
-    inicio, _ = rango(mes)
     insert_layer(
         natural_key=claves.natural_key,
         product=indice,
         storage_key=claves.storage_key,
-        acquired_ts=inicio,
+        acquired_ts=ventana.inicio,
         ingested_ts=datetime.now(UTC),
         tenant_id=tenant_id,
         parcela_id=parcela_id,
@@ -167,9 +167,17 @@ def generar_mapa(payload: dict) -> dict[str, Any]:
     receta = RECETA_VIGENTE
     tenant_id = requerido(payload, "tenantId")
     mes = _mes_pedido(payload)
+    # El mapa a demanda es de UN mes, por decisión del usuario, así que su ventana
+    # es la del mes y no la que diga `agrupamiento_raster`: que la receta parta el
+    # mes para el ráster sistemático no cambia lo que alguien pide a mano.
+    ventana = del_mes(mes)
     indice = _indice_pedido(payload, receta)
     claves, parcela_id = _claves_del_pedido(
-        payload=payload, tenant_id=tenant_id, receta=receta, indice=indice, mes=mes
+        payload=payload,
+        tenant_id=tenant_id,
+        receta=receta,
+        indice=indice,
+        ventana=ventana,
     )
 
     reportar(
@@ -184,7 +192,7 @@ def generar_mapa(payload: dict) -> dict[str, Any]:
     roi = coords_to_geometry(requerido(payload, "coordinates"))
 
     with errores_de_gee(mes, "este polígono"), ejecucion.contando() as conteo:
-        reduccion = reduccion_del_mes(roi, mes, receta)
+        reduccion = reduccion_de(roi, ventana, receta)
         if reduccion.cobertura == 0:
             # Igual que el mapa del rancho (`DECISIONS #51`). Antes se subía un
             # ráster entero de ceros, que se dibujaba como suelo desnudo.
@@ -221,7 +229,7 @@ def generar_mapa(payload: dict) -> dict[str, Any]:
             _registrar(
                 claves=claves,
                 indice=indice,
-                mes=mes,
+                ventana=ventana,
                 tenant_id=tenant_id,
                 parcela_id=parcela_id,
                 bbox=None,
@@ -237,7 +245,7 @@ def generar_mapa(payload: dict) -> dict[str, Any]:
 
         reportar(ETAPA, "Calculando la imagen en GEE", progreso=20, mes=str(mes))
         url = url_de_descarga(
-            mapa_del_mes(roi, mes, receta, indice).unmask(
+            mapa_de(roi, ventana, receta, indice).unmask(
                 NODATA_COG, sameFootprint=False
             ),
             parametros_del_mapa(roi, receta),
@@ -248,7 +256,7 @@ def generar_mapa(payload: dict) -> dict[str, Any]:
     _registrar(
         claves=claves,
         indice=indice,
-        mes=mes,
+        ventana=ventana,
         tenant_id=tenant_id,
         parcela_id=parcela_id,
         bbox=bbox,

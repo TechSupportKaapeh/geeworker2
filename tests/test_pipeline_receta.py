@@ -45,8 +45,24 @@ from pipeline.registro import registro
 #     erosion de 2 px y acotar los indices. **Esta vez los numeros si cambian**, y
 #     aun asi se re-fija v1 en vez de pasar a v2, porque la regla de `#36` es la
 #     primera fila escrita, y M.4.3 todavia no escribio ninguna.
+#   - 2026-09-24 (M.9.0b): se sumaron `agrupamiento_estadisticas` y
+#     `agrupamiento_raster`, los dos en `entero`, que es **exactamente** lo que el
+#     codigo hacia cableado. Ningun numero cambia.
+#     b61d454f646393e29e6983a4752a0f57e8b162e3c6805f3cfb48dd848b04662f
+#
+#     **Esta vez v1 YA escribio filas** —desde el 2026-09-19, en produccion—, asi
+#     que la regla de `#36` decia que tocaba v2. Se re-fija igual, y es una
+#     decision del usuario del 2026-09-24. El porque: lo que la regla protege es
+#     que no se pueda mirar un numero guardado y no saber con que parametros
+#     salio, y aca **ningun numero se movio** — un supuesto implicito paso a estar
+#     escrito, con el valor que ya tenia. Pasar a v2 habria dejado filas v1 y v2
+#     con numeros identicos en la misma tabla, que es peor para esa misma
+#     pregunta. La prueba de que no se movio nada no es este comentario: es el
+#     control negativo de M.9.0b, que comparo las filas de 24 meses x 4 coberturas
+#     y 9 meses de parcela contra GEE, antes y despues, y dieron identicas
+#     (`DECISIONS #67`).
 HUELLAS = {
-    "s2-mensual-v1": "75dbb738dd2a69a30c89107b7cb55b1192b5bd4030f368b9f5b185099c42a352",
+    "s2-mensual-v1": "b61d454f646393e29e6983a4752a0f57e8b162e3c6805f3cfb48dd848b04662f",
 }
 
 # Un cambio por campo de Receta, salvo la version. Si se suma un campo, tiene
@@ -58,6 +74,8 @@ CAMBIOS = {
     "estadisticas": ("mediana", "media", "min", "max", "p10", "p90"),
     "cobertura_minima": 0.31,
     "meses_historico": 25,
+    "agrupamiento_estadisticas": "por_pasada",
+    "agrupamiento_raster": "por_pasada",
     "escala_m": 20,
     "remuestreo": "bilinear",
     "nubes_max_prob": 50,

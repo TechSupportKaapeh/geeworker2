@@ -97,11 +97,13 @@ def mundo(monkeypatch):
         estado["bitacora"].append({"etapa": stage, "nivel": level, "mensaje": message,
                                    "detalle": detail or {}, "progreso": progress})
 
-    def _estadisticas_del_mes(roi, mes, receta):
-        estado["pedidos"].append(str(mes))
+    def _estadisticas_de(roi, ventana, receta):
+        # `ventana.etiqueta` de una ventana mensual es el mismo `AAAA-MM` que antes
+        # era `str(mes)`.
+        estado["pedidos"].append(ventana.etiqueta)
         return _Expresion(estado["gee"])
 
-    monkeypatch.setattr(ejecucion, "estadisticas_del_mes", _estadisticas_del_mes)
+    monkeypatch.setattr(ejecucion, "estadisticas_de", _estadisticas_de)
     monkeypatch.setattr(avance_job, "registrar_evento_job", _registrar)
     monkeypatch.setattr(db_repository, "update_processing_job",
                         lambda job_id, status, **kw: estado["jobs"].append((status, kw)))
@@ -109,7 +111,7 @@ def mundo(monkeypatch):
     monkeypatch.setattr(mapa, "init_ee", lambda: None)
     monkeypatch.setattr(mapa, "coords_to_geometry", lambda c: "roi")
     monkeypatch.setattr(
-        mapa, "mapa_del_mes",
+        mapa, "mapa_de",
         lambda *a, **k: type("Img", (), {"unmask": lambda self, *a, **k: self})(),
     )
     monkeypatch.setattr(mapa, "url_de_descarga", lambda *a, **k: "https://gee/descarga.tif")
@@ -163,11 +165,12 @@ def test_el_mapa_de_una_parcela_no_pisa_el_del_rancho(mundo):
     """Comparten forma de key y podrían compartir mes e índice, pero no fila."""
     from pipeline.claves import claves_cog_mensual
     from pipeline.periodos import Mes
+    from pipeline.ventanas import del_mes
 
     _correr(_Step())
     del_rancho = claves_cog_mensual(
         tenant_id=TENANT, rancho_id=PARCELA, receta=RECETA_VIGENTE,
-        indice="ndvi", mes=Mes(2026, 8),
+        indice="ndvi", ventana=del_mes(Mes(2026, 8)),
     )
     assert mundo["capas"][0]["natural_key"] != del_rancho.natural_key
     assert mundo["capas"][0]["storage_key"] != del_rancho.storage_key

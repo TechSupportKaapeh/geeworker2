@@ -33,10 +33,11 @@ from typing import Any
 import inngest
 from pipeline import ejecucion
 from pipeline.claves import claves_cog_mensual
-from pipeline.ejecucion import reduccion_del_mes, url_de_descarga
-from pipeline.periodos import Mes, rango
-from pipeline.productos import mapa_del_mes
+from pipeline.ejecucion import reduccion_de, url_de_descarga
+from pipeline.periodos import Mes
+from pipeline.productos import mapa_de
 from pipeline.receta import RECETA_VIGENTE, Receta
+from pipeline.ventanas import Ventana, agrupamiento, del_mes
 from repositories.db_repository import insert_layer
 from services.avance_job import AVISO, paso, reportar
 from services.ee.ee_client import init_ee
@@ -86,6 +87,43 @@ def _estadisticas_de_la_capa(reduccion: Any, indice: str) -> dict[str, float | N
     }
 
 
+def _la_unica_ventana(rancho_id: str, mes: Mes, receta: Receta) -> Ventana:
+    """La ventana del ráster del mes, y la garantía de que es una sola.
+
+    **El ráster sigue siendo mensual** (``DECISIONS #63``): los motivos de ``#31``
+    —146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile— no cambiaron.
+    Por eso acá se lee ``agrupamiento_raster`` de la receta, se arma su ventana, y
+    **se exige que sea una**.
+
+    No se generaliza a N ventanas a propósito. Este es el camino más caro y más
+    frágil del worker —descarga, conversión a COG y subida—, y un bucle cuyo N es
+    siempre 1 sería código que nadie ejecuta hasta que alguien cambie la receta, y
+    que fallaría justo ahí. Prefiero que la receta que pida un ráster por pasada
+    se encuentre con este error, que dice qué falta hacer, antes que con un camino
+    nunca probado. Escribirlo es su propia tarea.
+
+    **No le pregunta nada a GEE**, y por eso se resuelve acá y no con
+    ``ventanas_de``: un agrupamiento que necesita las fechas de las pasadas no
+    puede dar una sola ventana por mes, así que se rechaza sin gastar una llamada
+    —y sin necesitar el ROI, que en este punto todavía no se armó—.
+
+    Raises:
+        inngest.NonRetriableError: si la receta no parte el mes en exactamente una
+            ventana para el ráster. Reintentarlo daría lo mismo: es la receta.
+    """
+    modo = agrupamiento(receta.agrupamiento_raster)
+    ventanas = () if modo.necesita_fechas else modo.partir(del_mes(mes), ())
+    if len(ventanas) != 1:
+        msg = (
+            f"la receta {receta.version} pide el ráster con agrupamiento "
+            f"{receta.agrupamiento_raster!r}, que no da una sola ventana por mes; "
+            f"el mapa del rancho {rancho_id} es de una sola "
+            f"(DECISIONS #63: el ráster sigue siendo mensual)"
+        )
+        raise inngest.NonRetriableError(msg)
+    return ventanas[0]
+
+
 def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     *,
     rancho_id: str,
@@ -109,6 +147,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     """
     t0 = time.monotonic()
     indices = indices_del_mapa(receta)
+    ventana = _la_unica_ventana(rancho_id, mes, receta)
     # Las claves primero, las de **todos** los índices: validan los uuid antes de
     # pedirle nada a GEE. Un id que no es un uuid no se arregla reintentando.
     try:
@@ -118,7 +157,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
                 rancho_id=rancho_id,
                 receta=receta,
                 indice=indice,
-                mes=mes,
+                ventana=ventana,
             )
             for indice in indices
         }
@@ -130,7 +169,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     progreso = entre(PROGRESO_PLAN, PROGRESO_MESES, posicion, total)
 
     with errores_de_gee(mes, "este rancho"), ejecucion.contando() as conteo:
-        reduccion = reduccion_del_mes(roi, mes, receta)
+        reduccion = reduccion_de(roi, ventana, receta)
         if reduccion.cobertura == 0:
             reportar(
                 f"mes-{mes}",
@@ -149,7 +188,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
         parametros = parametros_del_mapa(roi, receta)
         urls = {
             indice: url_de_descarga(
-                mapa_del_mes(roi, mes, receta, indice).unmask(
+                mapa_de(roi, ventana, receta, indice).unmask(
                     NODATA_COG, sameFootprint=False
                 ),
                 parametros,
@@ -157,7 +196,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
             for indice in indices
         }
 
-    inicio, _ = rango(mes)
+    inicio = ventana.inicio
     subidos: list[str] = []
     megas_total = 0.0
     # Uno por uno, y cada uno con su fila: si el step se reintenta, las keys son las

@@ -15,9 +15,10 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 from pipeline.etapas.reduccion import Reduccion
-from pipeline.filas import filas_del_mes
+from pipeline.filas import filas_de
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
+from pipeline.ventanas import del_mes
 from repositories import db_repository
 
 PARCELA = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
@@ -78,7 +79,7 @@ def _filas(cobertura=0.9, mediana=0.61):
         estadisticas=dict.fromkeys(RECETA_VIGENTE.indices, estadisticas),
         cobertura=cobertura, observaciones=4.0,
     )
-    return filas_del_mes(parcela_id=PARCELA, tenant_id=TENANT, mes=Mes(2025, 9),
+    return filas_de(parcela_id=PARCELA, tenant_id=TENANT, ventana=del_mes(Mes(2025, 9)),
                          reduccion=reduccion, receta=RECETA_VIGENTE)
 
 
@@ -148,7 +149,7 @@ def test_si_la_base_rechaza_el_lote_hace_rollback_y_devuelve_la_conexion(
 
 
 def test_el_json_rechaza_nan():
-    """Defensa en el borde: `filas_del_mes` ya los rechaza, pero no es el unico camino."""
+    """Defensa en el borde: `filas_de` ya los rechaza, pero no es el unico camino."""
     estricto = db_repository._json_estricto({"mediana": float("nan")})
     with pytest.raises(ValueError, match="JSON"):
         estricto.dumps(estricto.adapted)

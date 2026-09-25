@@ -11,9 +11,10 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 from pipeline.etapas.reduccion import Reduccion
-from pipeline.filas import filas_del_mes
+from pipeline.filas import filas_de
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
+from pipeline.ventanas import Ventana, del_mes
 
 PARCELA = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
 TENANT = "7f3c2a10-5b6d-4e8f-9a01-23456789abcd"
@@ -36,10 +37,10 @@ def _reduccion(cobertura=0.95, observaciones=4.0, mediana=0.61):
 
 def _filas(**cambios):
     argumentos = {
-        "parcela_id": PARCELA, "tenant_id": TENANT, "mes": Mes(2025, 9),
+        "parcela_id": PARCELA, "tenant_id": TENANT, "ventana": del_mes(Mes(2025, 9)),
         "reduccion": _reduccion(), "receta": RECETA_VIGENTE,
     }
-    return filas_del_mes(**(argumentos | cambios))
+    return filas_de(**(argumentos | cambios))
 
 
 def test_una_fila_por_indice_de_la_receta():
@@ -121,4 +122,20 @@ def test_rechaza_una_receta_sin_mediana():
 
 def test_los_argumentos_van_por_nombre():
     with pytest.raises(TypeError):
-        filas_del_mes(PARCELA, TENANT, Mes(2025, 9), _reduccion(), RECETA_VIGENTE)
+        filas_de(PARCELA, TENANT, del_mes(Mes(2025, 9)), _reduccion(), RECETA_VIGENTE)
+
+
+def test_la_fecha_es_el_inicio_de_la_ventana_y_no_el_del_mes():
+    """M.9.0b: la fila ya no calcula el mes, usa la ventana que le dan.
+
+    Con una ventana que no empieza donde empieza su mes —lo que va a producir
+    `por_pasada`— la fecha tiene que ser la de la ventana. Antes de M.9.0b esto
+    era imposible de expresar: `filas_del_mes` derivaba la fecha del mes.
+    """
+    instante = datetime(2025, 9, 17, 15, 42, tzinfo=UTC)
+    pasada = Ventana(
+        etiqueta="2025-09-17T15:42Z",
+        inicio=instante,
+        fin=datetime(2025, 9, 17, 15, 43, tzinfo=UTC),
+    )
+    assert {f.fecha for f in _filas(ventana=pasada)} == {instante}

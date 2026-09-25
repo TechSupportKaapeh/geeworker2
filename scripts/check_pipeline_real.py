@@ -24,7 +24,7 @@ Los escalones de la compuerta:
    - que dividir por cero da 0 y no un error;
    - la clave de `reduceRegion` con **una** banda y varias salidas;
    - que `minMax` sale como `min` y `max`.
-5. **El COG de un rancho** (`--cog`): baja `mapa_del_mes`, lo convierte y lo
+5. **El COG de un rancho** (`--cog`): baja `mapa_de`, lo convierte y lo
    valida con `rio-cogeo`.
 
 Y aparte, con `--pasadas`:
@@ -160,10 +160,11 @@ def _parcelas_desde(carpeta: Path):
 def _mes_nuevo(roi, mes, receta):
     """Los numeros del pipeline para ese mes, y cuanto tardo."""
     from pipeline import ejecucion
+    from pipeline.ventanas import del_mes
 
     reloj = time.monotonic()
     with ejecucion.contando() as conteo:
-        leida = ejecucion.reduccion_del_mes(roi, mes, receta)
+        leida = ejecucion.reduccion_de(roi, del_mes(mes), receta)
     return leida, time.monotonic() - reloj, conteo.llamadas
 
 
@@ -310,6 +311,7 @@ def escalon_cog(parcelas, meses, receta, indice):
     from rio_cogeo.cogeo import cog_validate
 
     from pipeline import ejecucion, productos
+    from pipeline.ventanas import del_mes
     from services.cog_converter import convert_to_cog
     from services.ee.gee_download import descargar_a_archivo, parametros_de_descarga
 
@@ -317,7 +319,7 @@ def escalon_cog(parcelas, meses, receta, indice):
     mes = meses[0]
     print(f"\n  5. EL COG DEL MES  ({nombre}, {mes})\n")
 
-    mapa = productos.mapa_del_mes(roi, mes, receta, indice)
+    mapa = productos.mapa_de(roi, del_mes(mes), receta, indice)
     url = ejecucion.url_de_descarga(mapa, parametros_de_descarga(roi))
     destino = Path(convert_to_cog.__module__ and "_diagnostico") / f"m26_{nombre}_{mes}.tif"
     destino.parent.mkdir(exist_ok=True)
@@ -383,7 +385,7 @@ def _pasadas_del_mes(roi, mes, receta, indice):
 
     La expresion de las pasadas y la del compuesto se arman por separado a
     proposito, aunque compartan las tres primeras etapas: la del compuesto sale
-    de `compuesto_del_mes` **tal cual la usa produccion**. Reusar las pasadas de
+    de `compuesto_de` **tal cual la usa produccion**. Reusar las pasadas de
     aca para armar el compuesto seria reimplementar `compuesto()` en un script, y
     la columna de referencia dejaria de ser la de verdad. Es armado de
     expresiones, no calculo: sigue siendo un solo pedido.
@@ -393,9 +395,10 @@ def _pasadas_del_mes(roi, mes, receta, indice):
     from pipeline import ejecucion
     from pipeline.etapas import compuesto as etapa_compuesto
     from pipeline.etapas import fuente, nubes, reduccion
-    from pipeline.productos import compuesto_del_mes
+    from pipeline.productos import compuesto_de
+    from pipeline.ventanas import del_mes
 
-    escenas = fuente.coleccion(roi, mes, receta)
+    escenas = fuente.coleccion(roi, del_mes(mes), receta)
     limpias = escenas.map(lambda escena: nubes.enmascarar(ee.Image(escena), receta))
     pasadas = etapa_compuesto.por_pasada(limpias).map(
         lambda imagen: etapa_compuesto.indices_de(ee.Image(imagen), receta)
@@ -428,7 +431,7 @@ def _pasadas_del_mes(roi, mes, receta, indice):
             # mas (verificado el 2026-09-25). Con `toList` vuelve la lista entera.
             "pasadas": pasadas.toList(pasadas.size()).map(medir),
             "mensual": reduccion.valores(
-                compuesto_del_mes(roi, mes, receta), roi, receta
+                compuesto_de(roi, del_mes(mes), receta), roi, receta
             ),
         })
     )

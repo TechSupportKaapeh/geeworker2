@@ -91,9 +91,11 @@ def mundo(monkeypatch):
     estado = {"pedidos": [], "escrituras": [], "bitacora": [], "jobs": [],
               "gee": lambda mes: _respuesta_de_gee()}
 
-    def _estadisticas_del_mes(roi, mes, receta):
-        estado["pedidos"].append(str(mes))
-        return _Expresion(lambda: estado["gee"](str(mes)))
+    def _estadisticas_de(roi, ventana, receta):
+        # `ventana.etiqueta` de una ventana mensual es el mismo `AAAA-MM` que antes
+        # era `str(mes)`: lo que el doble graba no cambia con M.9.0b.
+        estado["pedidos"].append(ventana.etiqueta)
+        return _Expresion(lambda: estado["gee"](ventana.etiqueta))
 
     def _upsert(filas):
         filas = list(filas)
@@ -104,7 +106,7 @@ def mundo(monkeypatch):
         estado["bitacora"].append({"etapa": stage, "nivel": level, "mensaje": message,
                                    "detalle": detail or {}, "progreso": progress})
 
-    monkeypatch.setattr(ejecucion, "estadisticas_del_mes", _estadisticas_del_mes)
+    monkeypatch.setattr(ejecucion, "estadisticas_de", _estadisticas_de)
     monkeypatch.setattr(parcela, "init_ee", lambda: None)
     monkeypatch.setattr(parcela, "coords_to_geometry", lambda c: "roi")
     monkeypatch.setattr(altas, "hoy_utc", lambda: HOY)

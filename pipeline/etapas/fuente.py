@@ -1,4 +1,4 @@
-"""La fuente: Sentinel-2 del mes sobre el ROI, en reflectancia 0-1 (M.2.1).
+"""La fuente: Sentinel-2 de la ventana sobre el ROI, en reflectancia 0-1 (M.2.1).
 
 La primera etapa de ``ARQUITECTURA_PIPELINE.md`` §2. Arma una expresión y no la
 calcula (§3.3).
@@ -20,8 +20,8 @@ from typing import Final
 import ee
 
 from pipeline.indices import BANDAS, INDICES
-from pipeline.periodos import Mes, rango
 from pipeline.receta import Receta
+from pipeline.ventanas import Ventana
 
 # S2 SR guarda la reflectancia multiplicada por esto.
 ESCALA_REFLECTANCIA: Final = 10_000
@@ -58,35 +58,39 @@ def metodo_de_remuestreo(receta: Receta) -> str | None:
     return None if receta.remuestreo == "nearest" else receta.remuestreo
 
 
-def milisegundos(mes: Mes) -> tuple[int, int]:
-    """El intervalo ``[inicio, fin)`` del mes, en milisegundos desde la época.
+def milisegundos(ventana: Ventana) -> tuple[int, int]:
+    """El intervalo ``[inicio, fin)`` de la ventana, en milisegundos desde la época.
 
     Es lo que recibe ``filterDate``, con el fin excluido. Se pasan números y no
     ``datetime``: así no depende de cómo el cliente de ``ee`` convierte un
     ``datetime`` con huso.
+
+    Desde M.9.0b la ventana puede ser un mes, una pasada o cualquier intervalo:
+    esta etapa no necesita saber cuál. Es el único lugar del pipeline que mira
+    ``inicio`` y ``fin``.
     """
-    inicio, fin = rango(mes)
+    inicio, fin = ventana.inicio, ventana.fin
     return (
         int(inicio.timestamp()) * _MS_POR_SEGUNDO,
         int(fin.timestamp()) * _MS_POR_SEGUNDO,
     )
 
 
-def coleccion(roi: ee.Geometry, mes: Mes, receta: Receta) -> ee.ImageCollection:
-    """Las escenas de S2 del mes que tocan el ROI, listas para la máscara.
+def coleccion(roi: ee.Geometry, ventana: Ventana, receta: Receta) -> ee.ImageCollection:
+    """Las escenas de S2 de la ventana que tocan el ROI, listas para la máscara.
 
     Cada escena se une a su probabilidad de nube por ``system:index``. **Una
     escena sin probabilidad queda afuera:** sin ella no hay máscara, y una
     escena sin máscara mete nubes en la mediana. Es lo que hace
     ``ee.Join.saveFirst`` sin ``outer``, y lo que hacía la capa vieja.
 
-    No descarta escenas por nubosidad ni por cobertura del ROI. En un compuesto
-    mensual, una escena casi toda nublada aporta los píxeles que sí están limpios
-    (§8.2 y §8.3). La calidad se mide al final, con la cobertura del mes.
+    No descarta escenas por nubosidad ni por cobertura del ROI. En un compuesto,
+    una escena casi toda nublada aporta los píxeles que sí están limpios
+    (§8.2 y §8.3). La calidad se mide al final, con la cobertura de la ventana.
 
-    Un mes sin escenas da una colección vacía, no un error.
+    Una ventana sin escenas da una colección vacía, no un error.
     """
-    inicio, fin = milisegundos(mes)
+    inicio, fin = milisegundos(ventana)
     espectrales = list(bandas_espectrales(receta))
     remuestreo = metodo_de_remuestreo(receta)
 

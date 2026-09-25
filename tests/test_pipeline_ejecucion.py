@@ -12,8 +12,10 @@ import time
 import pytest
 
 from pipeline import ejecucion
+from pipeline.etapas import fuente
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
+from pipeline.ventanas import del_mes
 
 
 class _Expresion:
@@ -273,7 +275,7 @@ def test_un_error_definitivo_de_gee_llega_traducido(gee_inicializado):
 
     roi = ee.Geometry.Rectangle(ROI_2KM)
     imposible = (
-        productos.compuesto_del_mes(roi, MES, RECETA_VIGENTE)
+        productos.compuesto_de(roi, del_mes(MES), RECETA_VIGENTE)
         .select(["ndvi"])
         .reduceRegion(
             reducer=ee.Reducer.mean(), geometry=roi, scale=1,
@@ -294,8 +296,126 @@ def test_el_mes_de_una_parcela_cuesta_una_sola_llamada(gee_inicializado):
     roi = ee.Geometry.Rectangle(ROI_2KM)
 
     with ejecucion.contando() as conteo:
-        leida = ejecucion.reduccion_del_mes(roi, MES, RECETA_VIGENTE)
+        leida = ejecucion.reduccion_de(roi, del_mes(MES), RECETA_VIGENTE)
 
     assert conteo.llamadas == 1, "el mes entero se pide junto: estadísticas, cobertura y n_obs"
     assert 0 < leida.cobertura <= 1
     assert set(leida.estadisticas) == set(RECETA_VIGENTE.indices)
+
+
+@pytest.mark.gee
+def test_fechas_de_devuelve_una_por_pasada_y_no_una_por_tesela(gee_inicializado):
+    """M.9.0b: la llamada declarada que `DECISIONS #63` le suma al borde.
+
+    Una por pasada y no una por escena: el ROI de prueba cae en la franja donde
+    S2 entrega la misma toma partida en dos teselas, y sin agrupar por
+    `DATATAKE_IDENTIFIER` cada toma daria dos fechas casi iguales.
+    """
+    import ee
+
+    roi = ee.Geometry.Rectangle(ROI_2KM)
+    pedido = del_mes(MES)
+
+    fechas = ejecucion.fechas_de(roi, pedido, RECETA_VIGENTE)
+    escenas = ejecucion.traer(
+        fuente.coleccion(roi, pedido, RECETA_VIGENTE).size()
+    )
+
+    assert fechas, "el mes de prueba tiene pasadas"
+    assert len(fechas) <= escenas
+    assert list(fechas) == sorted(set(fechas)), "ordenadas y sin repetidos"
+    assert all(pedido.inicio <= f < pedido.fin for f in fechas)
+
+
+@pytest.mark.gee
+def test_fechas_de_no_cuesta_mas_de_una_llamada(gee_inicializado):
+    import ee
+
+    with ejecucion.contando() as conteo:
+        ejecucion.fechas_de(ee.Geometry.Rectangle(ROI_2KM), del_mes(MES), RECETA_VIGENTE)
+
+    assert conteo.llamadas == 1
+
+
+@pytest.mark.gee
+def test_entero_no_le_pregunta_nada_a_gee_para_armar_su_ventana(gee_inicializado):
+    """Lo que hace que M.9.0b no cambie cuantas llamadas cuesta un mes."""
+    import ee
+
+    with ejecucion.contando() as conteo:
+        ventanas = ejecucion.ventanas_de(
+            ee.Geometry.Rectangle(ROI_2KM), del_mes(MES), RECETA_VIGENTE
+        )
+
+    assert conteo.llamadas == 0
+    assert ventanas == (del_mes(MES),)
+
+
+@pytest.mark.gee
+def test_las_dos_colecciones_fechan_la_misma_escena_con_minutos_de_diferencia(
+    gee_inicializado,
+):
+    """El hallazgo de M.9.0b, y lo primero que M.9.0c tiene que resolver.
+
+    S2_SR y S2_CLOUD_PROBABILITY comparten el `system:index` —que es por donde
+    las une `fuente.coleccion`— pero **no el `system:time_start`**: el de SR va
+    DESPUES, y por minutos. Medido el 2026-09-25:
+
+    - sobre una parcela real de los Llanos, 105 escenas de 12 meses: de **129 a
+      260 segundos**;
+    - sobre este cuadrado del Bajio: de **668 a 1169 segundos** (casi 20 minutos).
+
+    O sea que **el desfase depende de donde caiga el ROI en la pasada**, y no hay
+    un margen chico que sirva para todos. Eso descarta la salida facil.
+
+    Por que importa: una ventana por pasada, armada alrededor del instante que
+    devuelve `fechas_de` —que es el de SR—, deja la imagen de nubes afuera del
+    `filterDate`. El join no encuentra par, la coleccion queda vacia y el
+    compuesto sale sin bandas. O sea: **`por_pasada` parte bien, pero la ventana
+    que produce todavia no sirve para seleccionar sus escenas**, y por eso
+    ninguna receta la usa.
+
+    Para M.9.0c: **filtrar la coleccion de nubes por un superconjunto del pedido**
+    y dejar que el join por `system:index` —que es exacto— haga el resto. El
+    filtro de fecha sobre las nubes es una optimizacion, no un criterio.
+
+    Eso **cambia el borde del mes**, y por eso no entro en M.9.0b: una escena de
+    los primeros ~20 minutos de un mes tiene su imagen de nubes en el mes
+    anterior, y hoy se descarta por eso. Arreglarlo es correcto y es un cambio de
+    numeros, asi que va con la receta que lo necesite.
+    """
+    import ee
+
+    roi = ee.Geometry.Rectangle(ROI_2KM)
+    pedido = del_mes(MES)
+    ini, fin = fuente.milisegundos(pedido)
+
+    sr = ee.ImageCollection(RECETA_VIGENTE.coleccion).filterBounds(roi).filterDate(ini, fin)
+    nubes = (
+        ee.ImageCollection(RECETA_VIGENTE.coleccion_nubes)
+        .filterBounds(roi)
+        .filterDate(ini, fin)
+    )
+    datos = ejecucion.traer(
+        ee.Dictionary({
+            "sr_i": sr.aggregate_array("system:index"),
+            "sr_t": sr.aggregate_array("system:time_start"),
+            "nb_i": nubes.aggregate_array("system:index"),
+            "nb_t": nubes.aggregate_array("system:time_start"),
+        })
+    )
+    por_indice = dict(zip(datos["nb_i"], datos["nb_t"], strict=False))
+    desfases = [
+        (t - por_indice[i]) / 1000
+        for i, t in zip(datos["sr_i"], datos["sr_t"], strict=False)
+        if i in por_indice
+    ]
+
+    assert desfases, "el mes de prueba tiene escenas con par de nubes"
+    # Positivo: el de SR va despues. Y de minutos, no de milisegundos, que es lo
+    # que rompe una ventana de un segundo.
+    assert min(desfases) > 60, desfases
+    # Una hora es el techo con el que se puede afirmar algo: lo medido llega a 20
+    # minutos y depende del ROI. Lo que el test fija es el orden de magnitud —son
+    # minutos, no milisegundos—, que es lo que rompe una ventana de un segundo.
+    assert max(desfases) < 3600, desfases

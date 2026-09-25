@@ -20,6 +20,7 @@ from pipeline.indices import Indice
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
 from pipeline.registro import registro
+from pipeline.ventanas import del_mes
 
 
 def _receta(**cambios):
@@ -72,15 +73,15 @@ def test_los_demas_van_a_resample(metodo):
 
 
 def test_el_mes_va_del_primer_instante_al_primero_del_siguiente():
-    assert fuente.milisegundos(Mes(2026, 9)) == (_ms(2026, 9), _ms(2026, 10))
+    assert fuente.milisegundos(del_mes(Mes(2026, 9))) == (_ms(2026, 9), _ms(2026, 10))
 
 
 def test_diciembre_termina_en_enero():
-    assert fuente.milisegundos(Mes(2025, 12)) == (_ms(2025, 12), _ms(2026, 1))
+    assert fuente.milisegundos(del_mes(Mes(2025, 12))) == (_ms(2025, 12), _ms(2026, 1))
 
 
 def test_febrero_bisiesto_tiene_29_dias():
-    inicio, fin = fuente.milisegundos(Mes(2024, 2))
+    inicio, fin = fuente.milisegundos(del_mes(Mes(2024, 2)))
     assert fin - inicio == 29 * 24 * 3600 * 1000
 
 
@@ -104,7 +105,7 @@ def test_la_coleccion_del_mes_trae_las_bandas_de_la_receta_en_reflectancia(gee_i
     import ee
 
     roi = ee.Geometry.Polygon([ROI_DE_PRUEBA])
-    col = fuente.coleccion(roi, MES_SECO, RECETA_VIGENTE)
+    col = fuente.coleccion(roi, del_mes(MES_SECO), RECETA_VIGENTE)
     primera = ee.Image(col.first())
 
     # Una sola llamada: todo lo que se quiere saber, en un diccionario.
@@ -124,7 +125,7 @@ def test_la_coleccion_del_mes_trae_las_bandas_de_la_receta_en_reflectancia(gee_i
     assert info["bandas"] == ["B2", "B4", "B5", "B8", "B11", "SCL", "probability"]
     # La máscara de sombras necesita el azimut: sin él, la aritmética perdió las propiedades.
     assert info["azimut"] is not None
-    inicio, fin = fuente.milisegundos(MES_SECO)
+    inicio, fin = fuente.milisegundos(del_mes(MES_SECO))
     assert inicio <= info["desde"] <= info["hasta"] < fin
 
     rango = info["rango"]
@@ -144,7 +145,7 @@ def test_bilinear_es_un_remuestreo_que_gee_acepta(gee_inicializado):
     import ee
 
     roi = ee.Geometry.Polygon([ROI_DE_PRUEBA])
-    col = fuente.coleccion(roi, MES_SECO, _receta(remuestreo="bilinear"))
+    col = fuente.coleccion(roi, del_mes(MES_SECO), _receta(remuestreo="bilinear"))
 
     assert ee.Image(col.first()).bandNames().size().getInfo() == 7
 
@@ -155,4 +156,4 @@ def test_un_mes_sin_escenas_da_una_coleccion_vacia(gee_inicializado):
 
     roi = ee.Geometry.Polygon([ROI_DE_PRUEBA])
 
-    assert fuente.coleccion(roi, Mes(2035, 1), RECETA_VIGENTE).size().getInfo() == 0
+    assert fuente.coleccion(roi, del_mes(Mes(2035, 1)), RECETA_VIGENTE).size().getInfo() == 0

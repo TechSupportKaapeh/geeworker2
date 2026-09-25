@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 from pipeline.estadisticas import ESTADISTICAS, claves_de_salida
 from pipeline.indices import BANDAS, INDICES
+from pipeline.ventanas import AGRUPAMIENTOS, ENTERO
 
 # Va en la columna `receta` de cada fila: minúsculas, dígitos y guiones.
 _VERSION = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
@@ -74,6 +75,15 @@ class Receta:
             píxel suelto se come un círculo de 50 m: sobre una escena con 32 % de
             nubes, el descarte pasa de 0,50 a 0,95 (``DECISIONS #39``). M.2.6 lo
             compara sobre parcelas reales.
+        agrupamiento_estadisticas: cómo se parte el pedido para las **filas**:
+            ``entero`` (una observación por pedido, que sobre un mes es el
+            compuesto mensual de siempre) o ``por_pasada``. Ver
+            :mod:`pipeline.ventanas`.
+        agrupamiento_raster: lo mismo para el **COG**. Va aparte porque el ráster
+            y los números tienen costos distintos —el ráster son descargas, los
+            números un ``reduceRegion``— y ``DECISIONS #31`` eligió mensual con
+            la cuenta del ráster. Con un solo agrupamiento global se repetiría el
+            error que M.9 viene a corregir (``ARQUITECTURA`` §3.5).
         acotar_indices: si cada índice se recorta a su ``rango`` del registro. v1
             usa ``False``, que es lo que hace la capa vieja. EVI no está acotado
             por construcción —su denominador puede acercarse a cero— y se sale de
@@ -97,6 +107,8 @@ class Receta:
     sombras_distancia_m: int
     nubes_erosion_px: int
     acotar_indices: bool
+    agrupamiento_estadisticas: str
+    agrupamiento_raster: str
 
     def __post_init__(self) -> None:
         """Valida la receta contra los registros al armarla, que es al importar."""
@@ -147,6 +159,20 @@ class Receta:
             (
                 self.nubes_erosion_px >= 0,
                 f"nubes_erosion_px negativa: {self.nubes_erosion_px}",
+            ),
+            (
+                self.agrupamiento_estadisticas in AGRUPAMIENTOS,
+                (
+                    f"agrupamiento_estadisticas desconocido: "
+                    f"{self.agrupamiento_estadisticas!r} ({sorted(AGRUPAMIENTOS)})"
+                ),
+            ),
+            (
+                self.agrupamiento_raster in AGRUPAMIENTOS,
+                (
+                    f"agrupamiento_raster desconocido: {self.agrupamiento_raster!r} "
+                    f"({sorted(AGRUPAMIENTOS)})"
+                ),
             ),
         )
         problemas = [mensaje for cumple, mensaje in chequeos if not cumple]
@@ -239,4 +265,12 @@ RECETA_VIGENTE = Receta(
     # (`DECISIONS #45`). Antes valían 0 y False, que era lo de la capa vieja.
     nubes_erosion_px=2,
     acotar_indices=True,
+    # M.9.0b: el mes dejó de estar cableado, y acá queda escrito lo que antes
+    # estaba implícito. `entero` sobre un pedido mensual es **exactamente** el
+    # compuesto de siempre, así que ningún número se movió — lo prueba el control
+    # negativo de M.9.0b, que compara las filas de antes contra las de después.
+    # La huella sí cambia, porque un supuesto pasó a ser un parámetro; el porqué
+    # de re-fijarla sin subir la versión está en `tests/test_pipeline_receta.py`.
+    agrupamiento_estadisticas=ENTERO,
+    agrupamiento_raster=ENTERO,
 )
