@@ -367,11 +367,12 @@ const SPRINTS = [
       { id: "M.8.5", t: "Retención de processing_job_events", repo: "Geocore", T: "S", ok: "Decisión y job" }
     ] },
   { id: "M.9", nombre: "Analítica y futuro", objetivo: "Sin orden fijo, salvo el bloque M.9.0: se toma cuando el pipeline esté en producción.", sesiones: "abierto",
+    aviso2: { tipo: "equipo", texto: "<b>Las seis decisiones de diseño del bloque estan tomadas</b> (2026-09-25, <code>DECISIONS #63</code> del worker): se mide antes de decidir, el agrupamiento es un dato de la receta, <b>por pasada puro</b> —sin columna <code>ventana</code> y sin migracion—, el raster sigue mensual, y <b>el umbral de cobertura se aplica al leer</b>. La cobertura se mide <b>sobre la parcela, nunca sobre el rancho</b>: una pasada que tapa medio rancho puede ser perfecta para una parcela. Lo unico que falta es el numero que mide M.9.0." },
     aviso: { tipo: "compuerta", texto: "<b>M.9.0 va primero, y empieza midiendo.</b> Hoy la ventana de observación es el mes y las pasadas sueltas no se guardan (<code>DECISIONS #31</code>, que reemplazó a <code>#19</code>). La decisión se tomó con la cuenta del <b>ráster</b> —146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile— y <b>se llevó a los números, que tienen otra cuenta</b>: para una estadística no hay descargas ni MosaicJSON. Lo que la mediana del mes se lleva puesto: los <b>eventos</b> (una caída de diez días la absorbe), la <b>comparabilidad</b> entre un mes de seis pasadas limpias y uno de dos, y los meses que la cobertura mínima descarta enteros. <b>Cuánto importa depende de qué hay en las parcelas y de cuántas pasadas limpias hay</b>, y eso lo mide M.9.0 antes de tocar nada: si casi siempre son 1 o 2, el mensual está bien y el bloque se cierra ahí." },
     tareas: [
       { id: "M.9.0", t: "Medir cuántas pasadas limpias hay por mes, parcela por parcela", repo: "worker", T: "S", ok: "Una tabla por parcela y mes, y la decisión escrita en PREGUNTAS_ABIERTAS B-3", compuerta: true },
       { id: "M.9.0b", t: "El agrupamiento es un dato de la receta: la ventana deja de estar cableada al mes", repo: "worker", T: "M", ok: "s2-mensual-v1 produce EXACTAMENTE las mismas filas que antes" },
-      { id: "M.9.0c", t: "s2-pasada-v2: estadísticas por pasada, ráster mensual; conviven con la v1", repo: "worker · Geocore", T: "M", ok: "Las dos recetas conviven, y la fila dice a qué ventana pertenece" },
+      { id: "M.9.0c", t: "s2-pasada-v2: estadísticas SÓLO por pasada, ráster mensual, umbral de cobertura al leer", repo: "worker · Geocore", T: "M", ok: "Sin migración: la clave (parcela, índice, fecha) sirve con la fecha de adquisición" },
       { id: "M.9.0d", t: "El panel: eje de fechas y el interruptor mensual / por pasada", repo: "panel", T: "M", ok: "—" },
       { id: "M.9.1", t: "Cultivo en la parcela, y la métrica del rancho por cultivo", repo: "Geocore · panel", T: "—", ok: "—" },
       { id: "M.9.2", t: "Anomalía contra la mediana histórica del mes, tendencia y alerta de caída", repo: "worker · Geocore", T: "—", ok: "—" },
@@ -388,6 +389,10 @@ const SPRINTS = [
 // nada anterior al pipeline mensual, y todo lo que el worker escribe cuelga de `tenants/{t}/`,
 // que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
 // y no se va a hacer así; M.6.4 cerró con menos código, no con más.
+//
+// Sesión 13 (2026-09-24/25): el sprint M.8, cerrado, y despues doce decisiones tomadas de una
+// (DECISIONS #63 a #65 del worker y #47 de Geocore). Las dos tareas de produccion que M.8 dejo
+// pendientes quedaron marcadas como hechas el 2026-09-25. Lo que sigue es M.9.0: medir.
 //
 // Sesión 13 (2026-09-24): el sprint M.8, cerrado. Rate limiting (M.8.3), registro de auditoría
 // (M.8.4) y retención de la bitácora (M.8.5), las tres en Geocore y por PR. Los dos controles
@@ -443,7 +448,10 @@ const DECISIONES = [
   ["El rate limiting es una regla, no un atributo por endpoint (#44)", "M.8.3", "hecho", "decidida"],
   ["La auditoría va por fuera de ExceptionMiddleware, y registra los intentos (#45)", "M.8.4", "hecho", "decidida"],
   ["La bitácora de jobs se conserva 90 días, y la retención arranca prendida (#46)", "M.8.5", "hecho", "decidida"],
-  ["¿La ventana de observación sigue siendo el mes? (B-3, reabierta): la contesta M.9.0 midiendo", "M.9.0c", "pendiente", "pendiente"]
+  ["La ventana de observación: por pasada puro, y la cobertura sobre la parcela (#63)", "M.9.0c", "hecho", "decidida"],
+  ["El router /mosaic del tileserver se borra: nadie lo usa (#64)", "—", "hecho", "decidida"],
+  ["Retención: lo sistemático para siempre, lo a demanda 90 días (#65)", "—", "hecho", "decidida"],
+  ["Login y create-user: riesgo aceptado; el registro de auditoría sin pantalla (#47 de Geocore)", "—", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };

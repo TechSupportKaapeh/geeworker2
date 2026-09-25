@@ -2949,3 +2949,144 @@ hallazgos de los que tenían sus `except`.
 
 **Con esto el sprint M.6 queda cerrado**, salvo M.6.3, que M.6.2 vació: de los cinco
 `Request*Async` sobrevivió `RequestHeatmapAsync`, y sin duplicación no hay refactor que hacer.
+
+
+---
+
+## 63. La ventana de observación: por pasada puro, y la cobertura se mide sobre la parcela (2026-09-25)
+
+> **Seis decisiones del usuario**, tomadas juntas sobre el bloque M.9.0. Vienen de una crítica
+> al compuesto mensual y de discutirla contra el código. Diseño:
+> [`ARQUITECTURA_PIPELINE.md` §3.5](ARQUITECTURA_PIPELINE.md). Backlog:
+> [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) §M.9.
+
+**Contexto.** `#31` decidió el compuesto mensual y reemplazó a `#19`, que guardaba por pasada.
+Esa decisión se tomó con la cuenta del **ráster** —146 descargas contra 24, TiTiler abriendo 3
+a 6 COG por tile, el MosaicJSON con sus preguntas abiertas—, y toda esa cuenta **sigue siendo
+correcta**. Pero en ese diseño las estadísticas salen de la misma imagen que el mapa, así que
+**los números viajaron con la decisión del ráster sin que nadie hiciera la cuenta por
+separado**. Para un número no hay descargas, ni MosaicJSON, ni TiTiler: es un `reduceRegion`.
+
+### Lo decidido
+
+1. **Se mide antes de decidir** (M.9.0). Sale de `scripts/check_pipeline_real.py`, y son **dos
+   números**: cuántas pasadas limpias hay por mes, y **qué cobertura tiene cada pasada**. El
+   segundo hoy no existe: la cobertura se calcula sobre el compuesto.
+2. **El agrupamiento es un dato de la receta** (M.9.0b), y `pipeline/ejecucion.py` **crece una
+   llamada declarada**, `fechas_de(coleccion)`. `#32` dice «un solo borde», no «una sola
+   llamada»: una llamada con nombre se sigue mejor que una indirección que existe sólo para no
+   agregarla.
+3. **Por pasada puro**: todas las filas de `measurements` son pasadas. **No hay migración** —la
+   clave `(parcela, índice, fecha)` sirve tal cual con la fecha de adquisición—, hay una sola
+   clase de fila, y el mensual (o cualquier rango) sale de agregar al leer.
+4. **Sin columna `ventana`**, que era la consecuencia de guardar las dos.
+5. **El ráster sigue siendo mensual.** Es la parte de `#31` que no cambió.
+6. **El umbral de cobertura se aplica al leer, no al escribir.**
+
+### Por qué «puro», y qué se acepta al elegirlo
+
+**Lo que un `GROUP BY` sobre las pasadas no puede rehacer** no son las medianas —que no
+componen, y es lo menor—: es que **cada pasada cubre un pedazo distinto de la parcela**. Una
+estadística por pasada describe el pedazo que estaba despejado; el compuesto toma para cada
+píxel la mediana de las pasadas en que **ese** píxel estaba limpio, y cubre casi toda. Con
+pasadas parciales, y si el pedazo despejado es siempre la misma ladera, la serie por pasada
+**repite el mismo sesgo** tantas veces como pasadas haya. El valor del píxel tapado el día 7
+nunca se guardó.
+
+O sea: la fila mensual del compuesto no sería el mismo dato otra vez — **es otra medición, que
+sólo existe si se calcula**. Se acepta no tenerla, y **M.9.0 es la red**: si la cobertura por
+pasada viene alta, el compuesto no estaba haciendo nada que el `GROUP BY` no haga.
+
+**En escalabilidad las dos opciones empatan donde uno esperaría que no.** Las filas pasan de 96
+a ~500-770 por parcela en dos años **en las dos** —la fila mensual agrega un 12-20 % arriba— y
+el 8x de reducciones de GEE también ocurre en las dos. Lo que las separa es otra cosa:
+**mantener las dos clases de fila obliga a filtrar por `ventana` en toda consulta del
+sistema**, y la que se olvide no falla: mezcla ocho pasadas con un compuesto y devuelve un
+número plausible y equivocado. Es la misma forma del bug de M.7.1. Con «puro», una fila es una
+fila.
+
+**Y equivocarse es reversible del lado barato:** si hace falta el compuesto, se reprocesa —GEE
+es la fuente de verdad, `#31` ya lo dice—. La complejidad de guardar las dos, en cambio, se
+paga todos los días.
+
+**Si algún día hicieran falta las dos, van en tablas separadas**, no en una columna: dos
+semánticas en dos tablas no se pueden mezclar por olvido.
+
+### La cobertura se mide sobre la parcela, nunca sobre el rancho
+
+**Una pasada que tapa medio rancho puede ser perfecta para una parcela**, y evaluarla a nivel
+rancho la descartaría para todas. El umbral se aplica con la granularidad con la que el dato se
+consume, que es la parcela: es la fila de `measurements`.
+
+El pipeline **ya respeta el principio en dos lugares** y hay que no perderlo: `nubes.py`
+enmascara **sin descartar pasadas** —una pasada parcial aporta donde está limpia— y
+`cobertura_minima` es "la fracción de **la parcela**". Lo que falta es medirla **por pasada**.
+
+### El umbral, al leer
+
+Hoy `cobertura_minima` **descarta al escribir**: bajo 0,3 la fila sale nula. Eso es otra
+reducción con pérdida antes de guardar, y es la que no se puede deshacer. Guardando cada pasada
+con su cobertura, «descartar lo que no llega al 30 %» pasa a ser un `WHERE` — y el día que 0,3
+resulte mal puesto, se cambia el número y no el histórico. Es el mismo argumento que hace que
+la cadencia sea de consulta.
+
+### Consecuencias
+
+- **`PREGUNTAS_ABIERTAS` B-3 queda contestada** en su parte de diseño; lo que falta es el
+  número de M.9.0.
+- **`/api/measurements` tiene que aprender a agregar** (una cadencia como parámetro). Es
+  trabajo real, pero es **la funcionalidad**, no un costo del diseño.
+- **Lo que hoy es `valor = null` por cobertura baja va a dejar de existir**: la pasada se
+  guarda con su cobertura y el filtro es del que lee.
+- El techo de `limit` empieza a importar: con los cuatro índices, ~768 filas por parcela cada
+  dos años contra el `limit=2000` que pide el panel hoy.
+
+---
+
+## 64. El router `/mosaic` del tileserver se borra (2026-09-25)
+
+**Contexto.** El hallazgo **T-3** del mapeo OWASP: el `path_dependency` valida la URL del
+MosaicJSON, pero **no los assets que ese documento lista adentro** — `cogeo-mosaic` los abre
+tal como vengan. Desde M.8.1 pesa más: lo que se saltearía ya no es sólo el filtro anti-SSRF,
+es **el aislamiento entre tenants**, porque el tenant se compara contra la URL del documento y
+no contra lo que lista.
+
+**Decisión del usuario: se borra el router**, no se validan los assets.
+
+**Por qué.** `#31` dice explícitamente que **no se usa MosaicJSON**, y se verificó el
+2026-09-25: no lo usan el panel, ni `/piloto`, ni `scripts/check_prod.py`, ni el worker. Es
+**superficie muerta que carga un hallazgo abierto**, que es el peor negocio posible.
+
+Es la misma cura que **W-3** (`#23`): cerrar un hallazgo **borrando la superficie** en vez de
+arreglándola, para no reimplementar un control que después hay que mantener.
+
+**Alcance del cambio**, para cuando se haga: el `MosaicTilerFactory` y su `include_router` en
+`main.py`, el aviso que lo acompaña, las rutas `/mosaic/*` de `tests/test_app_tenant.py` —que
+hoy las cubre a propósito— y revisar `scripts/check_mosaic_median.py`, que verifica la
+composición por mediana y puede depender del endpoint. **No toca el pipeline**: el `mosaic()`
+de `pipeline/etapas/compuesto.py` es de GEE y no tiene nada que ver.
+
+---
+
+## 65. Retención: lo sistemático para siempre, lo a demanda 90 días (2026-09-25)
+
+**Contexto.** M.8.5 decidió la retención de la **bitácora de jobs** (`DECISIONS #46` de
+Geocore) y dejó afuera los **objetos de MinIO**, que son la parte que más ocupa. Es la ficha
+`PREGUNTAS_ABIERTAS` C-5, que además mezclaba tres cosas distintas.
+
+**Decisión del usuario:**
+
+- **Los COG sistemáticos se guardan para siempre.** Son el producto: el histórico es lo que se
+  le vende al cliente, y borrarlo sería borrar eso.
+- **Los COG a demanda (`adhoc` y `ondemand`) se borran a los 90 días.** Según
+  `pipeline/claves.py`, esos objetos **no se reutilizan ni se sobrescriben** —la identidad de
+  un `adhoc` es el job, así que dos pedidos del mismo polígono son dos objetos—: se acumulan
+  uno por clic. Es la mitad que crece sin que nadie la vuelva a mirar.
+- **Las filas por pasada no llevan retención** por ahora (si entra `s2-pasada-v2`). Unas 760
+  filas por parcela en dos años es un dato chico en una tabla con índices; **poner una política
+  ahora sería decidir con un número que todavía no se conoce**. Se revisa cuando haya un tenant
+  grande.
+
+**Consecuencia:** `PREGUNTAS_ABIERTAS` C-5 queda partida en sus tres cosas, y **la única que
+sigue abierta es cuándo se implementa el borrado de los a demanda** — la política ya está
+decidida.

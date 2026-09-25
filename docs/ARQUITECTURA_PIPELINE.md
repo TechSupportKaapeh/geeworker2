@@ -133,8 +133,9 @@ subir la versión, el test falla.
 
 ### 3.5 El agrupamiento: la ventana como dato (propuesto, M.9.0b)
 
-> **Propuesto, no hecho.** Hoy la ventana es el mes y está cableada. Esta sección es el
-> diseño de M.9.0b, y el porqué está en [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) §M.9.
+> **Diseño decidido el 2026-09-25 (`DECISIONS #63`), todavía sin implementar.** Hoy la ventana
+> es el mes y está cableada. Esta sección es el diseño de M.9.0b, y el porqué está en
+> [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) §M.9.
 
 **El problema.** "El mes" no vive en un lugar: vive en cinco.
 
@@ -201,8 +202,7 @@ llama a `getInfo()`**. Las dos salidas razonables:
 La segunda es más simple y más honesta; la primera es más pura. **Es lo primero que M.9.0b
 tiene que elegir**, porque decide la forma de la firma.
 
-**2. Qué se guarda: sólo las pasadas, o también la fila mensual.** Por defecto, **sólo las
-pasadas**: `(parcela, índice, fecha)` sirve tal cual con la fecha de adquisición, no hay
+**2. Qué se guarda: sólo las pasadas.** Decidido (`DECISIONS #63`): **sólo las pasadas**. `(parcela, índice, fecha)` sirve tal cual con la fecha de adquisición, no hay
 migración, hay una sola clase de fila, y el mensual —o cualquier rango— sale de agregar al
 leer.
 
@@ -212,11 +212,11 @@ por pasada describe el pedazo que estaba despejado, mientras que el compuesto to
 de la pasada en que **ese** píxel estaba limpio y cubre casi toda la parcela. La fila mensual
 no es el mismo dato otra vez: **es otra medición, que sólo existe si se calcula.**
 
-Si M.9.0 muestra que las pasadas vienen parciales, `s2-pasada-v2` escribe las dos y hace falta
-que la fila diga a cuál pertenece: una columna **`ventana`** (`mes`, `pasada`), que además
-deja la fila diciendo lo mismo que la etiqueta de la key del COG, o una **`fecha_fin`**, más
-general y más incómoda de consultar. `ventana` es la recomendación **en ese caso**; con
-pasadas de cobertura alta la pregunta no se llega a hacer.
+Se acepta no tenerla. Si M.9.0 mostrara que las pasadas vienen parciales y hiciera falta el
+compuesto, va en **una tabla aparte** y no en una columna `ventana`: con dos clases de fila en
+la misma tabla, **toda consulta del sistema tiene que filtrar**, y la que se olvide no falla
+—mezcla ocho pasadas con un compuesto y devuelve un número plausible y equivocado—. Es la
+misma forma del bug de M.7.1.
 
 **3. La cobertura se mide sobre la parcela, nunca sobre el rancho** (decisión del usuario,
 2026-09-24). Una pasada que tapa medio rancho puede ser **perfecta para una parcela**, y
@@ -227,10 +227,10 @@ El pipeline ya respeta el principio en dos lugares, y hay que no perderlo: `nube
 **sin descartar pasadas**, y `cobertura_minima` es "la fracción de **la parcela**". Lo que falta
 es medir esa cobertura **por pasada** — hoy se calcula sobre el compuesto.
 
-De ahí sale una consecuencia, que es el mismo argumento de esta sección un paso más allá: hoy
+De ahí salió una decisión, que es el mismo argumento de esta sección un paso más allá: hoy
 `cobertura_minima` **descarta al escribir**, y eso es otra reducción con pérdida antes de
-guardar. Guardando cada pasada con su cobertura, el umbral pasa a ser un `WHERE`, y cambiarlo
-deja de costar un reproceso.
+guardar. **El umbral pasa a aplicarse al leer** (`DECISIONS #63`): guardando cada pasada con
+su cobertura, el umbral es un `WHERE` y cambiarlo deja de costar un reproceso.
 
 ### Lo que este diseño **no** cambia
 

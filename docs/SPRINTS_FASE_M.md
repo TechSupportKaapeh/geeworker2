@@ -509,13 +509,19 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 |---|---|---|
 | M.9.0 | **Medir cuántas pasadas limpias hay por mes y qué cobertura tiene cada una**, sobre la parcela. Es la compuerta de todo lo que sigue | worker |
 | M.9.0b | **El agrupamiento es un dato de la receta**: la ventana deja de estar cableada al mes. Refactor **sin cambio de comportamiento** | worker |
-| M.9.0c | **`s2-pasada-v2`**: estadísticas por pasada —por defecto, sólo por pasada—, ráster mensual. Convive con `s2-mensual-v1` | worker, Geocore |
+| M.9.0c | **`s2-pasada-v2`**: estadísticas **sólo** por pasada, ráster mensual, y el umbral de cobertura al leer. Convive con `s2-mensual-v1` | worker, Geocore |
 | M.9.0d | El panel: eje de fechas y el interruptor mensual / por pasada | panel |
 | M.9.1 | El cultivo en la parcela, y la métrica del rancho agrupada por cultivo (`DECISIONS #22` de Geocore) | Geocore, panel |
 | M.9.2 | `analitica/`: anomalía contra la mediana histórica del mismo mes, tendencia y alerta de caída | worker o Geocore |
 | M.9.3 | Más índices, una entrada de registro cada uno: SAVI (cultivo joven, suelo expuesto), GNDVI o CIre (clorofila), MSI (estrés hídrico), NDWI (agua) | worker |
 | M.9.4 | Sentinel-1 (radar) para los meses de lluvia | worker |
 | M.9.5 | El mes en curso, como provisorio | worker, panel |
+
+> **Las seis decisiones de diseño de este bloque están tomadas** (2026-09-25, `DECISIONS #63`):
+> se mide antes de decidir, el agrupamiento es un dato de la receta, **por pasada puro** —sin
+> columna `ventana` y sin migración—, el ráster sigue mensual, y **el umbral de cobertura se
+> aplica al leer**. La cobertura se mide **sobre la parcela, nunca sobre el rancho**. Lo único
+> que falta es el número que mide M.9.0.
 
 **Por qué el `0`.** M.9 no tiene orden fijo, pero estas cuatro sí van antes que el resto:
 **M.9.2** (anomalía y tendencia) y **M.9.5** (el mes en curso) mejoran mucho con una serie
@@ -584,11 +590,13 @@ mediana de las pasadas en que **ese** píxel estaba limpio, así que cubre casi 
 nunca se guardó.
 
 Por eso la fila mensual no sería el mismo dato otra vez: **es otra medición, que sólo existe
-si se calcula**. Y por eso la elección entre «por pasada puro» y «los dos» **la decide el
-número que mide M.9.0**: con pasadas de cobertura alta, el compuesto no hace nada que el
-`GROUP BY` no haga y el puro gana limpio —sin migración, una sola clase de fila, y el rango
-flexible gratis—; con pasadas parciales, la fila mensual se justifica sola. **Por defecto,
-puro.**
+si se calcula**.
+
+**Decidido el 2026-09-25 (`DECISIONS #63`): por pasada puro.** Sin migración, una sola clase
+de fila y el rango flexible gratis. Se acepta no tener el compuesto, y **M.9.0 es la red**:
+si la cobertura por pasada viene alta, el compuesto no estaba haciendo nada que el `GROUP BY`
+no haga. Si viniera parcial, la fila mensual iría en **una tabla aparte** y no en una columna
+—dos semánticas en dos tablas no se mezclan por olvido—.
 
 ### La cobertura se mide sobre la parcela, nunca sobre el rancho
 
@@ -603,11 +611,14 @@ enmascara **sin descartar pasadas** —una pasada parcial aporta donde está lim
 `cobertura_minima` es "la fracción de **la parcela**". Lo que M.9.0 agrega es medir esa
 cobertura **por pasada**, que hoy no existe: se calcula sobre el compuesto.
 
-**Y de ahí sale una consecuencia**, que es el mismo argumento un paso más allá: hoy
-`cobertura_minima` **descarta al escribir**. Descartar al escribir es otra reducción con
-pérdida antes de guardar, y es la que no se puede deshacer. Guardando cada pasada con su
-cobertura, "descartar lo que no llega al 30 %" pasa a ser un `WHERE` — y el día que 0,3
-resulte mal puesto se cambia el número, no el histórico.
+**Y de ahí salió una decisión** (`DECISIONS #63`), que es el mismo argumento un paso más
+allá: hoy `cobertura_minima` **descarta al escribir**, y eso es otra reducción con pérdida
+antes de guardar — la que no se puede deshacer. **El umbral pasa a aplicarse al leer**:
+guardando cada pasada con su cobertura, "descartar lo que no llega al 30 %" es un `WHERE`, y
+el día que 0,3 resulte mal puesto se cambia el número y no el histórico.
+
+**Consecuencia para el panel y la API:** `/api/measurements` tiene que aprender a agregar —una
+cadencia como parámetro—, y lo que hoy es `valor = null` por cobertura baja deja de existir.
 
 ### Qué hace cada tarea
 
@@ -653,4 +664,6 @@ interruptor. La serie ya sabe dibujar huecos, así que el cambio es del eje, no 
 | Los handlers a demanda | M.6.2 | 👥 |
 | La capa satelital en el editor (licencia) | M.7.5 | 👥 |
 | Los rásters viejos, fuera de `tenants/` | M.8.1 | ✅ 2026-09-20 · se borran con sus filas (`DECISIONS #43` de Geocore) |
-| **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3, reabierta) | M.9.0c | ⬜ La contesta **M.9.0 con datos**, no una discusión |
+| **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3, reabierta) | M.9.0c | ✅ 2026-09-25 · **por pasada puro** (`DECISIONS #63`). Falta sólo el número de M.9.0 |
+| Retención de los objetos de MinIO (`PREGUNTAS_ABIERTAS` C-5) | — | ✅ 2026-09-25 · sistemático para siempre, a demanda 90 días (`DECISIONS #65`) |
+| Qué hacer con el hallazgo T-3 del tileserver | — | ✅ 2026-09-25 · se borra el router `/mosaic` (`DECISIONS #64`) |
