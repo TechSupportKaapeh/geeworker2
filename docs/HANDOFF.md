@@ -1,5 +1,34 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-25, sesión 15 · M.9.0c (la mitad del worker): `s2-pasada-v2` existe y NO es la
+> vigente** (`DECISIONS #69`). **Producción no cambia**: las altas y el cierre siguen
+> escribiendo con `s2-mensual-v1`.
+>
+> - **`RECETA_POR_PASADA` es v1 con dos campos cambiados y ninguno más**, y hay un test que lo
+>   fija: `agrupamiento_estadisticas: por_pasada` y `umbral_al_escribir: False`. El ráster sigue
+>   mensual en las dos.
+> - **`umbral_al_escribir` es un campo de la receta**, no una rama en `filas.py`: así entra en
+>   la huella y queda escrito por receta. Con `False`, el valor va aunque la cobertura sea baja
+>   — pero **un mes sin un solo píxel sigue sin valor**, porque ahí la mediana vino en `None`
+>   desde GEE. «No llegó al umbral» y «no hay dato» son cosas distintas.
+> - **`FilaMensual` pasó a llamarse `Fila`.** Con v2, una fila es una pasada.
+> - **Se arregló el filtro de nubes que `#67` había dejado anotado**: la colección de nubes se
+>   filtra por un **superconjunto** del pedido —un día de cada lado—, porque quien decide qué
+>   escena entra es el join por `system:index`, que es exacto. Se aplicó **a las dos recetas**,
+>   porque era un bug: una escena de los primeros minutos de un mes tenía su imagen de nubes en
+>   el mes anterior y se descartaba entera. **Medido antes de darlo por inocuo**: 576 escenas
+>   unidas antes y 576 después, 0 meses en que cambie algo.
+> - **El camino por pasada se corrió contra GEE**, no sólo contra tests. Lo que conviene saber
+>   antes de poner v2 vigente: **un mes enteramente nublado pasa de 4 filas a 40**, todas con
+>   cobertura 0. Entra en la estimación de `#63` y es información, pero es el costo concreto de
+>   «por pasada puro».
+>
+> **Falta la otra mitad, y es la que habilita el cambio de vigente:** `/api/measurements` tiene
+> que agregar, con **`mensual` por defecto** — eso es lo que hace que poner v2 vigente no rompa
+> el panel de hoy. El número mensual es la **mediana de las medianas por pasada**, que es la que
+> `#66` midió (se aparta 0,008 de NDVI del compuesto). Va con SQL crudo, porque
+> `percentile_cont` no lo traduce EF.
+
 > **2026-09-25 · dos arreglos chicos, de mirar la tabla `measurements`** (`DECISIONS #68`).
 >
 > - **`observaciones` deja de salir con ruido de float.** `reduccion.leer` la redondea a tres

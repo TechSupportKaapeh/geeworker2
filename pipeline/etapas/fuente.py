@@ -35,6 +35,12 @@ _NOMBRE_SOMBRAS: Final = "NIR"
 _CLAVE_UNION: Final = "probabilidad_de_nube"
 _MS_POR_SEGUNDO: Final = 1000
 
+# Cuánto se ensancha el filtro de fecha de la colección de nubes, de cada lado.
+# Un día: mil veces el desfase medido entre las dos colecciones (hasta 1169 s) y
+# una unidad natural, en vez de un número ajustado a lo que se midió. Ver
+# `coleccion`, que es donde importa.
+MARGEN_DE_NUBES_MS: Final = 24 * 60 * 60 * _MS_POR_SEGUNDO
+
 
 def bandas_espectrales(receta: Receta) -> tuple[str, ...]:
     """Las bandas de S2 que la receta necesita: las de sus índices, más el NIR.
@@ -97,10 +103,22 @@ def coleccion(roi: ee.Geometry, ventana: Ventana, receta: Receta) -> ee.ImageCol
     escenas = (
         ee.ImageCollection(receta.coleccion).filterBounds(roi).filterDate(inicio, fin)
     )
+    # **El filtro de fecha de las nubes es un superconjunto, no un criterio.** Quien
+    # decide qué escena entra es el join por `system:index`, que es exacto; la
+    # fecha está sólo para no traer la colección entera. Y tiene que ser un
+    # superconjunto porque **las dos colecciones fechan la misma escena distinto**:
+    # el `system:time_start` de S2_SR va de 129 a 1169 segundos después que el de
+    # la probabilidad de nubes, y cuánto depende de dónde caiga el ROI en la
+    # pasada (medido el 2026-09-25, `DECISIONS #67`).
+    #
+    # Con el mismo filtro que las escenas pasaban dos cosas: una escena de los
+    # primeros minutos de un mes perdía su imagen de nubes —que había quedado en
+    # el mes anterior— y se descartaba entera; y una ventana de una pasada no
+    # traía ninguna. Un día de margen es mil veces el desfase medido.
     nubes = (
         ee.ImageCollection(receta.coleccion_nubes)
         .filterBounds(roi)
-        .filterDate(inicio, fin)
+        .filterDate(inicio - MARGEN_DE_NUBES_MS, fin + MARGEN_DE_NUBES_MS)
     )
     unidas = ee.Join.saveFirst(matchKey=_CLAVE_UNION).apply(
         escenas,

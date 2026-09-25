@@ -3437,3 +3437,108 @@ mirarla es de diseño:
 cobertura baja. Eso pide consultar la base, y la contraseña del `.env` está vencida. Quedó
 escrito en `geocore/docs/sql/2026-09-25_revisar_measurements.sql`, siete consultas de sólo lectura con
 qué se espera de cada una; la tercera es la que decide.
+
+---
+
+## 69. M.9.0c (worker): `s2-pasada-v2` existe, no es la vigente, y el filtro de nubes se arregló (2026-09-25)
+
+> La mitad del worker de M.9.0c. **No cambia nada en producción**: v2 está escrita, probada y
+> verificada contra GEE, pero las altas y el cierre siguen escribiendo con `s2-mensual-v1`.
+> La mitad de Geocore —que `/api/measurements` sepa agregar— va aparte.
+
+### Por qué v2 no es la vigente
+
+**Decisión del usuario, 2026-09-25**, y es la regla de despliegue de M.8.1 con el que **lee** en
+el lugar del que exige: `/api/measurements` tiene que saber agregar y el panel dibujarlo
+**antes** de que existan filas por pasada. Si el worker empezara primero, habría filas que nadie
+sabe leer, y el panel dibujaría ocho puntos donde dibujaba uno.
+
+Ponerla vigente es cambiar una línea, y es su propia decisión.
+
+### El arreglo que M.9.0b dejó anotado
+
+`#67` encontró que la ventana de una pasada no selecciona sus escenas: `S2_SR` y
+`S2_CLOUD_PROBABILITY` comparten el `system:index` —que es por donde las une
+`fuente.coleccion`— pero **no el `system:time_start`**, y el desfase va de 129 a 1169 segundos
+según dónde caiga el ROI en la pasada.
+
+**El arreglo es el que `#67` ya había identificado:** el filtro de fecha de la colección de
+nubes pasa a ser un **superconjunto** del pedido —un día de margen de cada lado—. Quien decide
+qué escena entra es el join por `system:index`, que es exacto; la fecha está sólo para no traer
+la colección entera. Un día es mil veces el desfase medido, y es una unidad natural en vez de
+un número ajustado a lo que se midió.
+
+**Se aplicó a las dos recetas, no sólo a v2** (decisión del usuario). Es un bug, no una
+diferencia de receta: una escena de los primeros minutos de un mes tenía su imagen de nubes en
+el mes anterior y **se descartaba entera**.
+
+**Y se midió antes de darlo por inocuo**, que era la condición: sobre 3 parcelas reales × 24
+meses, **576 escenas unidas antes y 576 después, y 0 meses en que cambie algo**. Con el paso a
+las 15:11 UTC, ninguna escena cae en los primeros minutos de un mes. El bug era real y el
+arreglo es correcto; en estas parcelas no tenía efecto.
+
+### Lo que v2 cambia contra v1, y nada más
+
+Dos campos, y los dos salieron de lo que midió M.9.0:
+
+- **`agrupamiento_estadisticas: por_pasada`**. La mediana de 3 pasadas limpias por mes (`#66`)
+  es lo que hace que valga la pena, y el **0 de 72** —ningún mes llega al umbral con todas sus
+  pasadas por debajo— es lo que dice que no se pierde ninguno;
+- **`umbral_al_escribir: False`**. El umbral deja de descartar al escribir (`#63`).
+
+**El ráster sigue mensual**: `agrupamiento_raster` es `entero` en las dos. Hay un test que fija
+que v2 es v1 **con esos dos cambios y ninguno más** — sin eso, la comparación entre las dos no
+significaría nada.
+
+### `umbral_al_escribir` es un campo de la receta, no un `if`
+
+Descartar al escribir es una reducción con pérdida **antes** de guardar, y es la que no se puede
+deshacer: el día que 0,3 resulte mal puesto, con el umbral al leer se cambia el número y con el
+umbral al escribir se reprocesa el histórico. Que sea un campo —y no una rama en `filas.py`—
+es lo que lo pone en la huella y lo deja escrito por receta.
+
+Hay un test del control y otro del control del control: con el campo en `False` el valor va
+aunque la cobertura sea baja, y con el mismo dato en `True` sale nulo. Y un tercero para la
+distinción que importa: **un mes sin un solo píxel sigue sin valor en v2**, porque la mediana
+vino en `None` desde GEE. «No llegó al umbral» y «no hay dato» son cosas distintas.
+
+### `FilaMensual` pasa a llamarse `Fila`
+
+M.9.0b la dejó como estaba a propósito, porque renombrarla entonces habría tocado el
+repositorio y sus tests sin que ninguna fila cambiara. Ahora dejó de ser cierto: con v2, una
+fila es una pasada.
+
+### El control negativo, otra vez
+
+Igual que en M.9.0b, y contra el `main` de ahora: las **129 entradas** —24 meses × 4 coberturas
+que cruzan el umbral, las tres familias de claves de capa, el intervalo que se le pide a GEE, y
+9 meses de parcela contra GEE de verdad— dieron **idénticas**. Eso cubre las dos cosas que
+podían haber cambiado v1 sin querer: el filtro de nubes ancho y el campo nuevo de la receta.
+
+### Verificado contra GEE, no sólo con tests
+
+El camino entero por pasada se corrió sobre una parcela real, en tres meses elegidos:
+
+| Mes | Pasadas | Qué salió |
+|---|---|---|
+| 2026-07 | 9 | 36 filas, 36 claves distintas. Tres pasadas limpias con NDVI 0,483 / 0,607 / 0,572 |
+| 2025-02 | 5 | 20 filas. NDVI de 0,443 a 0,107 **dentro del mes** — el evento que la mediana mensual (0,377) borra |
+| 2026-05 | 10 | 40 filas, **todas sin valor**: es el mes en que las diez pasadas quedan tapadas por la máscara |
+
+**Armar las ventanas cuesta una sola llamada a GEE**, la de `fechas_de`. Y el último caso deja
+ver el costo de «por pasada puro» que `#63` aceptó: un mes enteramente nublado pasa de 4 filas
+a 40, todas con cobertura 0. Entra dentro de la estimación de `#63` (~768 filas por parcela en
+dos años) y es información —«hubo una pasada el día 3 y no sirvió» no es lo mismo que «no hubo
+pasada»—, pero conviene saberlo antes de poner v2 vigente.
+
+### Lo que falta, y es la otra mitad
+
+`/api/measurements` tiene que aprender a agregar, con **`mensual` por defecto**: eso es lo que
+hace que poner v2 vigente **no rompa el panel de hoy**. El número mensual es la **mediana de las
+medianas por pasada** (decisión del usuario, 2026-09-25), que es la que `#66` ya midió: se
+aparta 0,008 de NDVI de la mediana del compuesto, con p90 de 0,029.
+
+Va con SQL crudo (`FromSql`), porque la mediana en Postgres es `percentile_cont` y EF Core no la
+traduce — y agregar en memoria pediría traer ~3.800 filas contra un techo de 2.000, que es
+justo el modo de fallo silencioso que `MedicionesQueries` ya documenta. Es el primer SQL crudo
+del repo; decisión del usuario del 2026-09-25.

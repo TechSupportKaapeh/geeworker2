@@ -139,3 +139,52 @@ def test_la_fecha_es_el_inicio_de_la_ventana_y_no_el_del_mes():
         fin=datetime(2025, 9, 17, 15, 43, tzinfo=UTC),
     )
     assert {f.fecha for f in _filas(ventana=pasada)} == {instante}
+
+
+# --- El umbral al leer (M.9.0c, `DECISIONS #63`) ---------------------------
+
+
+def test_sin_umbral_al_escribir_el_valor_va_aunque_la_cobertura_sea_baja():
+    """`s2-pasada-v2` no descarta al escribir: el umbral es de quien lee.
+
+    Descartar al escribir es una reduccion con perdida antes de guardar, y es la
+    que no se puede deshacer: el dia que 0,3 resulte mal puesto, con el umbral al
+    leer se cambia el numero y con el umbral al escribir se reprocesa.
+    """
+    v2 = dataclasses.replace(RECETA_VIGENTE, umbral_al_escribir=False)
+    bajo = RECETA_VIGENTE.cobertura_minima - 0.01
+
+    filas = _filas(reduccion=_reduccion(cobertura=bajo), receta=v2)
+
+    assert all(f.valor is not None for f in filas)
+    assert all(f.cobertura == bajo for f in filas), "la cobertura viaja en la fila"
+
+
+def test_con_umbral_al_escribir_la_misma_cobertura_da_valor_nulo():
+    """El control del de arriba: lo unico que cambia es el campo de la receta."""
+    bajo = RECETA_VIGENTE.cobertura_minima - 0.01
+
+    filas = _filas(reduccion=_reduccion(cobertura=bajo), receta=RECETA_VIGENTE)
+
+    assert all(f.valor is None for f in filas)
+
+
+def test_sin_umbral_al_escribir_un_mes_sin_un_pixel_sigue_sin_valor():
+    """No hay nada que guardar: la mediana vino en None desde GEE.
+
+    Es la diferencia entre "no llego al umbral" —que v2 deja pasar— y "no hay
+    dato", que no depende de ningun umbral.
+    """
+    v2 = dataclasses.replace(RECETA_VIGENTE, umbral_al_escribir=False)
+    vacia = Reduccion(
+        estadisticas={
+            indice: dict.fromkeys(RECETA_VIGENTE.estadisticas)
+            for indice in RECETA_VIGENTE.indices
+        },
+        cobertura=0.0,
+        observaciones=None,
+    )
+
+    filas = _filas(reduccion=vacia, receta=v2)
+
+    assert all(f.valor is None for f in filas)

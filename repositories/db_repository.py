@@ -387,7 +387,7 @@ def _json_estricto(objeto):
 def upsert_mediciones_mensuales(filas) -> int:
     """Escribe las filas mensuales de `measurements` en una conexion y un round-trip.
 
-    `filas` son `pipeline.filas.FilaMensual` (M.4.3). Devuelve cuantas se
+    `filas` son `pipeline.filas.Fila` (M.4.3). Devuelve cuantas se
     escribieron. Es la version mensual de `insert_measurements`, con tres
     diferencias que importan:
 
