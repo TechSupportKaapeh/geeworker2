@@ -48,6 +48,12 @@ from pipeline.receta import Receta
 CLAVE_COBERTURA: Final = "cobertura"
 CLAVE_OBSERVACIONES: Final = "observaciones"
 
+# A cuántos decimales se redondean las observaciones. `n_obs` es una **cuenta**,
+# así que su mediana sobre la parcela es un entero o un entero y medio: no hay
+# ningún valor legítimo con más de un decimal. Tres es holgado y deja el número
+# exacto.
+_DECIMALES_OBSERVACIONES: Final = 3
+
 # El tope de píxeles de cada pedido. No sale de la receta porque no cambia ningún
 # número: es el límite de lo que se está dispuesto a calcular. A 10 m son 10.000
 # km², mil veces el rancho más grande que se espera. Si un pedido lo pasa, falla,
@@ -152,6 +158,25 @@ def observaciones(
     return _reducir(banda, roi, receta, ee.Reducer.median())
 
 
+def _sin_ruido_de_float(observaciones: float | None) -> float | None:
+    """Las observaciones, sin los decimales que inventa el float32.
+
+    GEE devuelve ``n_obs`` en float32 y el cliente lo pasa a float64, que es lo
+    que mete el ruido: en la base había ``2.9999999999999947`` donde el número
+    es 3. Se veía en la columna ``observaciones`` de ``measurements`` y en el
+    ``estadisticas`` de ``layers``.
+
+    **Redondear acá es exacto, no una aproximación**, y es lo que justifica
+    hacerlo: ``n_obs`` cuenta pasadas limpias por píxel, así que su mediana sobre
+    la parcela sólo puede ser un entero o un entero y medio. Nada legítimo se
+    pierde. Por eso tampoco se redondean las estadísticas de los índices, que sí
+    tienen decimales de verdad.
+    """
+    if observaciones is None:
+        return None
+    return round(observaciones, _DECIMALES_OBSERVACIONES)
+
+
 def valores(compuesto: ee.Image, roi: ee.Geometry, receta: Receta) -> ee.Dictionary:
     """Todo lo que hay que pedirle a GEE para una parcela y un mes, en un diccionario.
 
@@ -213,5 +238,7 @@ def leer(respuesta: Mapping[str, object], receta: Receta) -> Reduccion:
     return Reduccion(
         estadisticas=estadisticas,
         cobertura=float(cubierto),
-        observaciones=respuesta.get(CLAVE_OBSERVACIONES),  # type: ignore[arg-type]
+        observaciones=_sin_ruido_de_float(
+            respuesta.get(CLAVE_OBSERVACIONES)  # type: ignore[arg-type]
+        ),
     )

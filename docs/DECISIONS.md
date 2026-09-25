@@ -3364,3 +3364,76 @@ docstring de `_por_pasada`, que es donde va a mirar quien haga M.9.0c.
 - **`pipeline/periodos.py` no se tocó.** `Mes` sigue siendo la unidad del pedido, y está bien
   que lo sea: lo que se sacó es el supuesto de que la unidad del pedido y la de la observación
   son la misma.
+
+---
+
+## 68. `observaciones` se redondea, y el `.env` del worker apunta a producción (2026-09-25)
+
+> Dos cosas chicas que salieron de una pregunta del usuario mirando la tabla `measurements`
+> en Supabase: «hay columnas con null y otra que es un json». La forma de la tabla **está
+> bien** —esas columnas son nullable a propósito y `estadisticas` es `jsonb` con un CHECK que
+> exige que sea un objeto—, pero mirándola aparecieron estas dos.
+
+### 1. El ruido de float de `observaciones`
+
+**El síntoma:** en la columna `observaciones` de `measurements` hay `2.9999999999999947` donde
+el número es 3. Estaba anotado como pendiente desde antes y nunca se había arreglado.
+
+**De dónde sale:** GEE devuelve `n_obs` en float32 y el cliente lo pasa a float64. Los
+decimales que aparecen no son del dato: los inventa la conversión.
+
+**El arreglo:** `reduccion.leer` redondea `observaciones` a tres decimales, y **sólo
+`observaciones`**.
+
+**Por qué es exacto y no una aproximación**, que es lo que justifica hacerlo: `n_obs` cuenta
+pasadas limpias por píxel, así que su **mediana** sobre la parcela sólo puede ser un entero o
+un entero y medio. Con tres decimales no se pierde ningún valor legítimo. Hay un test que fija
+las dos mitades: que `2.9999999999999947` da 3, y que **2,5 sobrevive** — redondear a entero,
+que es lo primero que uno haría, se llevaría puesto un valor real.
+
+**Por qué no se redondean las estadísticas de los índices:** tienen decimales de verdad. El
+mismo ruido está en ellas, pero ahí no hay forma de distinguirlo del dato, y un NDVI con tres
+decimales sería perder precisión de verdad.
+
+**Va en `reduccion.leer` y no en `filas.py`** porque el número se guarda en dos lados —la
+columna `observaciones` de `measurements` y el `estadisticas` de `layers`, que arma
+`handlers/rancho.py`— y ahí arriba se arreglan los dos de una.
+
+**Lo ya guardado no cambia.** Las filas que están en la base siguen con su ruido hasta que se
+reprocesen; el arreglo es para lo que se escriba de acá en adelante.
+
+### 2. El `.env` del worker apunta a la base de producción
+
+**Lo que decía `PROXIMA_SESION`:** *«Las credenciales de base de ese `.env` son locales, no las
+de GeoData»*. **Es falso.** `DB_HOST` es `aws-0-us-east-1.pooler.supabase.com`, que es donde
+vive GeoData.
+
+Hoy lo contiene que la contraseña está vencida: un script local falla con
+`password authentication failed` en vez de escribir. **Eso es un accidente, no un control.** El
+día que alguien actualice esa contraseña —para correr `check_schema.py`, por ejemplo— un script
+local pasa a escribir en producción sin avisar.
+
+Es **exactamente la misma trampa** que la de `MINIO_*`, que en la sesión 9 dejó un COG de
+prueba en el bucket de producción, y que ya está documentada al lado. La diferencia es que de
+aquella hay un aviso escrito y de ésta había un aviso **que decía lo contrario**.
+
+**El arreglo es de documentación**, porque el `.env` es del usuario y no está en git: el
+párrafo ahora dice lo que hay, y cómo correr contra una base de prueba —pasando `DB_*` por el
+entorno, porque `load_dotenv()` no pisa lo que ya está—.
+
+### Lo que no se tocó, y por qué
+
+**La forma de la tabla está bien y no hace falta cambiar nada.** Lo que llama la atención al
+mirarla es de diseño:
+
+| Columna | Cuándo es NULL | Por qué |
+|---|---|---|
+| `valor` | cobertura bajo el mínimo de la receta | La fila se escribe igual: el panel dibuja el hueco y el cierre sabe que el mes ya se procesó (`ARQUITECTURA` §6). **Es lo que `s2-pasada-v2` saca**, con el umbral al leer (`#63`) |
+| `min_val`, `max_val` | siempre, en las filas mensuales | Son de la capa vieja por pasada; el upsert las anula a propósito para que una fila vieja del día 1 no las deje colgadas |
+| `observaciones` | sin un píxel limpio | Mismo caso que `valor` |
+| `estadisticas` | nunca | Es el `jsonb`, con un CHECK que exige que sea un objeto |
+
+**Lo que falta comprobar, y no se pudo desde acá:** que cada `valor` NULL tenga de verdad
+cobertura baja. Eso pide consultar la base, y la contraseña del `.env` está vencida. Quedó
+escrito en `geocore/docs/sql/2026-09-25_revisar_measurements.sql`, siete consultas de sólo lectura con
+qué se espera de cada una; la tercera es la que decide.

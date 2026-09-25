@@ -1,5 +1,24 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-25 · dos arreglos chicos, de mirar la tabla `measurements`** (`DECISIONS #68`).
+>
+> - **`observaciones` deja de salir con ruido de float.** `reduccion.leer` la redondea a tres
+>   decimales, y **sólo a ella**: `n_obs` cuenta pasadas, así que su mediana es un entero o un
+>   entero y medio y el redondeo es **exacto**. Las estadísticas de los índices no se tocan,
+>   que tienen decimales de verdad. **Lo ya guardado sigue con su ruido** hasta que se
+>   reprocese.
+> - **⚠️ El `.env` del worker apunta a la base de PRODUCCIÓN.** `PROXIMA_SESION` decía que las
+>   credenciales de base eran locales y **era falso**: `DB_HOST` es el pooler de Supabase, que
+>   es donde vive GeoData. Hoy lo contiene que la contraseña está vencida, que es un accidente
+>   y no un control. Misma trampa que `MINIO_*`, la de la sesión 9. Para correr contra una base
+>   de prueba, pasar `DB_*` por el entorno: `load_dotenv()` no pisa lo que ya está.
+>
+> **La forma de la tabla está bien**: `valor`, `cobertura` y `observaciones` son nullable a
+> propósito, `min_val`/`max_val` son de la capa vieja y el upsert las anula, y `estadisticas`
+> es `jsonb` con un CHECK que exige que sea un objeto. Lo que falta comprobar —que cada `valor`
+> NULL tenga de verdad cobertura baja— pide consultar la base y quedó escrito en
+> `geocore/docs/sql/2026-09-25_revisar_measurements.sql`.
+
 > **2026-09-25, sesión 15 · M.9.0b: la ventana de observación dejó de estar cableada**
 > (`DECISIONS #67`). Refactor **sin cambio de comportamiento**, y el control negativo lo dice
 > con números.
