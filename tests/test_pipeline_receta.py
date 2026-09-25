@@ -20,8 +20,13 @@ sys.path.insert(0, str(RAIZ))
 import pipeline.receta as modulo_receta
 from pipeline.estadisticas import ESTADISTICAS, Estadistica, Tipo
 from pipeline.indices import INDICES, Indice
-from pipeline.receta import RECETA_POR_PASADA, RECETA_VIGENTE
+from pipeline.receta import (
+    RECETA_MENSUAL_V1,
+    RECETA_POR_PASADA,
+    RECETA_VIGENTE,
+)
 from pipeline.registro import registro
+from pipeline.ventanas import ENTERO
 
 # Una linea por version. Si este test sale rojo porque cambiaste un parametro:
 #   1. subi la version de RECETA_VIGENTE (s2-mensual-v2);
@@ -85,9 +90,11 @@ CAMBIOS = {
     "indices": ("ndvi", "evi", "ndre"),
     "estadisticas": ("mediana", "media", "min", "max", "p10", "p90"),
     "cobertura_minima": 0.31,
-    "umbral_al_escribir": False,
+    "umbral_al_escribir": True,
     "meses_historico": 25,
-    "agrupamiento_estadisticas": "por_pasada",
+    # Distintos de los de la vigente, que desde `DECISIONS #70` es v2: sus
+    # estadisticas ya se agrupan `por_pasada`.
+    "agrupamiento_estadisticas": "entero",
     "agrupamiento_raster": "por_pasada",
     "escala_m": 20,
     "remuestreo": "bilinear",
@@ -115,33 +122,45 @@ def test_la_huella_de_cada_receta_esta_fijada(receta):
 
 def test_las_dos_recetas_de_verdad_no_comparten_huella():
     """v1 y v2 difieren en dos campos, y los dos entran en la huella."""
-    assert RECETA_VIGENTE.huella() != RECETA_POR_PASADA.huella()
+    assert RECETA_MENSUAL_V1.huella() != RECETA_POR_PASADA.huella()
 
 
 def test_v2_es_v1_con_dos_cambios_y_nada_mas():
     """Lo que hace que la comparacion entre las dos signifique algo."""
     distintos = {
         campo.name
-        for campo in dataclasses.fields(RECETA_VIGENTE)
-        if getattr(RECETA_VIGENTE, campo.name) != getattr(RECETA_POR_PASADA, campo.name)
+        for campo in dataclasses.fields(RECETA_MENSUAL_V1)
+        if getattr(RECETA_MENSUAL_V1, campo.name) != getattr(RECETA_POR_PASADA, campo.name)
     }
     assert distintos == {"version", "agrupamiento_estadisticas", "umbral_al_escribir"}
 
 
 def test_v2_deja_el_raster_mensual():
     """`DECISIONS #63`: los motivos de `#31` para el raster no cambiaron."""
-    assert RECETA_POR_PASADA.agrupamiento_raster == RECETA_VIGENTE.agrupamiento_raster
+    assert RECETA_POR_PASADA.agrupamiento_raster == RECETA_MENSUAL_V1.agrupamiento_raster
 
 
-def test_la_vigente_sigue_siendo_v1():
-    """M.9.0c escribe v2 pero NO la pone a correr.
+def test_la_vigente_es_v2_por_pasada():
+    """Desde el 2026-09-25 (`DECISIONS #70`).
 
-    El que lee se despliega primero: `/api/measurements` tiene que saber agregar
-    y el panel dibujarlo antes de que existan filas por pasada. Es la regla de
-    M.8.1 con el que lee en el lugar del que exige.
+    El orden de despliegue se respeto: `/api/measurements` ya sabe agregar, con
+    `cadencia=mensual` por defecto, asi que el panel pide lo mismo y recibe puntos
+    mensuales. Es la regla de M.8.1 con el que LEE en el lugar del que exige.
     """
-    assert RECETA_VIGENTE.version == "s2-mensual-v1"
-    assert RECETA_VIGENTE.umbral_al_escribir is True
+    assert RECETA_VIGENTE is RECETA_POR_PASADA
+    assert RECETA_VIGENTE.version == "s2-pasada-v2"
+    assert RECETA_VIGENTE.umbral_al_escribir is False, "el umbral se aplica al leer"
+    assert RECETA_VIGENTE.agrupamiento_raster == ENTERO, "el raster sigue mensual"
+
+
+def test_v1_sigue_existiendo_aunque_no_sea_la_vigente():
+    """Es la receta de las filas que ya estan escritas.
+
+    Borrarla dejaria filas apuntando a una receta que no existe, que es justo lo
+    que la version en cada fila viene a evitar.
+    """
+    assert RECETA_MENSUAL_V1.version == "s2-mensual-v1"
+    assert RECETA_MENSUAL_V1.version in HUELLAS
 
 
 def test_dos_versiones_no_comparten_huella():
@@ -157,8 +176,12 @@ def test_la_huella_es_un_sha256_estable():
 
 def test_la_receta_v1_es_la_decidida():
     """DECISIONS #31, los parametros de sombras de la mascara vieja (§8.7) y el
-    remuestreo que GEE usa si no se le pide otro (DECISIONS #36)."""
-    receta = RECETA_VIGENTE
+    remuestreo que GEE usa si no se le pide otro (DECISIONS #36).
+
+    Sigue fijada aunque v1 ya no sea la vigente: es la receta de las filas que ya
+    estan escritas, y `measurements.receta` las nombra por su version.
+    """
+    receta = RECETA_MENSUAL_V1
     assert receta.version == "s2-mensual-v1"
     assert receta.coleccion == "COPERNICUS/S2_SR_HARMONIZED"
     assert receta.coleccion_nubes == "COPERNICUS/S2_CLOUD_PROBABILITY"

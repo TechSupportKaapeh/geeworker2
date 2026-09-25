@@ -20,6 +20,11 @@ import pytest
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
+from handlers import mes as handlers_mes
+from handlers import parcela as handlers_parcela
+from handlers import rancho as handlers_rancho
+from pipeline.receta import RECETA_MENSUAL_V1
+
 from handlers import altas, parcela, rancho
 from handlers import mes as handlers_mes
 from pipeline import ejecucion
@@ -97,6 +102,15 @@ def mundo(monkeypatch):
         estado["bitacora"].append({"etapa": stage, "nivel": level, "mensaje": message,
                                    "detalle": detail or {}, "progreso": progress})
 
+    # **Estos tests fijan la orquestacion MENSUAL, y por eso clavan v1.** Desde el
+    # 2026-09-25 la receta vigente es `s2-pasada-v2` (`DECISIONS #70`), que parte el
+    # mes en una ventana por pasada: el mismo mes escribe N x 4 filas y cuesta N + 1
+    # llamadas a GEE. Lo que estos tests prueban —el plan, un step por mes, la
+    # bitacora, la barra— no cambia con eso, y clavando v1 se sigue leyendo cuanto
+    # cuesta UN mes. La orquestacion por pasada tiene sus propios tests abajo.
+    monkeypatch.setattr(handlers_mes, "RECETA_VIGENTE", RECETA_MENSUAL_V1)
+    monkeypatch.setattr(handlers_parcela, "RECETA_VIGENTE", RECETA_MENSUAL_V1)
+    monkeypatch.setattr(handlers_rancho, "RECETA_VIGENTE", RECETA_MENSUAL_V1)
     monkeypatch.setattr(ejecucion, "estadisticas_de", _estadisticas_de)
     monkeypatch.setattr(avance_job, "registrar_evento_job", _registrar)
     monkeypatch.setattr(db_repository, "update_processing_job",

@@ -13,7 +13,10 @@ sys.path.insert(0, str(RAIZ))
 from pipeline.etapas.reduccion import Reduccion
 from pipeline.filas import filas_de
 from pipeline.periodos import Mes
-from pipeline.receta import RECETA_VIGENTE
+# Clava v1: la mayoria de estos tests fijan el umbral AL ESCRIBIR, que es lo que
+# hace v1. Los de v2 —el umbral al leer— arman su receta con `dataclasses.replace`
+# y estan al final del archivo.
+from pipeline.receta import RECETA_MENSUAL_V1 as RECETA_VIGENTE
 from pipeline.ventanas import Ventana, del_mes
 
 PARCELA = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"

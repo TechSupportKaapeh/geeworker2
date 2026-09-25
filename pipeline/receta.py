@@ -257,7 +257,12 @@ class Receta:
 # Receta v1 (DECISIONS #31). La máscara de nubes y sombras es la de la capa
 # vieja (`mask_s2cloudless_and_shadows`), con sus parámetros traídos acá
 # (ARQUITECTURA §8.7).
-RECETA_VIGENTE = Receta(
+#
+# **Dejó de ser la vigente el 2026-09-25** (`DECISIONS #70`), pero sigue acá y va
+# a seguir: es la receta de las filas que ya están escritas, y `measurements.receta`
+# las nombra por su versión. Borrarla dejaría filas apuntando a una receta que no
+# existe, que es justo lo que la versión en cada fila viene a evitar.
+RECETA_MENSUAL_V1 = Receta(
     version="s2-mensual-v1",
     coleccion="COPERNICUS/S2_SR_HARMONIZED",
     coleccion_nubes="COPERNICUS/S2_CLOUD_PROBABILITY",
@@ -288,12 +293,9 @@ RECETA_VIGENTE = Receta(
 )
 
 
-# Receta v2 (M.9.0c, `DECISIONS #63` y `#66`). **No es la vigente**: existe,
-# tiene tests y se verificó contra GEE, pero las altas y el cierre de mes siguen
-# escribiendo con v1. El cambio de vigente es su propia decisión, y va **después**
-# de que `/api/measurements` sepa agregar y el panel sepa dibujarlo — es la regla
-# de despliegue de M.8.1, con el que lee en el lugar del que exige: si el worker
-# empezara antes, habría filas que nadie sabe leer.
+# Receta v2 (M.9.0c, `DECISIONS #63` y `#66`), **la vigente desde el 2026-09-25**
+# (`DECISIONS #70`). Existe desde el 2026-09-25 y estuvo sin usar hasta que
+# `/api/measurements` supo agregar, que es el orden que pedía M.8.1.
 #
 # Contra v1 cambian exactamente dos cosas, y las dos salieron de M.9.0:
 #
@@ -305,8 +307,23 @@ RECETA_VIGENTE = Receta(
 #
 # **El ráster sigue mensual** (`#63`): los motivos de `#31` no cambiaron.
 RECETA_POR_PASADA = dataclasses.replace(
-    RECETA_VIGENTE,
+    RECETA_MENSUAL_V1,
     version="s2-pasada-v2",
     agrupamiento_estadisticas=POR_PASADA,
     umbral_al_escribir=False,
 )
+
+# **La vigente, desde el 2026-09-25** (`DECISIONS #70`). Lo que sigue lo escribe
+# v2: una fila por pasada, el umbral al leer, y el ráster mensual como siempre.
+#
+# El orden de despliegue se respetó: `/api/measurements` ya sabe agregar —con
+# `cadencia=mensual` por defecto— desde Geocore#60, así que el panel pide lo mismo
+# y recibe puntos mensuales sin tocar una línea. Es la regla de M.8.1 con el que
+# lee en el lugar del que exige.
+#
+# **Lo que ya está escrito no cambia**: las filas de v1 se quedan con su versión y
+# su fecha —el día 1 del mes—, y las nuevas conviven al lado con la fecha de
+# adquisición. Un mes que tenga las dos sale de `/api/measurements` con
+# `receta: "s2-mensual-v1,s2-pasada-v2"`, a la vista y no en silencio
+# (`DECISIONS #48` de Geocore).
+RECETA_VIGENTE = RECETA_POR_PASADA

@@ -1,5 +1,33 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-25 · `s2-pasada-v2` ES LA RECETA VIGENTE** (`DECISIONS #70`, decisión del
+> usuario). Desde acá, las altas y el cierre escriben **una fila por pasada** en vez de una por
+> mes. **Esto sí cambia producción.**
+>
+> - **El panel no se rompe**, y esa era la condición: `/api/measurements` agrega con
+>   `cadencia=mensual` por defecto desde Geocore#60, y sobre filas mensuales agrupar por mes es
+>   la identidad.
+> - **Cuesta unas 9 veces más**, medido contra GEE sobre una parcela de 101 ha: un mes pasa de
+>   2,0–2,8 s y 1 llamada a **13,6–25,1 s y 6–11 llamadas**, y de 4 filas a 20–40. El peor mes
+>   medido entra en la compuerta de 60 s, **con menos del doble de margen**.
+> - **⚠️ Lo primero a mirar si un alta empieza a fallar:** el tiempo con una **parcela grande**
+>   sigue sin medirse —es un pendiente desde M.2—. Con v1 un mes iba de 2 a 8 s; por 9, el
+>   extremo alto daría ~72 s y **pasaría la compuerta**.
+> - **La cuota de Inngest no se mueve**: sigue habiendo un step por mes. Lo que crece es lo que
+>   hace cada step.
+> - **Lo ya escrito no cambia** y no hay migración. Un mes que tenga filas de las dos recetas
+>   sale de la API con `receta: "s2-mensual-v1,s2-pasada-v2"`, a la vista — pasa **sólo si se
+>   reprocesa** un mes que ya tenía fila v1.
+> - **Los COG nuevos cuelgan de `…/s2-pasada-v2/…`**, porque la receta va en la key.
+> - **`RECETA_MENSUAL_V1` no se borra**: es la receta de las filas que ya están escritas.
+>
+> **Para escribir tests de acá en adelante:** los que fijan la orquestación **mensual** clavan
+> `RECETA_MENSUAL_V1` a propósito, porque lo que prueban no es de la receta — un test que sigue
+> a `RECETA_VIGENTE` y afirma un literal se vuelve verde por construcción el día que la vigente
+> cambia.
+>
+> Suite: **680 verdes**, 25 omitidos.
+
 > **2026-09-25, sesión 15 · M.9.0c (la mitad del worker): `s2-pasada-v2` existe y NO es la
 > vigente** (`DECISIONS #69`). **Producción no cambia**: las altas y el cierre siguen
 > escribiendo con `s2-mensual-v1`.

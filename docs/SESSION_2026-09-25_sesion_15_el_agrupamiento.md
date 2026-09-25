@@ -179,3 +179,50 @@ poner v2 vigente **no rompa el panel de hoy**, y es la regla de M.8.1 con el que
 del que exige. El número mensual es la **mediana de las medianas por pasada**, que es la que
 `#66` ya midió. Va con SQL crudo, porque `percentile_cont` no lo traduce EF Core y agregar en
 memoria pediría traer ~3.800 filas contra un techo de 2.000.
+
+---
+
+# Y al final: v2 pasa a ser la vigente
+
+> **geeworker2#75**, `DECISIONS #70`. Decisión del usuario. **Esto sí cambia producción**: las
+> altas y el cierre escriben una fila por pasada.
+
+**El orden se respetó, y era la condición.** `/api/measurements` ya agrega con
+`cadencia=mensual` por defecto desde Geocore#60, así que el panel pide lo mismo y recibe puntos
+mensuales sin tocar una línea. Sobre filas mensuales, agrupar por mes es la identidad — y hay
+un test contra PostgreSQL que lo fija. Es la regla de M.8.1 con el que **lee** en el lugar del
+que exige.
+
+## Lo que cuesta, medido antes de hacerlo
+
+| Mes | v1 | v2 |
+|---|---|---|
+| 2025-02 | 2,0 s · 1 llamada · 4 filas | **13,6 s · 6 · 20** |
+| 2026-05 | 2,8 s · 1 llamada · 4 filas | **25,1 s · 11 · 40** |
+| 2026-07 | 2,2 s · 1 llamada · 4 filas | **20,6 s · 10 · 36** |
+| 2026-08 | 2,1 s · 1 llamada · 4 filas | **22,4 s · 11 · 40** |
+
+Unas **9 veces más**. El peor mes entra en la compuerta de 60 s, pero con menos del doble de
+margen — y **sobre una parcela de 101 ha**. El tiempo con una parcela grande sigue sin medirse,
+y es lo primero a mirar si un alta empieza a fallar: con v1 un mes iba de 2 a 8 s, y por 9 el
+extremo alto daría ~72 s.
+
+La cuota de Inngest **no se mueve**: sigue habiendo un step por mes. Lo que crece es lo que hace
+cada step.
+
+## Lo que cambió en los tests, y es lo que más vale de esta parte
+
+Los tests que fijaban la orquestación mensual **clavan `RECETA_MENSUAL_V1` explícitamente**, en
+vez de seguir a `RECETA_VIGENTE`. Lo que prueban —el plan, un step por mes, la bitácora, la
+forma de la key, lo que el repositorio hace con una fila sin valor— **no es de la receta**.
+
+Y hay una razón más fuerte que la prolijidad: **un test que sigue a `RECETA_VIGENTE` y afirma un
+literal se vuelve verde por construcción** el día que la vigente cambia. Deja de decir nada
+justo cuando más falta haría.
+
+Entraron tres tests de la orquestación por pasada: que un mes escriba N × 4 filas con una clave
+por pasada e índice —si dos ventanas cayeran en la misma fecha, el upsert rechazaría el lote
+entero y el mes se perdería—, que cueste una reducción por pasada, y que una pasada bajo el
+umbral conserve su valor.
+
+Suite: **680 verdes**, 25 omitidos.

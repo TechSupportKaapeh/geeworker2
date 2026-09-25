@@ -22,7 +22,10 @@ from pipeline.claves import (
     prefijo_de_tenant,
 )
 from pipeline.periodos import Mes
-from pipeline.receta import RECETA_VIGENTE
+# Clava v1: este test fija la FORMA de la key, y una forma se fija contra una
+# receta concreta. Con `RECETA_VIGENTE` el literal cambiaria solo cada vez que
+# cambia la receta vigente, y el test dejaria de decir nada.
+from pipeline.receta import RECETA_MENSUAL_V1 as RECETA_VIGENTE
 from pipeline.ventanas import del_mes
 
 TENANT = "7f3c2a10-5b6d-4e8f-9a01-23456789abcd"

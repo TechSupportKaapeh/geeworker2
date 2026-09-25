@@ -17,7 +17,10 @@ sys.path.insert(0, str(RAIZ))
 from pipeline.etapas.reduccion import Reduccion
 from pipeline.filas import filas_de
 from pipeline.periodos import Mes
-from pipeline.receta import RECETA_VIGENTE
+# Clava v1: estos tests fijan lo que hace el REPOSITORIO con una fila que no
+# lleva valor, y v1 es la receta que las produce (con v2 el umbral se aplica al
+# leer, `DECISIONS #70`). Lo que se prueba no es de la receta.
+from pipeline.receta import RECETA_MENSUAL_V1 as RECETA_VIGENTE
 from pipeline.ventanas import del_mes
 from repositories import db_repository
 
