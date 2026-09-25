@@ -179,8 +179,8 @@ Si la auditoría encuentra algo → **volver a la etapa 2** y corregir antes de 
 > | Comando | Repo | Qué prueba |
 > |---|---|---|
 > | `scripts/check_prod.py` | tileserver | La cadena de tiles contra el deploy real, en 7 escalones |
+> | `scripts/check_pipeline_real.py --pasadas` | worker | **M.9.0**: cuántas pasadas limpias hay por mes y qué cobertura tiene cada una sobre la parcela |
 > | `GET /health/ready` | tileserver | Config y MinIO alcanzable, sin token |
-> | `scripts/check_mosaic_median.py` | tileserver | Que la composición por mediana respete el nodata |
 > | `check_schema.py` | worker | Que el SQL case contra el esquema real |
 > | `scripts/check_minio_region.py` | worker | Que la subida no pida permisos que no usa |
 > | `scripts/check_write_path.py` | worker | **A-3**: el camino de escritura contra el MinIO real, en seis escalones |

@@ -130,3 +130,50 @@ umbral se cruce harían falta dos pasadas cada una por debajo de 0,30 que juntas
 | `ruff check --select BLE .` | limpio |
 | El camino viejo del script (escalones 1 a 4) | corrido sobre el Bajío, sin cambios |
 
+
+---
+
+# Y después: se borró el router `/mosaic` del tileserver
+
+> Una de las dos tareas sueltas que quedaban. **terra-tileserver#4**, `DECISIONS #64`.
+
+**Qué era el hallazgo T-3.** El `path_dependency` del tileserver valida la URL del MosaicJSON
+pero **no los assets que ese documento lista adentro**: `cogeo-mosaic` los abre tal como
+vengan. Desde M.8.1 pesaba más — lo que se saltearía ya no era sólo el filtro anti-SSRF, era
+**el aislamiento entre tenants**. Lo contenía que sólo `worker-rw` escriba en el bucket, que es
+una apuesta y no un control.
+
+**Se borró en vez de arreglarse porque no lo usaba nadie.** `DECISIONS #31` dice que no se usa
+MosaicJSON: desde el pipeline mensual el mapa de un rancho es un COG por índice y por mes, que
+es lo que pide `/cog`. Es la misma cura que W-3.
+
+**Se fueron también dos dependencias.** `titiler.mosaic` y `boto3` existían sólo para ese
+router: boto3 lo pedía `cogeo_mosaic.backends.s3.S3Backend`, y GDAL nunca lo usó —llega a MinIO
+por sus propias variables—. Y `scripts/check_mosaic_median.py` se borró: importa `cogeo_mosaic`
+y sin el router no verifica nada del servicio. Su fila salió de la tabla de verificaciones
+ejecutables del `WORKFLOW`, y en su lugar entró la de M.9.0.
+
+`AWS_ENDPOINT_URL_S3` **se dejó puesta** en `configure_gdal`, con el docstring corregido: es
+una variable de entorno de más, y sacarla toca el único camino por el que GDAL llega a MinIO.
+Eso se prueba contra el deploy, no de paso en la tarea que borró el router.
+
+## Dos verificaciones que esta tarea necesitaba, y por qué
+
+**El control negativo, que acá era obligatorio.** Sacar `/mosaic` de la lista `RUTAS` deja
+todos los tests verdes **aunque el router siga montado**: lo único que pasaría es que nadie lo
+mira. Un borrado sin un test que lo afirme no es un borrado verificado. Entró
+`test_el_router_mosaic_ya_no_existe`, que pide con token —un 401 también sería «no pasa» y
+probaría otra cosa— y espera 404. **Con el router remontado a mano, sale en rojo.**
+
+**Que la app arranque sin los paquetes.** Los tests corren con el venv de la máquina, que
+todavía los tenía instalados: `pytest` verde no probaba que `requirements.txt` quedara bien. Se
+importó `main` con `titiler.mosaic`, `cogeo_mosaic`, `boto3` y `botocore` **bloqueados en el
+`meta_path`**. Arranca, y monta `cog`, `health`, `piloto`, `viewer`, `static`, `docs`, `redoc` y
+`openapi.json`. Ninguna ruta `/mosaic`. Después el CI lo confirmó con la instalación limpia.
+
+Es la misma lección de la sesión 12 —*el cableado no lo prueba ningún test unitario*— aplicada
+al revés: **el descableado tampoco**.
+
+Tests del tileserver: **181 verdes** (eran 185; se van 5 casos parametrizados de `/mosaic` y
+entra 1 nuevo). Crónica del lado del tileserver:
+`docs/SESSION_2026-09-24_borrar_el_router_mosaic.md`.

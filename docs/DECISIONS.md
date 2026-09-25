@@ -3066,6 +3066,31 @@ hoy las cubre a propósito— y revisar `scripts/check_mosaic_median.py`, que ve
 composición por mediana y puede depender del endpoint. **No toca el pipeline**: el `mosaic()`
 de `pipeline/etapas/compuesto.py` es de GEE y no tiene nada que ver.
 
+### ✅ Hecho el 2026-09-24 · terra-tileserver#4
+
+Salió todo el alcance de arriba, y dos cosas más que sólo existían para el router:
+**`titiler.mosaic` y `boto3` se fueron de `requirements.txt`** —boto3 lo pedía
+`cogeo_mosaic.backends.s3.S3Backend`; GDAL nunca lo usó, llega a MinIO por sus propias
+variables— y **`scripts/check_mosaic_median.py` se borró**, porque importa `cogeo_mosaic` y sin
+el router no verifica nada del servicio. `AWS_ENDPOINT_URL_S3` **se deja puesta** en
+`configure_gdal`: es una variable de entorno de más, y sacarla toca el único camino por el que
+GDAL llega a MinIO — eso se prueba contra el deploy, no de paso en esta tarea.
+
+**El control negativo era obligatorio acá**, y se corrió: sacar `/mosaic` de la lista `RUTAS`
+deja todos los tests verdes **aunque el router siga montado**. Por eso entró
+`test_el_router_mosaic_ya_no_existe`, que pide `/mosaic/info` **con token** —un 401 también
+sería «no pasa» y probaría otra cosa— y espera 404. Con el router remontado a mano, sale en
+rojo.
+
+**Y se comprobó que la app arranca sin los paquetes** antes de esperar al CI: se importó `main`
+con `titiler.mosaic`, `cogeo_mosaic`, `boto3` y `botocore` bloqueados en el `meta_path`.
+Arranca, y monta `cog`, `health`, `piloto`, `viewer`, `static`, `docs`, `redoc` y
+`openapi.json` — ninguna ruta `/mosaic`. Hacía falta porque el venv de la máquina todavía tenía
+los paquetes instalados: los tests solos no probaban `requirements.txt`.
+
+Tests del tileserver: **181 verdes** (eran 185; se van 5 casos parametrizados y entra 1).
+Crónica: `tileserver/docs/SESSION_2026-09-24_borrar_el_router_mosaic.md`.
+
 ---
 
 ## 65. Retención: lo sistemático para siempre, lo a demanda 90 días (2026-09-25)
