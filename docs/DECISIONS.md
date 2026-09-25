@@ -3090,3 +3090,122 @@ Geocore) y dejó afuera los **objetos de MinIO**, que son la parte que más ocup
 **Consecuencia:** `PREGUNTAS_ABIERTAS` C-5 queda partida en sus tres cosas, y **la única que
 sigue abierta es cuándo se implementa el borrado de los a demanda** — la política ya está
 decidida.
+
+---
+
+## 66. M.9.0: hay 3 pasadas limpias por mes, y la fila mensual del compuesto no hace falta (2026-09-24)
+
+> **La compuerta de `#63`, medida.** `#63` decidió «por pasada puro» y dejó M.9.0 como red: *si
+> la cobertura por pasada viene alta, el compuesto no estaba haciendo nada que el `GROUP BY` no
+> haga; si viniera parcial, la fila mensual iría en una tabla aparte*. **Vino alta.** La tabla
+> aparte no se abre. Ficha: [`PREGUNTAS_ABIERTAS`](PREGUNTAS_ABIERTAS.md) B-3, **cerrada**.
+
+### Cómo se midió
+
+`scripts/check_pipeline_real.py --pasadas`, un escalón nuevo (el 6) que **no toca el pipeline**:
+compone las etapas que ya existen —`fuente.coleccion`, `nubes.enmascarar`,
+`compuesto.por_pasada`, `compuesto.indices_de`— y reduce **cada pasada por separado** sobre el
+ROI. La columna del compuesto sale de `reduccion.valores`, que es la que escribe producción: la
+comparación sólo vale si el lado de referencia es el de verdad.
+
+**Una sola llamada a GEE por parcela y mes**, unos 3 s. Corre solo, sin los escalones 1 a 4:
+esos son la compuerta de M.2.6 sobre 3 meses y cuestan 6 llamadas por parcela y mes; correr los
+cinco sobre 24 meses serían ~430 llamadas para leer una tabla.
+
+Dos cosas que costaron un rato y conviene dejar escritas:
+
+- **una `ee.FeatureCollection` metida en un `ee.Dictionary` vuelve vacía.** `getInfo()` la
+  serializa como `{"type": "FeatureCollection", "columns": {}}`, sin un solo rasgo. Con
+  `toList(size).map(...)` vuelve la lista entera. Está en un comentario del script;
+- **una pasada enteramente enmascarada no trae la clave del valor**, igual que documenta
+  `reduccion.leer` para el mes sin píxeles: GEE omite la salida en vez de mandarla en `None`.
+
+**Alcance:** 3 parcelas reales de los Llanos Orientales (Colombia) × los 24 meses de
+`meses_historico` (2024-09 a 2026-08) = **72 meses de parcela**, más el cuadrado del Bajío
+—que no es de un cliente— como segunda geografía, 24 meses más. Receta `s2-mensual-v1`, huella
+`75dbb738dd2a`.
+
+### Los números
+
+| | Parcelas reales (72) | Bajío (24) |
+|---|---|---|
+| Pasadas limpias por mes (≥ `cobertura_minima` = 0,30) | **mediana 3**, media 2,76, máximo 8 | mediana 6, media 5,58 |
+| Meses con 0 · 1 · 2 · ≥3 limpias | 4,2 % · 12,5 % · 29,2 % · **54,2 %** | 0 % · 0 % · 0 % · **100 %** |
+| `comp − mejor`: lo que el compuesto agrega sobre la mejor pasada sola | mediana **+0,0000**, p90 +0,148, máx +0,485 | mediana +0,009, p90 +0,049, máx +0,251 |
+| Meses en que agrega más de 0,05 | 13 de 72 (**18,1 %**) | 2 de 24 (8,3 %) |
+| **Meses en que el compuesto llega al umbral y ninguna pasada sola** | **0 de 72** | **0 de 24** |
+| \|mediana del compuesto − mediana de las medianas por pasada\| | mediana **0,008**, p90 0,029, máx 0,089 | mediana 0,004, p90 0,013, máx 0,031 |
+| Rango del índice entre las pasadas limpias de un mes | mediana **0,065**, p90 0,164, máx **0,336** | mediana 0,038, p90 0,154, máx 0,172 |
+| Meses con `valor` nulo por cobertura baja | 3 de 72 — y los tres son 2026-05, con cobertura **exactamente 0** | 0 de 24 |
+
+**La estacionalidad, en las parcelas reales** (promedio de las 3, por mes del año):
+
+| Mes | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Pasadas | 7,5 | 5,0 | 8,0 | 9,0 | 10,0 | 9,0 | 9,0 | 9,5 | 7,0 | 7,5 | 7,0 | 7,0 |
+| **Limpias** | 3,5 | 3,2 | 3,5 | 2,2 | **1,0** | **1,5** | 2,7 | 2,5 | 2,0 | 2,7 | 3,0 | **5,5** |
+| `comp − mejor` | 0,000 | 0,000 | 0,000 | 0,040 | 0,025 | **0,236** | 0,078 | 0,003 | 0,033 | 0,000 | 0,047 | 0,000 |
+
+### Lo que deciden
+
+**1. El bloque M.9.0 NO se cierra acá.** `SPRINTS_FASE_M` decía: *si casi siempre son 1 o 2, el
+mensual está bien y este bloque se cierra*. **No son 1 o 2**: la mediana es 3 y más de la mitad
+de los meses tienen 3 o más. En 60 de los 72 meses hay al menos dos pasadas limpias, y el
+índice se mueve entre ellas una mediana de 0,065 —con un p90 de 0,164 y un máximo de 0,336—.
+Eso es señal que hoy se descarta. **M.9.0b, M.9.0c y M.9.0d siguen en pie.**
+
+El caso más claro está en la tabla: parcela_1 en 2025-02 tuvo 5 pasadas limpias con NDVI de
+0,443, 0,412, 0,381, **0,107** y 0,147. La fila mensual dice **0,377**. Una caída de 0,44 a
+0,11 —lo que sea que haya pasado ahí— hoy no existe en la base.
+
+**2. «Por pasada puro» se confirma, y lo confirma un número y no un argumento.** El que cierra
+la pregunta es **0 de 72**: no hay un solo mes en que el compuesto llegue al umbral y ninguna
+pasada sola llegue. Guardar por pasada **no deja sin valor a ningún mes que hoy lo tenga**.
+
+Los otros dos van en el mismo sentido:
+
+- **el compuesto casi nunca agrega cobertura.** La mediana de `comp − mejor` es exactamente
+  0,0000: en la mitad de los meses la mejor pasada sola ya cubre lo mismo que el compuesto;
+- **«las medianas no componen» es cierto y es chico.** Recomponer el mes agregando las pasadas
+  al leer se aparta 0,008 de NDVI en la mediana y 0,089 en el peor caso. Contra una variación
+  intramensual de 0,065, el error de composición es **un orden de magnitud menor que la señal
+  que se gana**. `#63` lo llamaba «el menor»; ahora tiene número.
+
+**3. Lo que se acepta a sabiendas.** En el 18 % de los meses —casi todos de mayo a julio, el
+pico de lluvias— el compuesto cubre hasta 0,485 más de la parcela que la mejor pasada sola. Ahí
+la serie por pasada describe **el pedazo despejado** y no la parcela entera, que es exactamente
+el sesgo que `#63` describe. No se pierde el mes, pero el número de esos meses es de menos
+parcela que el de hoy. **Lo que lo hace tolerable es que la cobertura va en la fila**: quien
+lea puede verlo y filtrar, que es justo lo que «el umbral al leer» habilita. Si algún día
+molesta, la salida sigue siendo la tabla aparte de `#63`, y se puede abrir sin migrar nada.
+
+**4. Un caveat sobre la muestra, que hay que decir.** Las tres parcelas son rectángulos
+contiguos (~0,58 × 1,73 km cada uno) en el mismo punto: ven **las mismas pasadas**, y la
+columna de pasadas es idéntica entre las tres en cada mes. Los 72 meses de parcela son 24 meses
+× 3 muestras correlacionadas, **no 72 independientes**. Lo que sí varía entre ellas —y es el
+número que se quería medir— es la **cobertura de cada pasada sobre su parcela**. El Bajío es la
+segunda geografía y va en el mismo sentido, más limpio. Con parcelas de otra región o de otro
+tamaño, el reparto de pasadas limpias puede cambiar; lo que difícilmente cambie es el **0 de
+72**, que es una desigualdad y no un promedio: el compuesto no puede cubrir menos que su mejor
+pasada, y para que el umbral se cruce harían falta dos pasadas cada una por debajo de 0,30 que
+juntas pasen 0,30 **sin solaparse**.
+
+### Lo que cambia en el código
+
+Sólo `scripts/check_pipeline_real.py`: el escalón 6, los flags `--pasadas` y `--csv`, y
+`_cerrar()`, que era el final de `main()` y ahora lo comparten los dos caminos. **El pipeline
+no se tocó**, que es lo que corresponde a una tarea de medir. La suite queda en **637 verdes**
+y 21 omitidos, igual que antes; `ruff check .` en la raíz sigue en 77, los históricos.
+
+Una copia de `reduccion._reducir` vive en el script, a propósito: exponerlo habría cambiado un
+módulo de producción para un informe, y los cinco argumentos —`bestEffort=False` sobre todo—
+tienen que coincidir para que la cobertura por pasada sea comparable con la del compuesto. Está
+dicho en su docstring.
+
+### El control negativo
+
+El escalón comprueba, mes a mes, que **el compuesto no cubra menos que su mejor pasada**. Es
+una desigualdad que tiene que valer por construcción —el compuesto tiene dato donde lo tuvo
+alguna pasada—, así que si saliera en rojo la tabla entera no significaría lo que dice. En los
+96 meses medidos no salió ninguna vez.
+
