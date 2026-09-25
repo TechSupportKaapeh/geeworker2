@@ -32,6 +32,13 @@
 >   que sí varía entre ellas es la cobertura de cada pasada, que es lo que se medía. El Bajío
 >   es la segunda geografía y va en el mismo sentido, más limpio (mediana 6).
 >
+> **Y en el tileserver, la misma sesión: se borró el router `/mosaic`** (terra-tileserver#4,
+> `DECISIONS #64`), y con él el hallazgo **T-3**. Lo que le toca al worker es una sola cosa:
+> **`scripts/check_mosaic_median.py` ya no existe**, así que salió de la tabla de
+> verificaciones ejecutables de [`WORKFLOW.md`](WORKFLOW.md) — donde en su lugar entró
+> `check_pipeline_real.py --pasadas`. El `mosaic()` de `pipeline/etapas/compuesto.py` **no
+> tiene nada que ver**: es de GEE, junta las teselas de una pasada, y sigue igual.
+>
 > Crónica: [`SESSION_2026-09-24_sesion_14_el_numero_de_las_pasadas.md`](SESSION_2026-09-24_sesion_14_el_numero_de_las_pasadas.md).
 > Suite: **637 verdes**, 21 omitidos, sin cambios. `PREGUNTAS_ABIERTAS` B-3, **cerrada**.
 

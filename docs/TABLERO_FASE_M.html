@@ -367,8 +367,8 @@ const SPRINTS = [
       { id: "M.8.5", t: "Retención de processing_job_events", repo: "Geocore", T: "S", ok: "Decisión y job" }
     ] },
   { id: "M.9", nombre: "Analítica y futuro", objetivo: "Sin orden fijo, salvo el bloque M.9.0: se toma cuando el pipeline esté en producción.", sesiones: "abierto",
-    aviso2: { tipo: "equipo", texto: "<b>Las seis decisiones de diseño del bloque estan tomadas</b> (2026-09-25, <code>DECISIONS #63</code> del worker): se mide antes de decidir, el agrupamiento es un dato de la receta, <b>por pasada puro</b> —sin columna <code>ventana</code> y sin migracion—, el raster sigue mensual, y <b>el umbral de cobertura se aplica al leer</b>. La cobertura se mide <b>sobre la parcela, nunca sobre el rancho</b>: una pasada que tapa medio rancho puede ser perfecta para una parcela. Lo unico que falta es el numero que mide M.9.0." },
-    aviso: { tipo: "compuerta", texto: "<b>M.9.0 va primero, y empieza midiendo.</b> Hoy la ventana de observación es el mes y las pasadas sueltas no se guardan (<code>DECISIONS #31</code>, que reemplazó a <code>#19</code>). La decisión se tomó con la cuenta del <b>ráster</b> —146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile— y <b>se llevó a los números, que tienen otra cuenta</b>: para una estadística no hay descargas ni MosaicJSON. Lo que la mediana del mes se lleva puesto: los <b>eventos</b> (una caída de diez días la absorbe), la <b>comparabilidad</b> entre un mes de seis pasadas limpias y uno de dos, y los meses que la cobertura mínima descarta enteros. <b>Cuánto importa depende de qué hay en las parcelas y de cuántas pasadas limpias hay</b>, y eso lo mide M.9.0 antes de tocar nada: si casi siempre son 1 o 2, el mensual está bien y el bloque se cierra ahí." },
+    aviso2: { tipo: "equipo", texto: "<b>Las seis decisiones de diseño del bloque estan tomadas</b> (2026-09-25, <code>DECISIONS #63</code> del worker): se mide antes de decidir, el agrupamiento es un dato de la receta, <b>por pasada puro</b> —sin columna <code>ventana</code> y sin migracion—, el raster sigue mensual, y <b>el umbral de cobertura se aplica al leer</b>. La cobertura se mide <b>sobre la parcela, nunca sobre el rancho</b>: una pasada que tapa medio rancho puede ser perfecta para una parcela. <b>Y el numero ya esta</b> (2026-09-24, <code>#66</code>): mediana de <b>3 pasadas limpias por mes</b>, y <b>0 de 72 meses</b> en que el compuesto llegue al umbral y ninguna pasada sola llegue." },
+    aviso: { tipo: "compuerta", texto: "<b>M.9.0 va primero, y empieza midiendo.</b> Hoy la ventana de observación es el mes y las pasadas sueltas no se guardan (<code>DECISIONS #31</code>, que reemplazó a <code>#19</code>). La decisión se tomó con la cuenta del <b>ráster</b> —146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile— y <b>se llevó a los números, que tienen otra cuenta</b>: para una estadística no hay descargas ni MosaicJSON. Lo que la mediana del mes se lleva puesto: los <b>eventos</b> (una caída de diez días la absorbe), la <b>comparabilidad</b> entre un mes de seis pasadas limpias y uno de dos, y los meses que la cobertura mínima descarta enteros. <b>Cuánto importa depende de qué hay en las parcelas y de cuántas pasadas limpias hay</b>, y eso lo midió M.9.0 antes de tocar nada. <b>La compuerta pasó el 2026-09-24</b> (<code>DECISIONS #66</code>): sobre 3 parcelas reales × 24 meses hay una <b>mediana de 3 pasadas limpias</b> —no «1 o 2»—, y entre ellas el índice se mueve una mediana de 0,065 con un máximo de 0,336. <b>El bloque sigue.</b> La estacionalidad: 3,2 a 5,5 en seca contra 1,0 a 1,5 en el pico de lluvias." },
     tareas: [
       { id: "M.9.0", t: "Medir cuántas pasadas limpias hay por mes, parcela por parcela", repo: "worker", T: "S", ok: "Una tabla por parcela y mes, y la decisión escrita en PREGUNTAS_ABIERTAS B-3", compuerta: true },
       { id: "M.9.0b", t: "El agrupamiento es un dato de la receta: la ventana deja de estar cableada al mes", repo: "worker", T: "M", ok: "s2-mensual-v1 produce EXACTAMENTE las mismas filas que antes" },
@@ -389,6 +389,12 @@ const SPRINTS = [
 // nada anterior al pipeline mensual, y todo lo que el worker escribe cuelga de `tenants/{t}/`,
 // que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
 // y no se va a hacer así; M.6.4 cerró con menos código, no con más.
+//
+// Sesión 14 (2026-09-24): M.9.0, el numero que faltaba. Hay una MEDIANA DE 3 PASADAS LIMPIAS
+// por mes sobre parcelas reales, asi que el bloque NO se cierra: siguen M.9.0b, c y d. Y en
+// 0 de 72 meses el compuesto llega al umbral con todas sus pasadas por debajo, asi que "por
+// pasada puro" (#63) queda confirmado y la tabla aparte no se abre. PREGUNTAS_ABIERTAS B-3,
+// cerrada. Ademas se borro el router /mosaic del tileserver (#64) y con el el hallazgo T-3.
 //
 // Sesión 13 (2026-09-24/25): el sprint M.8, cerrado, y despues doce decisiones tomadas de una
 // (DECISIONS #63 a #65 del worker y #47 de Geocore). Las dos tareas de produccion que M.8 dejo
@@ -420,7 +426,8 @@ const ESTADO = {
   "M.5.1": "hecho", "M.5.2": "hecho", "M.5.3": "hecho", "M.5.4": "hecho", "M.5.5": "hecho",
   "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.2b": "hecho", "M.6.3": "bloqueado", "M.6.4": "hecho", "M.6.5": "hecho",
   "M.7.1": "hecho", "M.7.2": "hecho", "M.7.3": "hecho", "M.7.4": "hecho", "M.7.5": "hecho", "M.7.6": "hecho",
-  "M.8.1": "hecho", "M.8.2": "hecho", "M.8.3": "hecho", "M.8.4": "hecho", "M.8.5": "hecho"
+  "M.8.1": "hecho", "M.8.2": "hecho", "M.8.3": "hecho", "M.8.4": "hecho", "M.8.5": "hecho",
+  "M.9.0": "hecho"
 };
 
 const RUTA = [
@@ -428,7 +435,8 @@ const RUTA = [
   ["M.2", "Etapas"], ["M.2", "Validación real"], ["M.3", "API y métrica del rancho"],
   ["M.4", "Altas I"], ["M.4", "Altas II"], ["M.5", "Reconciliador"], ["M.5", "Handlers y reproceso"],
   ["M.6", "Limpieza"], ["M.7", "Selector y series"], ["M.7", "Mapa mensual"], ["M.7", "Editor de geometría"],
-  ["M.8", "A01 y A04"], ["M.8", "A09 y retención"], ["M.9", "Analítica · sin orden fijo"]
+  ["M.8", "A01 y A04"], ["M.8", "A09 y retención"], ["M.9.0", "Medir las pasadas · y borrar /mosaic"],
+  ["M.9", "Analítica · sin orden fijo, desde M.9.0b"]
 ];
 
 const DECISIONES = [
@@ -449,9 +457,10 @@ const DECISIONES = [
   ["La auditoría va por fuera de ExceptionMiddleware, y registra los intentos (#45)", "M.8.4", "hecho", "decidida"],
   ["La bitácora de jobs se conserva 90 días, y la retención arranca prendida (#46)", "M.8.5", "hecho", "decidida"],
   ["La ventana de observación: por pasada puro, y la cobertura sobre la parcela (#63)", "M.9.0c", "hecho", "decidida"],
-  ["El router /mosaic del tileserver se borra: nadie lo usa (#64)", "—", "hecho", "decidida"],
+  ["El router /mosaic del tileserver se borra: nadie lo usa (#64) · BORRADO el 2026-09-24", "—", "hecho", "decidida"],
   ["Retención: lo sistemático para siempre, lo a demanda 90 días (#65)", "—", "hecho", "decidida"],
-  ["Login y create-user: riesgo aceptado; el registro de auditoría sin pantalla (#47 de Geocore)", "—", "hecho", "decidida"]
+  ["Login y create-user: riesgo aceptado; el registro de auditoría sin pantalla (#47 de Geocore)", "—", "hecho", "decidida"],
+  ["M.9.0 medido: 3 pasadas limpias por mes y 0 de 72 meses que se perderían; sin fila mensual (#66)", "M.9.0", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
@@ -475,7 +484,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 17;
+const sesionProxima = 18;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

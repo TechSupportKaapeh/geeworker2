@@ -454,9 +454,11 @@ Lo que quedó, más allá del 403:
   la app con TiTiler montado y sin red, y cubre `/cog` **y** `/mosaic`. Con la comparación
   por tenant sacada caen 12 tests; y hay un control negativo del control, porque un
   validador que rechazara todo dejaría verdes a los otros once.
-- **Lo que no alcanza, escrito**: los assets listados *dentro* de un MosaicJSON (hallazgo
-  **T-3**). Desde M.8.1, lo que se saltearía ahí es el aislamiento entre tenants, no sólo
-  el filtro anti-SSRF.
+- **Lo que no alcanzaba, escrito**: los assets listados *dentro* de un MosaicJSON (hallazgo
+  **T-3**). Desde M.8.1, lo que se saltearía ahí era el aislamiento entre tenants, no sólo
+  el filtro anti-SSRF. **Cerrado el 2026-09-24 borrando el router `/mosaic`**
+  (terra-tileserver#4, `DECISIONS #64` del worker): era superficie muerta, y `RUTAS` pasó de
+  dos a uno.
 - **Dos consumidores que nadie había mirado**: `scripts/check_prod.py` —que ahora verifica
   el 403 desde afuera, sin necesitar un segundo token— y el piloto del front, que pedía el
   token sin `X-Tenant-ID` y habría quedado en 400 apenas se desplegó Geocore.
@@ -488,8 +490,8 @@ Lo que dejan, más allá de cerrar los hallazgos:
 - **Lo que M.8 no cubre, y quedó escrito en vez de tapado:** el login y la edge function
   `create-user` son superficie de Supabase, no de Geocore; las lecturas fuera de `api/admin`
   no tienen techo; el estado del limitador vive en el proceso, así que con más de una
-  instancia el techo se multiplica; y los assets de un MosaicJSON siguen sin pasar por la
-  comparación de tenant (T-3).
+  instancia el techo se multiplica; y los assets de un MosaicJSON seguían sin pasar por la
+  comparación de tenant (T-3) — **eso se cerró el 2026-09-24**, borrando el router.
 
 **👥 Queda una cosa de producción:** aplicar la migración de `audit_log`
 (`geocore/docs/sql/2026-09-21_RegistroDeAuditoria.sql`), sobre la base de **identidad**. Hasta
@@ -681,4 +683,4 @@ interruptor. La serie ya sabe dibujar huecos, así que el cambio es del eje, no 
 | Los rásters viejos, fuera de `tenants/` | M.8.1 | ✅ 2026-09-20 · se borran con sus filas (`DECISIONS #43` de Geocore) |
 | **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3) | M.9.0c | ✅ 2026-09-25 · **por pasada puro** (`DECISIONS #63`), y **confirmado con el número el 2026-09-24** (`#66`): la fila mensual del compuesto no hace falta. B-3 **cerrada** |
 | Retención de los objetos de MinIO (`PREGUNTAS_ABIERTAS` C-5) | — | ✅ 2026-09-25 · sistemático para siempre, a demanda 90 días (`DECISIONS #65`) |
-| Qué hacer con el hallazgo T-3 del tileserver | — | ✅ 2026-09-25 · se borra el router `/mosaic` (`DECISIONS #64`) |
+| Qué hacer con el hallazgo T-3 del tileserver | — | ✅ 2026-09-25 · se borra el router `/mosaic` (`DECISIONS #64`). **Hecho el 2026-09-24**, terra-tileserver#4: con él se fueron `titiler.mosaic`, `boto3` y `scripts/check_mosaic_median.py` |
