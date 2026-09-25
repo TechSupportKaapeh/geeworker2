@@ -609,7 +609,18 @@ datos guardados, es un reproceso contra GEE. La ficha se quedó describiendo un 
 no existe, y eso importa porque es la ficha que alguien lee para saber cuánto cuesta cambiar
 la cadencia.
 
-### Reabierta el 2026-09-24, con otra pregunta
+### ✅ Contestada el 2026-09-25: por pasada puro
+
+**`DECISIONS #63`.** Se guarda **por pasada y nada más**: sin columna `ventana`, sin
+migración, y la cadencia vuelve a ser lo que esta ficha decía en su primera versión — **un
+parámetro de consulta**. También se decidió que **el umbral de cobertura se aplica al leer**,
+así que deja de haber `valor = null` por cobertura baja.
+
+Lo único que falta es el número de **M.9.0**, que no cambia el diseño: decide si además hace
+falta la fila mensual del compuesto para los meses de nubes parciales. Si hiciera falta, va en
+**una tabla aparte**.
+
+### El planteo, del 2026-09-24
 
 La pregunta ya no es "¿mensual, quincenal o semanal?" sino **¿la unidad de observación tiene
 que ser una ventana de calendario?**. Lo que la mediana mensual se lleva puesto, además de la
@@ -745,6 +756,11 @@ sobre la continuidad.
 
 ## C-1 · Los assets del MosaicJSON no pasan por el filtro anti-SSRF
 
+> **✅ Decidido el 2026-09-25 (`DECISIONS #64`): se borra el router `/mosaic`.** No se validan
+> los assets: nadie usa MosaicJSON —verificado contra el panel, `/piloto`, `check_prod` y el
+> worker— y `#31` ya lo decía. Es superficie muerta que carga un hallazgo abierto. Falta
+> hacerlo.
+
 **Bloquea:** nada hoy · **Se vuelve caro:** si alguna vez se aceptan mosaicos de
 otro origen
 
@@ -812,6 +828,20 @@ aplica.
 ## C-5 · Retención de pasadas
 
 **Bloquea:** nada · **Se vuelve caro:** lento y en silencio
+
+### ✅ Decidida el 2026-09-25, partida en tres (`DECISIONS #65`)
+
+Esta ficha mezclaba tres cosas. Quedan así:
+
+- **Los COG sistemáticos, para siempre.** Son el producto.
+- **Los COG a demanda (`adhoc`, `ondemand`), 90 días.** No se reutilizan ni se sobrescriben
+  —la identidad de un `adhoc` es el job—, así que se acumulan uno por clic. **Falta
+  implementar el borrado**; la política ya está.
+- **Las filas por pasada, sin retención** por ahora. ~760 por parcela en dos años es un dato
+  chico; se revisa con un tenant grande.
+
+La **bitácora de jobs** era la cuarta cosa y se decidió aparte: 90 días, `DECISIONS #46` de
+Geocore (M.8.5).
 
 > **Al día 2026-09-24.** Esta ficha suponía que se guardaban pasadas sueltas (`#19`). Desde
 > `#31` **no se guardan**: `measurements` tiene una fila por parcela, índice y mes, o sea 96
