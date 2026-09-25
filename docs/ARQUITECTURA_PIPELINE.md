@@ -136,6 +136,12 @@ subir la versión, el test falla.
 > **Diseño decidido el 2026-09-25 (`DECISIONS #63`), todavía sin implementar.** Hoy la ventana
 > es el mes y está cableada. Esta sección es el diseño de M.9.0b, y el porqué está en
 > [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) §M.9.
+>
+> **Y la compuerta ya pasó** (M.9.0, 2026-09-24, `DECISIONS #66`): sobre parcelas reales hay
+> una **mediana de 3 pasadas limpias por mes**, así que el agrupamiento tiene para qué existir;
+> y **en ningún mes de los 72 medidos** el compuesto llega a la cobertura mínima con todas sus
+> pasadas por debajo, así que `por_pasada` puede ser el agrupamiento de las estadísticas sin
+> que ningún mes se quede sin valor.
 
 **El problema.** "El mes" no vive en un lugar: vive en cinco.
 

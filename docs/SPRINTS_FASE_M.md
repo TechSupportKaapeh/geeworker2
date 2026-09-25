@@ -505,23 +505,27 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 
 ## M.9 — Analítica y futuro (sin orden fijo)
 
-| | Qué | Qué toca |
-|---|---|---|
-| M.9.0 | **Medir cuántas pasadas limpias hay por mes y qué cobertura tiene cada una**, sobre la parcela. Es la compuerta de todo lo que sigue | worker |
-| M.9.0b | **El agrupamiento es un dato de la receta**: la ventana deja de estar cableada al mes. Refactor **sin cambio de comportamiento** | worker |
-| M.9.0c | **`s2-pasada-v2`**: estadísticas **sólo** por pasada, ráster mensual, y el umbral de cobertura al leer. Convive con `s2-mensual-v1` | worker, Geocore |
-| M.9.0d | El panel: eje de fechas y el interruptor mensual / por pasada | panel |
-| M.9.1 | El cultivo en la parcela, y la métrica del rancho agrupada por cultivo (`DECISIONS #22` de Geocore) | Geocore, panel |
-| M.9.2 | `analitica/`: anomalía contra la mediana histórica del mismo mes, tendencia y alerta de caída | worker o Geocore |
-| M.9.3 | Más índices, una entrada de registro cada uno: SAVI (cultivo joven, suelo expuesto), GNDVI o CIre (clorofila), MSI (estrés hídrico), NDWI (agua) | worker |
-| M.9.4 | Sentinel-1 (radar) para los meses de lluvia | worker |
-| M.9.5 | El mes en curso, como provisorio | worker, panel |
+| | Qué | Qué toca | Estado |
+|---|---|---|---|
+| M.9.0 | **Medir cuántas pasadas limpias hay por mes y qué cobertura tiene cada una**, sobre la parcela. Es la compuerta de todo lo que sigue | worker | ✅ 2026-09-24 · geeworker2#70, `DECISIONS #66`. **Mediana de 3 pasadas limpias por mes** sobre 3 parcelas reales × 24 meses: no son «1 o 2», así que **el bloque no se cierra acá**. Y **0 de 72 meses** en que el compuesto llegue al umbral y ninguna pasada sola: «por pasada puro» confirmado, la tabla aparte no se abre. `PREGUNTAS_ABIERTAS` B-3, **cerrada** |
+| M.9.0b | **El agrupamiento es un dato de la receta**: la ventana deja de estar cableada al mes. Refactor **sin cambio de comportamiento** | worker | ⬜ |
+| M.9.0c | **`s2-pasada-v2`**: estadísticas **sólo** por pasada, ráster mensual, y el umbral de cobertura al leer. Convive con `s2-mensual-v1` | worker, Geocore | ⬜ |
+| M.9.0d | El panel: eje de fechas y el interruptor mensual / por pasada | panel | ⬜ |
+| M.9.1 | El cultivo en la parcela, y la métrica del rancho agrupada por cultivo (`DECISIONS #22` de Geocore) | Geocore, panel | ⬜ |
+| M.9.2 | `analitica/`: anomalía contra la mediana histórica del mismo mes, tendencia y alerta de caída | worker o Geocore | ⬜ |
+| M.9.3 | Más índices, una entrada de registro cada uno: SAVI (cultivo joven, suelo expuesto), GNDVI o CIre (clorofila), MSI (estrés hídrico), NDWI (agua) | worker | ⬜ |
+| M.9.4 | Sentinel-1 (radar) para los meses de lluvia | worker | ⬜ |
+| M.9.5 | El mes en curso, como provisorio | worker, panel | ⬜ |
 
 > **Las seis decisiones de diseño de este bloque están tomadas** (2026-09-25, `DECISIONS #63`):
 > se mide antes de decidir, el agrupamiento es un dato de la receta, **por pasada puro** —sin
 > columna `ventana` y sin migración—, el ráster sigue mensual, y **el umbral de cobertura se
-> aplica al leer**. La cobertura se mide **sobre la parcela, nunca sobre el rancho**. Lo único
-> que falta es el número que mide M.9.0.
+> aplica al leer**. La cobertura se mide **sobre la parcela, nunca sobre el rancho**.
+>
+> **Y el número ya está** (2026-09-24, `DECISIONS #66`): mediana de **3 pasadas limpias por
+> mes**, y **0 de 72 meses** en que el compuesto llegue al umbral de cobertura y ninguna pasada
+> sola llegue. Las dos cosas que decide: el bloque **sigue** —no son «1 o 2»— y **por pasada
+> puro se confirma**, sin la tabla aparte que `#63` dejaba prevista.
 
 **Por qué el `0`.** M.9 no tiene orden fijo, pero estas cuatro sí van antes que el resto:
 **M.9.2** (anomalía y tendencia) y **M.9.5** (el mes en curso) mejoran mucho con una serie
@@ -622,15 +626,26 @@ cadencia como parámetro—, y lo que hoy es `valor = null` por cobertura baja d
 
 ### Qué hace cada tarea
 
-**M.9.0 — medir (S, compuerta).** Sin el número, esto es una discusión de opiniones. Sale de
-`scripts/check_pipeline_real.py`, que ya hace comparaciones lado a lado: para las parcelas
-reales, mes por mes, cuántas pasadas hay, cuántas quedan limpias y **qué cobertura tiene cada
-una sobre la parcela** — este último número **no existe hoy**, porque la cobertura se calcula
-sobre el compuesto, y es el que decide «puro» contra «los dos».
-**Termina cuando** hay una tabla y una decisión escrita en `PREGUNTAS_ABIERTAS` B-3. Si en
-seca son 5–6 y en lluvias 1, ya se sabe exactamente cuánto se está tirando y cuándo. **Si
-resulta que casi siempre son 1 o 2, el mensual está bien y este bloque se cierra acá**, que
-también es un resultado.
+**M.9.0 — medir (S, compuerta). ✅ Hecha el 2026-09-24** (`DECISIONS #66`). El escalón 6 de
+`scripts/check_pipeline_real.py --pasadas`, sobre 3 parcelas reales × los 24 meses de la
+receta, más el Bajío como segunda geografía. La decisión quedó escrita en
+`PREGUNTAS_ABIERTAS` B-3, que **se cerró**.
+
+Lo que dio, y lo que decide cada número:
+
+- **mediana de 3 pasadas limpias por mes** (media 2,76, máximo 8; 54 % de los meses con 3 o
+  más). No son «1 o 2»: **el bloque no se cierra**, y M.9.0b, M.9.0c y M.9.0d siguen. La
+  estacionalidad es la que se esperaba y más suave que la hipótesis: 3,2–5,5 en seca contra
+  1,0–1,5 en el pico de lluvias, no «5–6 contra 1»;
+- **0 de 72 meses** en que el compuesto llegue a la cobertura mínima y ninguna pasada sola
+  llegue. Es el número que cierra B-3: **guardar por pasada no deja sin valor a ningún mes que
+  hoy lo tenga**, así que la tabla aparte de `#63` no se abre;
+- **el compuesto agrega 0,0000 de cobertura sobre la mejor pasada sola en la mediana**, y más
+  de 0,05 en 13 de 72 meses (18 %), casi todos de mayo a julio. Eso es lo que se acepta: en el
+  pico de lluvias la serie por pasada describe el pedazo despejado;
+- **recomponer el mes agregando al leer se aparta 0,008 de NDVI** (p90 0,029, máximo 0,089).
+  «Las medianas no componen» es cierto y es **un orden de magnitud menor** que la variación
+  intramensual que se gana, que tiene mediana 0,065 y máximo 0,336.
 
 **M.9.0b — el agrupamiento (M, sin cambio de comportamiento).** Ver
 [`ARQUITECTURA_PIPELINE.md` §3.5](ARQUITECTURA_PIPELINE.md). Hoy "el mes" está cableado en
@@ -664,6 +679,6 @@ interruptor. La serie ya sabe dibujar huecos, así que el cambio es del eje, no 
 | Los handlers a demanda | M.6.2 | 👥 |
 | La capa satelital en el editor (licencia) | M.7.5 | 👥 |
 | Los rásters viejos, fuera de `tenants/` | M.8.1 | ✅ 2026-09-20 · se borran con sus filas (`DECISIONS #43` de Geocore) |
-| **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3, reabierta) | M.9.0c | ✅ 2026-09-25 · **por pasada puro** (`DECISIONS #63`). Falta sólo el número de M.9.0 |
+| **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3) | M.9.0c | ✅ 2026-09-25 · **por pasada puro** (`DECISIONS #63`), y **confirmado con el número el 2026-09-24** (`#66`): la fila mensual del compuesto no hace falta. B-3 **cerrada** |
 | Retención de los objetos de MinIO (`PREGUNTAS_ABIERTAS` C-5) | — | ✅ 2026-09-25 · sistemático para siempre, a demanda 90 días (`DECISIONS #65`) |
 | Qué hacer con el hallazgo T-3 del tileserver | — | ✅ 2026-09-25 · se borra el router `/mosaic` (`DECISIONS #64`) |

@@ -1,5 +1,40 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-24, sesión 14 · M.9.0: el número que faltaba, y el pipeline sigue igual**
+> (`DECISIONS #66`). La tarea era medir, y se midió: **el pipeline no se tocó**. Lo único que
+> cambió es `scripts/check_pipeline_real.py`, que ganó un escalón 6.
+>
+> - **Hay una mediana de 3 pasadas limpias por mes** sobre parcelas reales (media 2,76, máximo
+>   8; 54 % de los meses con 3 o más). La hipótesis de `SPRINTS_FASE_M` era «si casi siempre
+>   son 1 o 2, el mensual está bien y el bloque se cierra»: **no se cierra**. M.9.0b, M.9.0c y
+>   M.9.0d siguen en pie.
+> - **«Por pasada puro» (`#63`) queda confirmado, y lo confirma un número**: en **0 de 72**
+>   meses de parcela el compuesto llega a `cobertura_minima` con todas sus pasadas por debajo.
+>   Guardar por pasada no deja sin valor a ningún mes que hoy lo tenga. **La tabla aparte que
+>   `#63` dejaba prevista no se abre.**
+> - **Lo que se acepta:** en el 18 % de los meses —casi todos de mayo a julio— el compuesto
+>   cubre hasta 0,485 más de la parcela que la mejor pasada sola. Ahí la serie por pasada
+>   describe el pedazo despejado. Lo hace tolerable que la cobertura vaya en la fila.
+> - **Dos cosas de GEE que aparecieron midiendo, y que conviene recordar:**
+>   - **una `ee.FeatureCollection` dentro de un `ee.Dictionary` vuelve vacía.** `getInfo()` la
+>     serializa como `{"type": "FeatureCollection", "columns": {}}`, sin un solo rasgo. Lo que
+>     funciona es `toList(size).map(...)`;
+>   - **una pasada enteramente enmascarada no trae la clave de su valor**, igual que el mes sin
+>     píxeles que documenta `reduccion.leer`: GEE omite la salida en vez de mandar `None`.
+> - **El escalón 6 corre solo** (`--pasadas`), sin los escalones 1 a 4. No es capricho: esos
+>   son la compuerta de M.2.6 y cuestan 6 llamadas a GEE por parcela y mes, contra la única que
+>   cuesta este. Sobre 24 meses la diferencia son ~430 llamadas contra 72.
+> - **Una copia de `reduccion._reducir` vive en el script**, a propósito y con su porqué
+>   escrito: exponerlo habría cambiado producción para un informe, y los cinco argumentos
+>   —`bestEffort=False` sobre todo— tienen que coincidir o la comparación no significa nada.
+> - **El caveat de la muestra**: las 3 parcelas de `scratch/` son rectángulos contiguos y ven
+>   **las mismas pasadas**. Son 24 meses × 3 muestras correlacionadas, no 72 independientes. Lo
+>   que sí varía entre ellas es la cobertura de cada pasada, que es lo que se medía. El Bajío
+>   es la segunda geografía y va en el mismo sentido, más limpio (mediana 6).
+>
+> Crónica: [`SESSION_2026-09-24_sesion_14_el_numero_de_las_pasadas.md`](SESSION_2026-09-24_sesion_14_el_numero_de_las_pasadas.md).
+> Suite: **637 verdes**, 21 omitidos, sin cambios. `PREGUNTAS_ABIERTAS` B-3, **cerrada**.
+
 > **2026-09-24, sesión 13: el sprint M.8 está cerrado. El worker no cambió.** Tres cosas de
 > Geocore que le tocan igual:
 >

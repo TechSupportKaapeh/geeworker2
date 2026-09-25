@@ -588,9 +588,9 @@ explicar es caro cada vez que alguien mira el gráfico.
 
 ---
 
-## B-3 · Cadencia: ¿mensual, quincenal o semanal?
+## B-3 · Cadencia: ¿mensual, quincenal o semanal?  ✅ CERRADA
 
-**Bloquea:** M.9.0c · **Se vuelve caro:** ya no es un `GROUP BY`
+**Bloqueaba:** M.9.0c · **Cerrada el 2026-09-24** con la medición de M.9.0 (`DECISIONS #66`)
 
 ### ⚠️ Esta ficha quedó vieja, y decía lo contrario de lo que se hizo
 
@@ -616,9 +616,55 @@ migración, y la cadencia vuelve a ser lo que esta ficha decía en su primera ve
 parámetro de consulta**. También se decidió que **el umbral de cobertura se aplica al leer**,
 así que deja de haber `valor = null` por cobertura baja.
 
-Lo único que falta es el número de **M.9.0**, que no cambia el diseño: decide si además hace
-falta la fila mensual del compuesto para los meses de nubes parciales. Si hiciera falta, va en
-**una tabla aparte**.
+~~Lo único que falta es el número de **M.9.0**~~, que no cambia el diseño: decide si además
+hace falta la fila mensual del compuesto para los meses de nubes parciales. Si hiciera falta,
+va en **una tabla aparte**. **Ese número llegó el 2026-09-24 y dice que no hace falta**: el
+bloque de arriba lo resume, `DECISIONS #66` lo desarrolla.
+
+### ✅ Cerrada el 2026-09-24 con el número de M.9.0
+
+**`DECISIONS #66`.** La medición está hecha, y **confirma «por pasada puro» sin pedir la fila
+mensual**. Tres parcelas reales de los Llanos (Colombia) × los 24 meses de la receta, más el
+cuadrado del Bajío como segunda geografía. Los números, y la tabla entera, en `#66`.
+
+| Lo que había que contestar | El número | Qué implica |
+|---|---|---|
+| ¿Cuántas pasadas limpias hay por mes? | mediana **3**, media 2,76, máximo 8. Con 0: 4,2 %; con 1: 12,5 %; con **3 o más: 54,2 %** | **No es «casi siempre 1 o 2»**: el mensual sí está tirando información, y `s2-pasada-v2` tiene con qué. La ficha **no** se cierra acá |
+| ¿Qué cobertura tiene cada pasada sobre la parcela? | el compuesto agrega sobre la mejor pasada sola: mediana **+0,0000**, p90 +0,148, máximo +0,485. Pasa de +0,05 en **13 de 72** meses (18 %) | Las pasadas **no** vienen parciales en general. Sí en el pico de lluvias, que es donde el compuesto se gana el sueldo |
+| ¿Se perdería algún mes al pasar a por pasada? | **0 de 72** (y 0 de 24 en el Bajío) meses en que el compuesto llega al umbral y ninguna pasada sola llega | **Nadie se queda sin valor.** Es el número que cierra la pregunta |
+| ¿Cuánto se equivoca un `GROUP BY` mensual sobre las pasadas? | mediana **0,008** de NDVI, p90 0,029, máximo 0,089 | «Las medianas no componen» es cierto y es **chico**: un orden de magnitud menos que lo que se gana |
+| ¿Cuánto se mueve el índice dentro de un mes? | entre las pasadas limpias: mediana **0,065**, p90 0,164, máximo **0,336** | Eso es lo que la mediana mensual borra hoy. El máximo es un evento real |
+
+**La estacionalidad es la que se esperaba, y más suave:** en seca (dic–mar) son 3,2 a 5,5
+pasadas limpias; en el pico de lluvias (may–jun) son 1,0 a 1,5. No es «5–6 contra 1», es
+«3–5 contra 1–1,5», pero el sentido es el mismo.
+
+**Lo que decide, en una línea:** guardar por pasada no le quita el valor a ningún mes que hoy
+lo tenga, y el error de recomponer el mensual agregando al leer (0,008) es diez veces menor
+que la variación intramensual que se gana (0,065). **La fila mensual del compuesto no hace
+falta**, y por eso no se abre la tabla aparte que `#63` dejaba prevista.
+
+**Lo que se acepta a sabiendas.** En los meses de nubes parciales —18 % del total, casi todos
+mayo a julio— el compuesto cubre hasta 0,485 más de la parcela que la mejor pasada sola. Ahí
+la serie por pasada describe el pedazo despejado y no la parcela entera. **No se pierde el
+mes** —siempre hay al menos una pasada por encima del umbral cuando el compuesto lo está—,
+pero el número de esos meses es de menos parcela que el de hoy. La cobertura va en la fila,
+así que quien lea puede saberlo; es justamente lo que «el umbral al leer» habilita.
+
+**Un caveat sobre la muestra, que hay que decir.** Las tres parcelas son rectángulos contiguos
+en el mismo punto: ven **las mismas pasadas**, y la columna `pas` es idéntica entre las tres
+en cada mes. Los 72 meses de parcela son 24 meses × 3 muestras correlacionadas, no 72
+independientes. Lo que sí varía entre ellas —y es lo que se quería medir— es la **cobertura de
+cada pasada**. El Bajío es la segunda geografía, y va en el mismo sentido, más limpio: mediana
+6 pasadas limpias, 100 % de los meses con 3 o más.
+
+**Cómo se repite:**
+
+```powershell
+.venv\Scripts\python.exe scripts\check_pipeline_real.py --pasadas `
+    --parcelas scratch\parcelas_m26 --meses 2024-09 ... 2026-08 `
+    --csv scratch\m90_pasadas.csv
+```
 
 ### El planteo, del 2026-09-24
 
