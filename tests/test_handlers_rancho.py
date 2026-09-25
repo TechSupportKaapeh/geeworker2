@@ -113,9 +113,11 @@ def mundo(monkeypatch):
               "capas": [], "bitacora": [], "jobs": [],
               "gee": lambda mes: _respuesta_de_gee(), "url": lambda mes: f"https://gee/{mes}"}
 
-    def _estadisticas_del_mes(roi, mes, receta):
-        estado["pedidos"].append(str(mes))
-        return _Expresion(lambda: estado["gee"](str(mes)))
+    def _estadisticas_de(roi, ventana, receta):
+        # `ventana.etiqueta` de una ventana mensual es el mismo `AAAA-MM` que antes
+        # era `str(mes)`: lo que el doble graba no cambia con M.9.0b.
+        estado["pedidos"].append(ventana.etiqueta)
+        return _Expresion(lambda: estado["gee"](ventana.etiqueta))
 
     def _descargar(url, destino):
         estado["descargas"].append((url, destino))
@@ -134,8 +136,8 @@ def mundo(monkeypatch):
         estado["bitacora"].append({"etapa": stage, "nivel": level, "mensaje": message,
                                    "detalle": detail or {}, "progreso": progress})
 
-    monkeypatch.setattr(ejecucion, "estadisticas_del_mes", _estadisticas_del_mes)
-    monkeypatch.setattr(rancho, "mapa_del_mes", lambda roi, mes, receta, indice: _Imagen(estado, str(mes)))
+    monkeypatch.setattr(ejecucion, "estadisticas_de", _estadisticas_de)
+    monkeypatch.setattr(rancho, "mapa_de", lambda roi, mes, receta, indice: _Imagen(estado, str(mes)))
     # La descarga y la subida viven en `handlers/raster.py` desde M.6.2b: las
     # comparte con el mapa a demanda.
     monkeypatch.setattr(raster, "descargar_a_archivo", _descargar)

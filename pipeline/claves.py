@@ -27,15 +27,24 @@ queda en el bucket, bajo su propio prefijo, hasta que se limpie.
 Todo es puro: arma texto, no habla con el bucket.
 """
 
+import re
 import uuid
 from typing import NamedTuple
 
-from pipeline.periodos import Mes
 from pipeline.receta import Receta
+from pipeline.ventanas import Ventana
 
 PREFIJO_TENANTS = "tenants"
 # `Guid.Empty` en Geocore: un id sin asignar, nunca uno de verdad.
 _UUID_NULO = uuid.UUID(int=0)
+
+# Lo que se acepta como último segmento de la key. Hasta M.9.0b era siempre un
+# `AAAA-MM` armado acá; desde que lo trae la etiqueta de la ventana, hay que
+# mirarlo: una etiqueta con `/` escribiría en otra carpeta —el mismo riesgo que
+# `_uuid_canonico` ya cubre para los ids— y una con `:` o espacios daría una key
+# que S3 sirve pero que es incómoda en una URL de tile. El ráster sigue siendo
+# mensual (`DECISIONS #63`), así que hoy acá sólo llegan etiquetas `AAAA-MM`.
+_ETIQUETA = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 class ClavesDeCapa(NamedTuple):
@@ -94,34 +103,39 @@ def _claves_mensuales(  # noqa: PLR0913 - todo por nombre, y son datos distintos
     carpeta: str,
     entidad: str,
     entidad_id: str,
-    etiqueta: str,
+    familia: str,
     receta: Receta,
     indice: str,
-    mes: Mes,
+    ventana: Ventana,
 ) -> ClavesDeCapa:
     """El armador único de las dos claves. Ver los tres envoltorios de abajo."""
     if indice not in receta.indices:
         msg = f"la receta {receta.version} no calcula {indice!r}: {receta.indices}"
         raise ValueError(msg)
+    if _ETIQUETA.fullmatch(ventana.etiqueta) is None:
+        msg = f"la etiqueta de la ventana no sirve para una key: {ventana.etiqueta!r}"
+        raise ValueError(msg)
     ident = _uuid_canonico(entidad_id, f"{entidad}_id")
     return ClavesDeCapa(
         storage_key=(
             f"{prefijo_de_tenant(tenant_id)}{carpeta}/{ident}/"
-            f"{receta.version}/{indice}/{mes}.tif"
+            f"{receta.version}/{indice}/{ventana.etiqueta}.tif"
         ),
-        # La etiqueta separa familias de capas que comparten entidad, índice y mes.
+        # `familia` separa capas que comparten entidad, índice y ventana. Se llama
+        # así desde M.9.0b: antes era `etiqueta`, y ahora ese nombre es el de la
+        # ventana, que también entra en la natural_key.
         # `mensual` nació para no chocar con la capa vieja
         # (`rancho_{indice}_{id}_{AAAA-MM-DD}`); `ondemand` hace lo mismo con el
         # mapa a pedido, que vive al lado del sistemático pero no es el mismo
         # producto: uno lo produce el alta o el cierre, el otro lo pide alguien.
-        natural_key=f"{entidad}_{etiqueta}_{indice}_{ident}_{mes}",
+        natural_key=f"{entidad}_{familia}_{indice}_{ident}_{ventana.etiqueta}",
     )
 
 
 def claves_cog_mensual(
-    *, tenant_id: str, rancho_id: str, receta: Receta, indice: str, mes: Mes
+    *, tenant_id: str, rancho_id: str, receta: Receta, indice: str, ventana: Ventana
 ) -> ClavesDeCapa:
-    """Las claves del COG sistemático de un rancho, un índice y un mes.
+    """Las claves del COG sistemático de un rancho, un índice y una ventana.
 
     Los argumentos van por nombre: ``tenant_id`` y ``rancho_id`` son los dos
     texto, e intercambiarlos daría una key válida en el lugar equivocado.
@@ -136,15 +150,15 @@ def claves_cog_mensual(
         carpeta="ranchos",
         entidad="rancho",
         entidad_id=rancho_id,
-        etiqueta="mensual",
+        familia="mensual",
         receta=receta,
         indice=indice,
-        mes=mes,
+        ventana=ventana,
     )
 
 
 def claves_cog_parcela_a_demanda(
-    *, tenant_id: str, parcela_id: str, receta: Receta, indice: str, mes: Mes
+    *, tenant_id: str, parcela_id: str, receta: Receta, indice: str, ventana: Ventana
 ) -> ClavesDeCapa:
     """Las claves del mapa a demanda de una parcela (M.6.2b).
 
@@ -163,15 +177,15 @@ def claves_cog_parcela_a_demanda(
         carpeta="parcelas",
         entidad="parcela",
         entidad_id=parcela_id,
-        etiqueta="ondemand",
+        familia="ondemand",
         receta=receta,
         indice=indice,
-        mes=mes,
+        ventana=ventana,
     )
 
 
 def claves_cog_adhoc(
-    *, tenant_id: str, job_id: str, receta: Receta, indice: str, mes: Mes
+    *, tenant_id: str, job_id: str, receta: Receta, indice: str, ventana: Ventana
 ) -> ClavesDeCapa:
     """Las claves del mapa de un polígono libre, que no es de ninguna entidad.
 
@@ -190,8 +204,8 @@ def claves_cog_adhoc(
         carpeta="adhoc",
         entidad="adhoc",
         entidad_id=job_id,
-        etiqueta="ondemand",
+        familia="ondemand",
         receta=receta,
         indice=indice,
-        mes=mes,
+        ventana=ventana,
     )

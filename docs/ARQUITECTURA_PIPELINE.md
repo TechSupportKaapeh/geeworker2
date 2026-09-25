@@ -131,10 +131,11 @@ cambia los datos tiene que quedar en el historial de git y pasar por revisión. 
 test fija el contenido de la receta vigente: si alguien cambia un parámetro sin
 subir la versión, el test falla.
 
-### 3.5 El agrupamiento: la ventana como dato (propuesto, M.9.0b)
+### 3.5 El agrupamiento: la ventana como dato (implementado, M.9.0b)
 
-> **Diseño decidido el 2026-09-25 (`DECISIONS #63`), todavía sin implementar.** Hoy la ventana
-> es el mes y está cableada. Esta sección es el diseño de M.9.0b, y el porqué está en
+> **Implementado el 2026-09-25 en M.9.0b** (`DECISIONS #67`), sobre el diseño decidido en
+> `#63`. Lo que quedó distinto de lo que dice esta sección, y por qué, está abajo en
+> «Lo que la implementación cambió». El porqué del bloque está en
 > [`SPRINTS_FASE_M.md`](SPRINTS_FASE_M.md) §M.9.
 >
 > **Y la compuerta ya pasó** (M.9.0, 2026-09-24, `DECISIONS #66`): sobre parcelas reales hay
@@ -237,6 +238,35 @@ De ahí salió una decisión, que es el mismo argumento de esta sección un paso
 `cobertura_minima` **descarta al escribir**, y eso es otra reducción con pérdida antes de
 guardar. **El umbral pasa a aplicarse al leer** (`DECISIONS #63`): guardando cada pasada con
 su cobertura, el umbral es un `WHERE` y cambiarlo deja de costar un reproceso.
+
+### Lo que la implementación cambió (M.9.0b, 2026-09-25)
+
+Tres cosas salieron distintas de lo que esta sección proponía, y las tres por una razón que
+apareció al escribirlo. El detalle, en `DECISIONS #67`.
+
+**1. `mensual` y `rango_libre` son la misma función, y se llama `entero`.** La tabla de arriba
+las lista como dos agrupamientos; las dos son "una imagen con todo el pedido adentro", y lo que
+las distinguía era el pedido, no el agrupamiento. Quedó uno solo. Que la abstracción colapse
+dos casos en uno es señal de que está en el lugar correcto.
+
+**2. La firma no es `Callable[[ee.ImageCollection, Receta], …]`.** Partir quedó **puro**:
+`Agrupamiento.partir(pedido: Ventana, fechas: Sequence[datetime]) -> tuple[Ventana, ...]`. No
+toca `ee`, así que se prueba sin credenciales. Quien orquesta pregunta las fechas con
+`ejecucion.fechas_de` **sólo si** `Agrupamiento.necesita_fechas`, que es lo que hace que
+`entero` no cueste una llamada más.
+
+**3. La ventana de una pasada todavía no selecciona sus escenas.** `S2_SR` y
+`S2_CLOUD_PROBABILITY` comparten el `system:index` —que es por donde las une la etapa de la
+fuente— pero **no el `system:time_start`**: el de SR va entre 129 y 1169 segundos después, y
+**cuánto depende de dónde caiga el ROI en la pasada**. Una ventana de un segundo alrededor del
+instante de SR deja la imagen de nubes afuera del `filterDate`, el join no encuentra par y el
+compuesto sale sin bandas.
+
+**M.9.0c lo resuelve filtrando la colección de nubes por un superconjunto del pedido** y
+dejando que el join por `system:index` —que es exacto— haga el resto: el filtro de fecha sobre
+las nubes es una optimización, no un criterio. No entró en M.9.0b porque **cambia el borde del
+mes** —una escena de los primeros minutos tiene su imagen de nubes en el mes anterior, y hoy se
+descarta—, y M.9.0b no podía cambiar ningún número.
 
 ### Lo que este diseño **no** cambia
 

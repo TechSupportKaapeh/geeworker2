@@ -3234,3 +3234,133 @@ una desigualdad que tiene que valer por construcción —el compuesto tiene dato
 alguna pasada—, así que si saliera en rojo la tabla entera no significaría lo que dice. En los
 96 meses medidos no salió ninguna vez.
 
+---
+
+## 67. M.9.0b: el agrupamiento es un dato de la receta, y la ventana de una pasada todavía no selecciona (2026-09-25)
+
+> **Refactor sin cambio de comportamiento**, y el control negativo lo dice con números: las
+> filas de `s2-mensual-v1` antes y después son **idénticas**. Diseño:
+> [`ARQUITECTURA_PIPELINE.md` §3.5](ARQUITECTURA_PIPELINE.md). Decisión de diseño que ejecuta:
+> [`#63`](#63-la-ventana-de-observación-por-pasada-puro-y-la-cobertura-se-mide-sobre-la-parcela-2026-09-25).
+
+### Lo que se hizo
+
+"El mes" vivía en cinco lugares —`periodos.Mes`, el `median()` de `compuesto()`, la `fecha` de
+`filas.py`, el `{AAAA-MM}` de `claves.py` y el `periodo` de los jobs— y cambiar la cadencia era
+tocar los cinco esperando no olvidarse de ninguno. Es la misma forma de problema que M.7.1 y
+que `#44` de Geocore: **una regla repartida en instancias**.
+
+Ahora hay una abstracción, `pipeline/ventanas.py`, que es la que el compuesto ya era sin
+decirlo: **de un pedido a una lista de ventanas**. Una `Ventana` es `(etiqueta, inicio, fin)`, y
+la etiqueta es la única pieza que llega a todos lados — la key del COG, la `fecha` de la fila y
+el `periodo` del job salen de ahí. Con `del_mes(mes)` la etiqueta es `AAAA-MM`, así que ninguna
+key y ningún `periodo` cambian.
+
+El resto del pipeline dejó de saber qué es un mes: `fuente.coleccion`, `productos.compuesto_de`
+/ `estadisticas_de` / `mapa_de`, `ejecucion.reduccion_de`, `filas.filas_de` y las tres
+`claves_cog_*` reciben una ventana. El `Mes` queda donde corresponde: en el job y en la
+bitácora, que **no se tocaron** (`#63`).
+
+### Las cuatro decisiones que hubo que tomar
+
+**1. Una llamada más al borde, no una descripción perezosa.** §3.5 dejaba las dos abiertas y
+`#63` ya había elegido: `ejecucion.fechas_de(roi, pedido, receta)`. `#32` dice «un solo borde»,
+no «una sola llamada», y una llamada con nombre se sigue mejor que una indirección que existe
+sólo para no agregarla. **Partir quedó puro**: `Agrupamiento.partir(pedido, fechas)` es una
+función de Python sobre datos, se prueba sin credenciales, y quien orquesta pregunta las fechas
+sólo si `necesita_fechas`. Con `entero` no se pregunta nada, y por eso **M.9.0b no cambia
+cuántas llamadas cuesta un mes** (hay un test `gee` que lo fija en 0).
+
+**2. `mensual` y `rango_libre` eran la misma función.** El diseño listaba cuatro agrupamientos;
+dos resultaron ser "una imagen con todo el pedido adentro", y lo que los distinguía era el
+pedido. Quedó uno, `entero`. Que la abstracción colapse dos casos es señal de que está en el
+lugar correcto.
+
+**3. Dos campos en la receta, no uno.** `agrupamiento_estadisticas` y `agrupamiento_raster`,
+porque el ráster y los números tienen costos distintos y `#31` eligió mensual con la cuenta del
+ráster. Con un agrupamiento global se repetiría el error que M.9 viene a corregir.
+
+**4. El ráster exige una sola ventana, y lo dice.** `handlers/rancho.py` lee
+`agrupamiento_raster`, arma su ventana y **rechaza** cualquier receta que parta el mes en más de
+una. No se generalizó a N a propósito: es el camino más caro y más frágil del worker —descarga,
+COG y subida—, y un bucle cuyo N es siempre 1 sería código que nadie ejecuta hasta que alguien
+cambie la receta, y que fallaría justo ahí. Vale más un error que dice qué falta hacer.
+
+### La huella de v1 se re-fija sin subir la versión
+
+Los dos campos nuevos cambian la huella de `s2-mensual-v1`, que **ya escribió filas en
+producción** — y la regla de `#36` dice que una versión se congela con su primera fila. **Se
+re-fija igual** (decisión del usuario, 2026-09-24).
+
+El porqué: lo que esa regla protege es que no se pueda mirar un número guardado y no saber con
+qué parámetros salió. Acá **ningún número se movió**: un supuesto que estaba cableado pasó a
+estar escrito, con el valor que ya tenía. Pasar a `v2` habría dejado filas `v1` y `v2` con
+números idénticos en la misma tabla, que es peor para esa misma pregunta. La huella no se
+guarda en ninguna fila, key ni respuesta de la API: vive sólo en el test que la fija.
+
+Hay precedente parcial —el 2026-09-16 se sumaron `nubes_erosion_px` y `acotar_indices` igual—,
+pero entonces v1 no había escrito nada. La diferencia está anotada en `HUELLAS`.
+
+### El control negativo, que es la aceptación de la tarea
+
+No alcanzaba con que los tests quedaran verdes: los tests los estaba tocando yo. Se comparó
+**lo que produce el código de `main` contra lo que produce la rama**, con un `git worktree` de
+`main` al lado y un volcador que se adapta a las dos API:
+
+- **puro, sin GEE:** los 24 meses de la receta × 4 coberturas que cruzan el umbral en los dos
+  sentidos, más las tres familias de claves de capa y el intervalo que se le pide a GEE. 120
+  entradas;
+- **contra GEE:** 3 parcelas reales × 3 meses, incluido 2026-05, que es el mes en que las 10
+  escenas quedan tapadas por la máscara y la cobertura da 0.
+
+**Las 129 entradas dieron idénticas**, campo por campo. Y en los tests, lo único que cambió
+fueron las llamadas: **ninguna expectativa se tocó**, salvo la huella.
+
+### El hallazgo: la ventana de una pasada todavía no selecciona sus escenas
+
+`por_pasada` parte bien —una ventana por pasada, con su instante—, pero **esa ventana no sirve
+todavía para seleccionar las escenas de esa pasada**, y por eso ninguna receta la usa. Lo
+encontró correr el camino entero contra GEE, que es la regla del `WORKFLOW`: *probar contra lo
+real, no contra lo que uno cree*.
+
+`S2_SR` y `S2_CLOUD_PROBABILITY` comparten el `system:index` —que es por donde las une
+`fuente.coleccion`— pero **no el `system:time_start`**. El de SR va después, y por minutos.
+Medido el 2026-09-25:
+
+| ROI | Escenas | Desfase SR − nubes |
+|---|---|---|
+| Una parcela real de los Llanos | 105, de 12 meses | **129 a 260 s** |
+| El cuadrado de prueba del Bajío | las de 2026-07 | **668 a 1169 s** (casi 20 min) |
+
+**Depende de dónde caiga el ROI en la pasada**, así que no hay un margen chico que sirva para
+todos — que era la salida fácil, y queda descartada con número. Con una ventana de un segundo
+alrededor del instante de SR, la imagen de nubes queda fuera del `filterDate`, el join no
+encuentra par, la colección sale vacía y el compuesto no tiene bandas.
+
+**Lo que M.9.0c tiene que hacer:** filtrar la colección de nubes por un **superconjunto** del
+pedido y dejar que el join por `system:index` —que es exacto— haga el resto. El filtro de fecha
+sobre las nubes es una optimización, no un criterio.
+
+**Por qué no entró acá:** eso **cambia el borde del mes**. Una escena de los primeros minutos de
+un mes tiene su imagen de nubes en el mes anterior y hoy **se descarta**; con el filtro ancho
+pasaría a contarse. Es correcto, y es un cambio de números — justo lo que M.9.0b no puede hacer.
+Va con la receta que lo necesite.
+
+De paso quedó medido algo que el pipeline ya suponía sin decirlo: **2 de 105 escenas no tienen
+imagen de nubes**, y `fuente.coleccion` las descarta a propósito desde M.2.1.
+
+El hallazgo está fijado en un test `gee`
+—`test_las_dos_colecciones_fechan_la_misma_escena_con_minutos_de_diferencia`— y repetido en el
+docstring de `_por_pasada`, que es donde va a mirar quien haga M.9.0c.
+
+### Lo que no cambió, y conviene tener presente
+
+- **Los jobs y el cierre de mes**: un job sigue diciendo "procesá agosto de esta parcela". Lo
+  único que cambiaría con otra receta es cuántas filas escribe;
+- **`FilaMensual` sigue llamándose así.** Renombrarla tocaría el repositorio y sus tests sin que
+  ninguna fila cambiara. Se renombra cuando cambie el dato, en M.9.0c;
+- **el mapa a demanda es de un mes** y usa `del_mes` directo, no `agrupamiento_raster`: que la
+  receta parta el mes para el ráster sistemático no cambia lo que alguien pide a mano;
+- **`pipeline/periodos.py` no se tocó.** `Mes` sigue siendo la unidad del pedido, y está bien
+  que lo sea: lo que se sacó es el supuesto de que la unidad del pedido y la de la observación
+  son la misma.

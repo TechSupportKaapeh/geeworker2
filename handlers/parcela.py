@@ -30,10 +30,11 @@ from typing import Any
 
 import inngest
 from pipeline import ejecucion
-from pipeline.ejecucion import reduccion_del_mes
-from pipeline.filas import filas_del_mes
+from pipeline.ejecucion import reduccion_de, ventanas_de
+from pipeline.filas import filas_de
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE, Receta
+from pipeline.ventanas import del_mes
 from repositories.db_repository import upsert_mediciones_mensuales
 from services.avance_job import AVISO, INFO, paso, reportar
 from services.ee.ee_client import init_ee
@@ -65,9 +66,15 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     total: int,
     receta: Receta,
 ) -> dict[str, Any]:
-    """El step ``mes-AAAA-MM``: pedir el mes a GEE y escribir sus filas.
+    """El step ``mes-AAAA-MM``: pedirle el mes a GEE y escribir sus filas.
 
     Es idempotente: el upsert pisa las filas del mes si el step se repite.
+
+    **El step sigue siendo un mes** (``DECISIONS #63``): lo que cambió en M.9.0b
+    es que el mes se parte en las ventanas que diga la receta, y cada ventana
+    escribe sus filas. Con ``agrupamiento_estadisticas: entero`` la partición da
+    una sola ventana —el mes— y esto hace exactamente lo de antes: un pedido a
+    GEE, cuatro filas, la misma bitácora.
 
     Raises:
         inngest.NonRetriableError: si GEE dice que el pedido no se puede hacer
@@ -78,21 +85,38 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     t0 = time.monotonic()
     init_ee()
     roi = coords_to_geometry(coordenadas)
+    pedido = del_mes(mes)
+
+    # El trabajo de GEE del step entero va bajo el mismo manejador y el mismo
+    # conteo: la bitácora sigue diciendo cuántas llamadas costó el mes, sea una
+    # ventana o sean ocho.
+    filas = []
+    coberturas = []
     with errores_de_gee(mes, "esta parcela"), ejecucion.contando() as conteo:
-        reduccion = reduccion_del_mes(roi, mes, receta)
+        for ventana in ventanas_de(roi, pedido, receta):
+            reduccion = reduccion_de(roi, ventana, receta)
+            coberturas.append(reduccion)
+            filas.extend(
+                filas_de(
+                    parcela_id=parcela_id,
+                    tenant_id=tenant_id,
+                    ventana=ventana,
+                    reduccion=reduccion,
+                    receta=receta,
+                )
+            )
 
-    filas = filas_del_mes(
-        parcela_id=parcela_id,
-        tenant_id=tenant_id,
-        mes=mes,
-        reduccion=reduccion,
-        receta=receta,
-    )
-    escritas = upsert_mediciones_mensuales(filas)
+    escritas = upsert_mediciones_mensuales(tuple(filas))
 
-    # Todas las filas del mes comparten la cobertura, y con ella si llevan valor.
-    con_valor = all(fila.valor is not None for fila in filas)
-    cobertura = porcentaje(reduccion.cobertura)
+    # Las filas de una ventana comparten la cobertura, y con ella si llevan valor.
+    con_valor = bool(filas) and all(fila.valor is not None for fila in filas)
+    # Con una sola ventana —lo de hoy— estos dos son los de esa ventana, así que
+    # la bitácora dice exactamente lo que decía antes de M.9.0b.
+    cobertura_media = _promedio([r.cobertura for r in coberturas])
+    observaciones = _promedio([
+        r.observaciones for r in coberturas if r.observaciones is not None
+    ])
+    cobertura = porcentaje(cobertura_media) if cobertura_media is not None else "—"
     if con_valor:
         mensaje = f"Mes {posicion} de {total} ({mes}): cobertura {cobertura}"
     else:
@@ -106,18 +130,28 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
         progreso=entre(PROGRESO_PLAN, PROGRESO_MESES, posicion, total),
         nivel=INFO if con_valor else AVISO,
         mes=str(mes),
-        cobertura=reduccion.cobertura,
-        observaciones=reduccion.observaciones,
+        cobertura=cobertura_media,
+        observaciones=observaciones,
         escritas=escritas,
         llamadas=conteo.llamadas,
         ms=ms_desde(t0),
     )
     return {
         "mes": str(mes),
-        "cobertura": reduccion.cobertura,
+        "cobertura": cobertura_media,
         "con_valor": con_valor,
         "escritas": escritas,
     }
+
+
+def _promedio(numeros: list[float]) -> float | None:
+    """El promedio, o ``None`` si la lista está vacía.
+
+    Con una sola ventana devuelve ese número tal cual, que es lo que hace que la
+    bitácora de hoy no cambie. Con varias, un promedio simple: la bitácora es
+    para mirar un step, no para calcular nada.
+    """
+    return sum(numeros) / len(numeros) if numeros else None
 
 
 @inngest_client.create_function(

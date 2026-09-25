@@ -14,20 +14,21 @@ from pipeline import productos
 from pipeline.etapas import compuesto, reduccion
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
+from pipeline.ventanas import del_mes
 
 
 def test_un_indice_fuera_de_la_receta_se_rechaza():
     # Sin este chequeo, `select` devolvería una imagen sin bandas y el error
     # aparecería recién al descargar el COG.
     with pytest.raises(ValueError, match="savi"):
-        productos.mapa_del_mes(None, Mes(2026, 7), RECETA_VIGENTE, "savi")
+        productos.mapa_de(None, del_mes(Mes(2026, 7)), RECETA_VIGENTE, "savi")
 
 
 def test_se_puede_pedir_cualquier_indice_de_la_receta():
     receta = dataclasses.replace(RECETA_VIGENTE, indices=("ndvi",))
 
     with pytest.raises(ValueError, match="evi"):
-        productos.mapa_del_mes(None, Mes(2026, 7), receta, "evi")
+        productos.mapa_de(None, del_mes(Mes(2026, 7)), receta, "evi")
 
 
 # ---- Contra GEE de verdad (pytest --gee) -------------------------------------------
@@ -42,7 +43,7 @@ def test_el_compuesto_trae_los_indices_y_las_observaciones(gee_inicializado):
 
     roi = ee.Geometry.Rectangle(ROI_2KM)
 
-    bandas = productos.compuesto_del_mes(roi, MES, RECETA_VIGENTE).bandNames().getInfo()
+    bandas = productos.compuesto_de(roi, del_mes(MES), RECETA_VIGENTE).bandNames().getInfo()
 
     assert bandas == list(compuesto.bandas_de_salida(RECETA_VIGENTE))
 
@@ -52,7 +53,7 @@ def test_el_mapa_del_mes_es_una_sola_banda_recortada(gee_inicializado):
     import ee
 
     roi = ee.Geometry.Rectangle(ROI_2KM)
-    mapa = productos.mapa_del_mes(roi, MES, RECETA_VIGENTE, "ndvi")
+    mapa = productos.mapa_de(roi, del_mes(MES), RECETA_VIGENTE, "ndvi")
 
     # Solo las bandas. La proyección por defecto de esta imagen es WGS84 de 1°
     # (111.319 m, medido el 2026-09-16): la aritmética de bandas la pierde, y la
@@ -68,10 +69,10 @@ def test_el_numero_de_la_parcela_y_el_mapa_salen_de_los_mismos_pixeles(gee_inici
     import ee
 
     roi = ee.Geometry.Rectangle(ROI_2KM)
-    mapa = productos.mapa_del_mes(roi, MES, RECETA_VIGENTE, "ndvi")
+    mapa = productos.mapa_de(roi, del_mes(MES), RECETA_VIGENTE, "ndvi")
 
     info = ee.Dictionary({
-        "estadisticas": productos.estadisticas_del_mes(roi, MES, RECETA_VIGENTE),
+        "estadisticas": productos.estadisticas_de(roi, del_mes(MES), RECETA_VIGENTE),
         "mediana_del_mapa": mapa.reduceRegion(
             reducer=ee.Reducer.percentile([50]),
             geometry=roi,

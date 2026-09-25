@@ -23,6 +23,7 @@ from pipeline.claves import (
 )
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
+from pipeline.ventanas import del_mes
 
 TENANT = "7f3c2a10-5b6d-4e8f-9a01-23456789abcd"
 RANCHO = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
@@ -31,7 +32,7 @@ RANCHO = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
 def _claves(**cambios):
     argumentos = {
         "tenant_id": TENANT, "rancho_id": RANCHO, "receta": RECETA_VIGENTE,
-        "indice": "ndvi", "mes": Mes(2025, 9),
+        "indice": "ndvi", "ventana": del_mes(Mes(2025, 9)),
     }
     return claves_cog_mensual(**(argumentos | cambios))
 
@@ -98,7 +99,7 @@ def test_rechaza_un_indice_que_la_receta_no_calcula():
 def test_los_ids_van_por_nombre():
     """`tenant_id` y `rancho_id` son los dos texto: intercambiarlos no puede ser posible."""
     with pytest.raises(TypeError):
-        claves_cog_mensual(TENANT, RANCHO, RECETA_VIGENTE, "ndvi", Mes(2025, 9))
+        claves_cog_mensual(TENANT, RANCHO, RECETA_VIGENTE, "ndvi", del_mes(Mes(2025, 9)))
 
 
 def test_otra_receta_cambia_la_key_pero_no_la_natural_key():
@@ -115,7 +116,7 @@ def test_otra_receta_cambia_la_key_pero_no_la_natural_key():
 
 def test_cada_mes_e_indice_es_otra_capa():
     base = _claves()
-    for otra in (_claves(mes=Mes(2025, 10)), _claves(indice="evi")):
+    for otra in (_claves(ventana=del_mes(Mes(2025, 10))), _claves(indice="evi")):
         assert otra.storage_key != base.storage_key
         assert otra.natural_key != base.natural_key
 
@@ -140,11 +141,11 @@ def test_la_natural_key_no_choca_con_la_de_la_capa_vieja():
         _claves().natural_key,
         claves_cog_parcela_a_demanda(
             tenant_id=TENANT, parcela_id=PARCELA, receta=RECETA_VIGENTE,
-            indice="ndvi", mes=Mes(2025, 9),
+            indice="ndvi", ventana=del_mes(Mes(2025, 9)),
         ).natural_key,
         claves_cog_adhoc(
             tenant_id=TENANT, job_id=JOB, receta=RECETA_VIGENTE,
-            indice="ndvi", mes=Mes(2025, 9),
+            indice="ndvi", ventana=del_mes(Mes(2025, 9)),
         ).natural_key,
     }
     assert nuevas.isdisjoint(de_la_capa_vieja)
@@ -160,7 +161,7 @@ def test_el_mapa_a_demanda_vive_al_lado_del_sistematico():
     """
     claves = claves_cog_parcela_a_demanda(
         tenant_id=TENANT, parcela_id=PARCELA, receta=RECETA_VIGENTE,
-        indice="ndvi", mes=Mes(2025, 9),
+        indice="ndvi", ventana=del_mes(Mes(2025, 9)),
     )
     assert claves.storage_key == (
         f"tenants/{TENANT}/parcelas/{PARCELA}/"
@@ -177,7 +178,7 @@ def test_el_poligono_libre_se_identifica_por_su_job():
     """
     claves = claves_cog_adhoc(
         tenant_id=TENANT, job_id=JOB, receta=RECETA_VIGENTE,
-        indice="ndvi", mes=Mes(2025, 9),
+        indice="ndvi", ventana=del_mes(Mes(2025, 9)),
     )
     assert claves.storage_key == (
         f"tenants/{TENANT}/adhoc/{JOB}/{RECETA_VIGENTE.version}/ndvi/2025-09.tif"
@@ -190,6 +191,6 @@ def test_una_parcela_y_un_rancho_con_el_mismo_id_no_comparten_capa():
     del_rancho = _claves().natural_key
     de_la_parcela = claves_cog_parcela_a_demanda(
         tenant_id=TENANT, parcela_id=mismo, receta=RECETA_VIGENTE,
-        indice="ndvi", mes=Mes(2025, 9),
+        indice="ndvi", ventana=del_mes(Mes(2025, 9)),
     ).natural_key
     assert del_rancho != de_la_parcela

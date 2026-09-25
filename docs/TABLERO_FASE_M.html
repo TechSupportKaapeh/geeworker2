@@ -105,7 +105,7 @@
   .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; margin-bottom: 14px; }
   .section-head h2 { font-size: 24px; font-weight: 720; }
   .section-head p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
-  .ruta { display: grid; grid-template-columns: repeat(18, minmax(0, 1fr)); gap: 4px; }
+  .ruta { display: grid; grid-template-columns: repeat(19, minmax(0, 1fr)); gap: 4px; }
   .sesion {
     display: grid; gap: 4px; align-content: start; min-height: 92px; padding: 8px 8px 10px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
@@ -212,7 +212,7 @@
     <div class="stats" aria-label="Resumen">
       <div class="stat"><span class="label">Tareas</span><b id="st-total">—</b></div>
       <div class="stat"><span class="label">Hechas</span><b id="st-hechas">—</b></div>
-      <div class="stat"><span class="label">Sesiones</span><b>~18</b></div>
+      <div class="stat"><span class="label">Sesiones</span><b>~19</b></div>
     </div>
     <div class="next" id="siguiente"></div>
   </header>
@@ -265,7 +265,7 @@
 
   <footer>
     <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
-    <span class="mono">Actualizado 2026-09-24</span>
+    <span class="mono">Actualizado 2026-09-25</span>
   </footer>
 </div>
 
@@ -371,7 +371,7 @@ const SPRINTS = [
     aviso: { tipo: "compuerta", texto: "<b>M.9.0 va primero, y empieza midiendo.</b> Hoy la ventana de observación es el mes y las pasadas sueltas no se guardan (<code>DECISIONS #31</code>, que reemplazó a <code>#19</code>). La decisión se tomó con la cuenta del <b>ráster</b> —146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile— y <b>se llevó a los números, que tienen otra cuenta</b>: para una estadística no hay descargas ni MosaicJSON. Lo que la mediana del mes se lleva puesto: los <b>eventos</b> (una caída de diez días la absorbe), la <b>comparabilidad</b> entre un mes de seis pasadas limpias y uno de dos, y los meses que la cobertura mínima descarta enteros. <b>Cuánto importa depende de qué hay en las parcelas y de cuántas pasadas limpias hay</b>, y eso lo midió M.9.0 antes de tocar nada. <b>La compuerta pasó el 2026-09-24</b> (<code>DECISIONS #66</code>): sobre 3 parcelas reales × 24 meses hay una <b>mediana de 3 pasadas limpias</b> —no «1 o 2»—, y entre ellas el índice se mueve una mediana de 0,065 con un máximo de 0,336. <b>El bloque sigue.</b> La estacionalidad: 3,2 a 5,5 en seca contra 1,0 a 1,5 en el pico de lluvias." },
     tareas: [
       { id: "M.9.0", t: "Medir cuántas pasadas limpias hay por mes, parcela por parcela", repo: "worker", T: "S", ok: "Una tabla por parcela y mes, y la decisión escrita en PREGUNTAS_ABIERTAS B-3", compuerta: true },
-      { id: "M.9.0b", t: "El agrupamiento es un dato de la receta: la ventana deja de estar cableada al mes", repo: "worker", T: "M", ok: "s2-mensual-v1 produce EXACTAMENTE las mismas filas que antes" },
+      { id: "M.9.0b", t: "El agrupamiento es un dato de la receta: la ventana deja de estar cableada al mes", repo: "worker", T: "M", ok: "s2-mensual-v1 produce EXACTAMENTE las mismas filas que antes: 129 entradas comparadas contra el codigo de main, identicas" },
       { id: "M.9.0c", t: "s2-pasada-v2: estadísticas SÓLO por pasada, ráster mensual, umbral de cobertura al leer", repo: "worker · Geocore", T: "M", ok: "Sin migración: la clave (parcela, índice, fecha) sirve con la fecha de adquisición" },
       { id: "M.9.0d", t: "El panel: eje de fechas y el interruptor mensual / por pasada", repo: "panel", T: "M", ok: "—" },
       { id: "M.9.1", t: "Cultivo en la parcela, y la métrica del rancho por cultivo", repo: "Geocore · panel", T: "—", ok: "—" },
@@ -389,6 +389,13 @@ const SPRINTS = [
 // nada anterior al pipeline mensual, y todo lo que el worker escribe cuelga de `tenants/{t}/`,
 // que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
 // y no se va a hacer así; M.6.4 cerró con menos código, no con más.
+//
+// Sesión 15 (2026-09-25): M.9.0b, el agrupamiento como dato de la receta. "El mes" dejo de
+// estar cableado en cinco lugares y vive en pipeline/ventanas.py; los jobs y el cierre de mes
+// no se tocaron. SIN CAMBIO DE COMPORTAMIENTO, y el control negativo se corrio contra el
+// codigo de main con un worktree al lado: 129 entradas identicas. El hallazgo que se lleva
+// M.9.0c: la ventana de una pasada todavia no selecciona sus escenas, porque S2_SR y
+// S2_CLOUD_PROBABILITY fechan la misma escena con minutos de diferencia.
 //
 // Sesión 14 (2026-09-24): M.9.0, el numero que faltaba. Hay una MEDIANA DE 3 PASADAS LIMPIAS
 // por mes sobre parcelas reales, asi que el bloque NO se cierra: siguen M.9.0b, c y d. Y en
@@ -427,7 +434,7 @@ const ESTADO = {
   "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.2b": "hecho", "M.6.3": "bloqueado", "M.6.4": "hecho", "M.6.5": "hecho",
   "M.7.1": "hecho", "M.7.2": "hecho", "M.7.3": "hecho", "M.7.4": "hecho", "M.7.5": "hecho", "M.7.6": "hecho",
   "M.8.1": "hecho", "M.8.2": "hecho", "M.8.3": "hecho", "M.8.4": "hecho", "M.8.5": "hecho",
-  "M.9.0": "hecho"
+  "M.9.0": "hecho", "M.9.0b": "hecho"
 };
 
 const RUTA = [
@@ -436,7 +443,7 @@ const RUTA = [
   ["M.4", "Altas I"], ["M.4", "Altas II"], ["M.5", "Reconciliador"], ["M.5", "Handlers y reproceso"],
   ["M.6", "Limpieza"], ["M.7", "Selector y series"], ["M.7", "Mapa mensual"], ["M.7", "Editor de geometría"],
   ["M.8", "A01 y A04"], ["M.8", "A09 y retención"], ["M.9.0", "Medir las pasadas · y borrar /mosaic"],
-  ["M.9", "Analítica · sin orden fijo, desde M.9.0b"]
+  ["M.9.0b", "El agrupamiento como dato"], ["M.9", "Analítica · desde M.9.0c"]
 ];
 
 const DECISIONES = [
@@ -460,7 +467,8 @@ const DECISIONES = [
   ["El router /mosaic del tileserver se borra: nadie lo usa (#64) · BORRADO el 2026-09-24", "—", "hecho", "decidida"],
   ["Retención: lo sistemático para siempre, lo a demanda 90 días (#65)", "—", "hecho", "decidida"],
   ["Login y create-user: riesgo aceptado; el registro de auditoría sin pantalla (#47 de Geocore)", "—", "hecho", "decidida"],
-  ["M.9.0 medido: 3 pasadas limpias por mes y 0 de 72 meses que se perderían; sin fila mensual (#66)", "M.9.0", "hecho", "decidida"]
+  ["M.9.0 medido: 3 pasadas limpias por mes y 0 de 72 meses que se perderían; sin fila mensual (#66)", "M.9.0", "hecho", "decidida"],
+  ["La huella de s2-mensual-v1 se re-fija sin subir la versión: el agrupamiento no mueve ningún número (#67)", "M.9.0b", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
@@ -484,7 +492,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 18;
+const sesionProxima = 19;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

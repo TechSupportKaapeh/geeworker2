@@ -1,5 +1,53 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-25, sesión 15 · M.9.0b: la ventana de observación dejó de estar cableada**
+> (`DECISIONS #67`). Refactor **sin cambio de comportamiento**, y el control negativo lo dice
+> con números.
+>
+> - **`pipeline/ventanas.py` es nuevo y es el centro de esto.** Una `Ventana` es
+>   `(etiqueta, inicio, fin)`, y **la etiqueta es lo único que llega afuera**: la key del COG, la
+>   `fecha` de la fila y el `periodo` del job salen de ahí. Con `del_mes(mes)` la etiqueta es
+>   `AAAA-MM`, así que ninguna key y ningún `periodo` cambiaron.
+> - **Lo que hay que saber para tocar el pipeline:** `fuente.coleccion`,
+>   `productos.compuesto_de` / `estadisticas_de` / `mapa_de`, `ejecucion.reduccion_de`,
+>   `filas.filas_de` y las tres `claves_cog_*` reciben **una ventana, no un mes**. Los nombres
+>   `*_del_mes` ya no existen. `Mes` sigue vivo donde corresponde: el job y la bitácora.
+> - **Partir es puro.** `Agrupamiento.partir(pedido, fechas)` no toca `ee`, así que se prueba sin
+>   credenciales. Lo que sí necesita GEE es `ejecucion.fechas_de`, **la llamada declarada que
+>   `#63` le suma al borde** — y `entero` no la usa, así que un mes cuesta las mismas llamadas
+>   que antes. Hay un test `gee` que lo fija en 0.
+> - **La receta lleva dos campos**, `agrupamiento_estadisticas` y `agrupamiento_raster`, porque
+>   el ráster y los números tienen costos distintos (`ARQUITECTURA` §3.5). Los dos en `entero`.
+> - **La huella de `s2-mensual-v1` cambió y la versión no**, por decisión del usuario: los campos
+>   nuevos valen lo que el código ya hacía cableado. El porqué está en `HUELLAS`, en
+>   `tests/test_pipeline_receta.py`.
+> - **`handlers/rancho.py` exige una sola ventana para el ráster** y rechaza la receta que pida
+>   más. No se generalizó a propósito: es el camino más caro del worker, y un bucle cuyo N es
+>   siempre 1 fallaría recién el día que alguien lo use.
+>
+> **⚠️ El hallazgo que se lleva M.9.0c, y es lo primero que tiene que resolver:** `por_pasada`
+> parte bien, pero **la ventana que produce todavía no sirve para seleccionar sus escenas**.
+> `S2_SR` y `S2_CLOUD_PROBABILITY` comparten el `system:index` —que es por donde las une
+> `fuente.coleccion`— pero **no el `system:time_start`**: el de SR va de **129 a 1169 segundos
+> después**, y cuánto depende de dónde caiga el ROI en la pasada (medido sobre 105 escenas de
+> los Llanos y sobre el cuadrado del Bajío). Con una ventana de un segundo, la imagen de nubes
+> queda fuera del `filterDate`, el join no encuentra par y el compuesto sale sin bandas.
+>
+> Se arregla **filtrando la colección de nubes por un superconjunto del pedido** y dejando que
+> el join por `system:index` haga el resto. Eso **cambia el borde del mes** —una escena de los
+> primeros minutos tiene su imagen de nubes en el mes anterior, y hoy se descarta—, así que es
+> un cambio de números y no podía entrar en M.9.0b. Está fijado en un test `gee` y repetido en
+> el docstring de `_por_pasada`.
+>
+> **Cómo se verificó que no cambió nada**, que es la aceptación de la tarea: con un
+> `git worktree` de `main` al lado y un volcador que se adapta a las dos API, se compararon los
+> 24 meses de la receta × 4 coberturas que cruzan el umbral, las tres familias de claves, el
+> intervalo que se le pide a GEE, y 9 meses de parcela **contra GEE de verdad** —incluido
+> 2026-05, el mes en que todo queda enmascarado—. **129 entradas, idénticas.** En los tests no se
+> tocó ninguna expectativa: sólo las llamadas.
+>
+> Crónica: [`SESSION_2026-09-25_sesion_15_el_agrupamiento.md`](SESSION_2026-09-25_sesion_15_el_agrupamiento.md).
+
 > **2026-09-24, sesión 14 · M.9.0: el número que faltaba, y el pipeline sigue igual**
 > (`DECISIONS #66`). La tarea era medir, y se midió: **el pipeline no se tocó**. Lo único que
 > cambió es `scripts/check_pipeline_real.py`, que ganó un escalón 6.

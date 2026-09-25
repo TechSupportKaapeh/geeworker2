@@ -27,14 +27,17 @@ import threading
 from collections.abc import Iterator
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Final
 
 import ee
 
+from pipeline.etapas import compuesto as etapa_compuesto
+from pipeline.etapas import fuente
 from pipeline.etapas.reduccion import Reduccion, leer
-from pipeline.periodos import Mes
-from pipeline.productos import estadisticas_del_mes
+from pipeline.productos import estadisticas_de
 from pipeline.receta import Receta
+from pipeline.ventanas import Ventana, agrupamiento
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,9 @@ PLAZO_MS: Final = 120_000
 
 # `setDeadline(0)` es "sin plazo", que es el default del cliente.
 _SIN_PLAZO: Final = 0
+
+# GEE devuelve `system:time_start` en milisegundos desde la época.
+_MS_POR_SEGUNDO: Final = 1000
 
 # Lo que GEE contesta cuando el pedido no se puede hacer **así**: reintentarlo da
 # exactamente el mismo error, y encima gasta cuota.
@@ -259,9 +265,66 @@ def url_de_descarga(
             raise traducido from error
 
 
-def reduccion_del_mes(roi: ee.Geometry, mes: Mes, receta: Receta) -> Reduccion:
-    """Los números de una parcela en un mes, pedidos y validados.
+def reduccion_de(roi: ee.Geometry, ventana: Ventana, receta: Receta) -> Reduccion:
+    """Los números de una parcela en una ventana, pedidos y validados.
 
-    Es una sola llamada a GEE: :func:`estadisticas_del_mes` arma todo junto.
+    Es una sola llamada a GEE: :func:`estadisticas_de` arma todo junto.
     """
-    return leer(traer(estadisticas_del_mes(roi, mes, receta)), receta)
+    return leer(traer(estadisticas_de(roi, ventana, receta)), receta)
+
+
+def fechas_de(
+    roi: ee.Geometry, pedido: Ventana, receta: Receta
+) -> tuple[datetime, ...]:
+    """Los instantes de las pasadas que hay en el pedido, una por pasada.
+
+    **Es la llamada que ``DECISIONS #63`` le suma al borde**, y la razón por la
+    que existe está en ``ARQUITECTURA_PIPELINE.md`` §3.5: ``entero`` sale del
+    calendario, pero ``por_pasada`` **depende de qué pasadas existen**, y eso sólo
+    lo sabe GEE. Las dos salidas eran una descripción perezosa que resolviera
+    :func:`traer`, o una llamada más declarada acá. Se eligió la segunda: ``#32``
+    dice «un solo borde», no «una sola llamada», y una llamada con nombre se
+    sigue mejor que una indirección que existe sólo para no agregarla.
+
+    Una por **pasada** y no una por escena: las teselas se juntan antes con
+    :func:`pipeline.etapas.compuesto.por_pasada`, que agrupa por
+    ``DATATAKE_IDENTIFIER``. Sin eso, un ROI en la franja de solape daría dos
+    fechas casi iguales para la misma toma y con ellas dos filas de la misma
+    observación (sondeo del 2026-09-15: 16 imágenes que eran 8 pasadas).
+
+    **No se enmascara para contar.** Una pasada enteramente nublada sigue siendo
+    una pasada, y su ventana produce una fila con cobertura baja; descartarla acá
+    sería volver a descartar al escribir, que es justo lo que ``#63`` saca.
+
+    Returns:
+        Los instantes en UTC, ordenados y sin repetidos. Una ventana sin pasadas
+        devuelve la tupla vacía, que no es un error.
+    """
+    escenas = fuente.coleccion(roi, pedido, receta)
+    pasadas = etapa_compuesto.por_pasada(escenas)
+    crudas = traer(pasadas.aggregate_array("system:time_start"))
+    return tuple(
+        sorted({datetime.fromtimestamp(ms / _MS_POR_SEGUNDO, tz=UTC) for ms in crudas})
+    )
+
+
+def ventanas_de(
+    roi: ee.Geometry, pedido: Ventana, receta: Receta, *, para_raster: bool = False
+) -> tuple[Ventana, ...]:
+    """En qué observaciones se parte el pedido, según la receta.
+
+    ``para_raster`` elige cuál de los dos agrupamientos de la receta se aplica.
+    Son dos y no uno porque el ráster y los números tienen costos distintos
+    (``ARQUITECTURA`` §3.5): la receta puede pedir ``por_pasada`` para las filas y
+    ``entero`` para el COG, que es lo que ``#63`` deja previsto para ``v2``.
+
+    **Cuesta una llamada a GEE sólo si el agrupamiento la necesita.** Con
+    ``entero``, que es lo de hoy, no se le pregunta nada: el pedido es la única
+    ventana. Por eso M.9.0b no cambia cuántas llamadas hace un mes.
+    """
+    nombre = (
+        receta.agrupamiento_raster if para_raster else receta.agrupamiento_estadisticas
+    )
+    modo = agrupamiento(nombre)
+    fechas = fechas_de(roi, pedido, receta) if modo.necesita_fechas else ()
+    return modo.partir(pedido, fechas)

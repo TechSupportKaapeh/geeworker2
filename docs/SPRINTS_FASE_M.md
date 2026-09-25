@@ -510,7 +510,7 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | | Qué | Qué toca | Estado |
 |---|---|---|---|
 | M.9.0 | **Medir cuántas pasadas limpias hay por mes y qué cobertura tiene cada una**, sobre la parcela. Es la compuerta de todo lo que sigue | worker | ✅ 2026-09-24 · geeworker2#70, `DECISIONS #66`. **Mediana de 3 pasadas limpias por mes** sobre 3 parcelas reales × 24 meses: no son «1 o 2», así que **el bloque no se cierra acá**. Y **0 de 72 meses** en que el compuesto llegue al umbral y ninguna pasada sola: «por pasada puro» confirmado, la tabla aparte no se abre. `PREGUNTAS_ABIERTAS` B-3, **cerrada** |
-| M.9.0b | **El agrupamiento es un dato de la receta**: la ventana deja de estar cableada al mes. Refactor **sin cambio de comportamiento** | worker | ⬜ |
+| M.9.0b | **El agrupamiento es un dato de la receta**: la ventana deja de estar cableada al mes. Refactor **sin cambio de comportamiento** | worker | ✅ 2026-09-25 · geeworker2#72, `DECISIONS #67`. `pipeline/ventanas.py`: una `Ventana` es `(etiqueta, inicio, fin)` y **partir es puro**; `ejecucion.fechas_de` es la llamada declarada de `#63`, y `entero` no la usa. **Control negativo corrido contra el código de `main`**: 129 casos —24 meses × 4 coberturas, las tres familias de claves, y 9 meses de parcela contra GEE— **idénticos**. Y un hallazgo que se lleva M.9.0c: la ventana de una pasada **todavía no selecciona sus escenas** |
 | M.9.0c | **`s2-pasada-v2`**: estadísticas **sólo** por pasada, ráster mensual, y el umbral de cobertura al leer. Convive con `s2-mensual-v1` | worker, Geocore | ⬜ |
 | M.9.0d | El panel: eje de fechas y el interruptor mensual / por pasada | panel | ⬜ |
 | M.9.1 | El cultivo en la parcela, y la métrica del rancho agrupada por cultivo (`DECISIONS #22` de Geocore) | Geocore, panel | ⬜ |
@@ -649,14 +649,30 @@ Lo que dio, y lo que decide cada número:
   «Las medianas no componen» es cierto y es **un orden de magnitud menor** que la variación
   intramensual que se gana, que tiene mediana 0,065 y máximo 0,336.
 
-**M.9.0b — el agrupamiento (M, sin cambio de comportamiento).** Ver
-[`ARQUITECTURA_PIPELINE.md` §3.5](ARQUITECTURA_PIPELINE.md). Hoy "el mes" está cableado en
-cinco lugares: `periodos.Mes`, el `median()` de `compuesto()`, la `fecha` de `filas.py`, el
-`{AAAA-MM}` de `claves.py` y el `periodo` de los jobs. La tarea convierte eso en **un dato de
-la receta**. **Termina cuando `s2-mensual-v1` produce exactamente las mismas filas que antes**
-—control negativo obligatorio, comparando filas antes y después—. Vale la pena **aunque nunca
-se cambie la cadencia**: saca un supuesto escondido y es lo que hace barato cualquier
-respuesta.
+**M.9.0b — el agrupamiento (M, sin cambio de comportamiento). ✅ Hecha el 2026-09-25**
+(`DECISIONS #67`). "El mes" vivía en cinco lugares y ahora vive en `pipeline/ventanas.py`: una
+`Ventana` es `(etiqueta, inicio, fin)`, y la etiqueta es lo único que llega a la key del COG, a
+la `fecha` de la fila y al `periodo` del job. Los jobs y el cierre de mes **no se tocaron**.
+
+- **Partir quedó puro**: `partir(pedido, fechas)` no toca `ee` y se prueba sin credenciales.
+  Lo que sí necesita GEE —saber qué pasadas hay— es `ejecucion.fechas_de`, la llamada declarada
+  que `#63` le suma al borde, y **`entero` no la usa**: un mes cuesta las mismas llamadas que
+  antes, y hay un test `gee` que lo fija en 0.
+- **La receta lleva dos campos, no uno** (`agrupamiento_estadisticas` y `agrupamiento_raster`),
+  porque el ráster y los números tienen costos distintos.
+- **La huella de `s2-mensual-v1` se re-fijó sin subir la versión** (decisión del usuario): los
+  campos nuevos valen lo que el código ya hacía cableado, así que ningún número se movió, y
+  pasar a `v2` habría dejado filas `v1` y `v2` idénticas en la misma tabla.
+- **El control negativo se corrió contra el código de `main`**, con un `git worktree` al lado:
+  24 meses × 4 coberturas que cruzan el umbral, las tres familias de claves, el intervalo que
+  se le pide a GEE, y 9 meses de parcela contra GEE de verdad. **129 entradas idénticas**. En
+  los tests no se tocó ninguna expectativa, sólo las llamadas.
+- **El hallazgo, y es para M.9.0c:** la ventana de una pasada **todavía no selecciona sus
+  escenas**. `S2_SR` y `S2_CLOUD_PROBABILITY` comparten el `system:index` pero no el
+  `system:time_start` —el de SR va de 129 a 1169 s después, y cuánto depende de dónde caiga el
+  ROI en la pasada—, así que una ventana de un segundo deja la imagen de nubes afuera del join.
+  Se arregla filtrando las nubes por un superconjunto del pedido, y eso **cambia el borde del
+  mes**: por eso no entró acá.
 
 **M.9.0c — `s2-pasada-v2` (M).** La receta nueva agrupa **por pasada** para las estadísticas y
 **por mes** para el ráster. Convive con v1 porque la receta ya va en la key del COG y en cada
