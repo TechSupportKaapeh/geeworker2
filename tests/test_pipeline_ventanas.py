@@ -19,7 +19,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 from pipeline.periodos import Mes, rango
-from pipeline.receta import RECETA_VIGENTE
+from pipeline.receta import RECETA_MENSUAL_V1, RECETA_VIGENTE
 from pipeline.ventanas import (
     AGRUPAMIENTOS,
     ENTERO,
@@ -177,10 +177,21 @@ def test_el_registro_no_se_puede_mutar():
 # --- La receta ------------------------------------------------------------
 
 
-def test_la_receta_vigente_agrupa_entero_en_los_dos_productos():
-    """Es lo que hace que M.9.0b no cambie ningún número."""
-    assert RECETA_VIGENTE.agrupamiento_estadisticas == ENTERO
+def test_la_vigente_agrupa_por_pasada_las_estadisticas_y_entero_el_raster():
+    """Desde `DECISIONS #70`, el 2026-09-25.
+
+    Es el caso que justifica que la receta lleve DOS campos y no uno: el ráster y
+    los números tienen costos distintos, y `#63` dejó el ráster mensual.
+    """
+    assert RECETA_VIGENTE.agrupamiento_estadisticas == POR_PASADA
     assert RECETA_VIGENTE.agrupamiento_raster == ENTERO
+
+
+def test_v1_agrupaba_entero_en_los_dos():
+    """Lo que hizo el pipeline hasta el 2026-09-25, y lo que sigue describiendo
+    las filas que ya están escritas."""
+    assert RECETA_MENSUAL_V1.agrupamiento_estadisticas == ENTERO
+    assert RECETA_MENSUAL_V1.agrupamiento_raster == ENTERO
 
 
 @pytest.mark.parametrize(

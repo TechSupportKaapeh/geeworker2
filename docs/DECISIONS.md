@@ -3542,3 +3542,90 @@ Va con SQL crudo (`FromSql`), porque la mediana en Postgres es `percentile_cont`
 traduce — y agregar en memoria pediría traer ~3.800 filas contra un techo de 2.000, que es
 justo el modo de fallo silencioso que `MedicionesQueries` ya documenta. Es el primer SQL crudo
 del repo; decisión del usuario del 2026-09-25.
+
+---
+
+## 70. `s2-pasada-v2` pasa a ser la receta vigente (2026-09-25)
+
+> **Decisión del usuario.** Desde acá, las altas y el cierre de mes escriben **una fila por
+> pasada** en vez de una por mes. Es el último paso del bloque M.9.0, y el que convierte en
+> datos lo que `#66` midió.
+
+### El orden de despliegue se respetó, y era la condición
+
+`/api/measurements` ya sabe agregar desde Geocore#60 (`DECISIONS #48` de Geocore), **con
+`cadencia=mensual` por defecto**. O sea que el panel pide lo mismo que pedía y recibe puntos
+mensuales, **sin tocar una línea**. Es la regla de M.8.1 —el que exige va último— con el que
+**lee** en ese lugar.
+
+Sobre filas mensuales, agrupar por mes es la identidad, y hay un test contra PostgreSQL que lo
+fija: es lo que sostiene la promesa de arriba.
+
+### Lo que cuesta, medido antes de hacerlo
+
+Contra GEE, sobre una parcela real de 101 ha, cuatro meses:
+
+| Mes | v1 | v2 |
+|---|---|---|
+| 2025-02 | 2,0 s · 1 llamada · 4 filas | **13,6 s · 6 llamadas · 20 filas** |
+| 2026-05 | 2,8 s · 1 llamada · 4 filas | **25,1 s · 11 llamadas · 40 filas** |
+| 2026-07 | 2,2 s · 1 llamada · 4 filas | **20,6 s · 10 llamadas · 36 filas** |
+| 2026-08 | 2,1 s · 1 llamada · 4 filas | **22,4 s · 11 llamadas · 40 filas** |
+
+**Unas 9 veces más**, en tiempo y en llamadas. El peor mes medido, 25,1 s, entra en la compuerta
+de M.2.6 —que pide menos de 60 s por mes— pero con **menos del doble de margen**.
+
+**⚠️ Y eso es sobre una parcela de 101 ha.** La compuerta de M.2.6 se corrió sobre esas mismas
+parcelas y **el tiempo con una parcela grande sigue sin medirse**: es un pendiente anotado desde
+M.2. Con v1 un mes iba de 2 a 8 s; si v2 multiplica por 9, una parcela en el extremo alto daría
+**~72 s y pasaría la compuerta**. Es lo primero a mirar si un alta empieza a fallar.
+
+**Lo que NO se mueve:** la cuota de Inngest. Sigue habiendo **un step por mes** —24 por alta—,
+así que las ~27 ejecuciones por alta no cambian. Lo que crece es lo que hace cada step.
+
+### Lo que pasa con lo que ya está escrito
+
+**Nada.** Las filas de `s2-mensual-v1` se quedan con su versión y su fecha —el día 1 del mes— y
+las nuevas conviven al lado con la fecha de adquisición. No hay migración: la clave
+`(parcela, índice, fecha)` sirve para las dos (`#63`).
+
+**Un mes que tenga las dos clases de fila sale de `/api/measurements` con
+`receta: "s2-mensual-v1,s2-pasada-v2"`**, a la vista y no en silencio: el `string_agg DISTINCT`
+de `DECISIONS #48` de Geocore está justamente para que mezclar dos semánticas no devuelva un
+número plausible y equivocado.
+
+Eso pasa **sólo si se reprocesa un mes que ya tenía fila v1**. Un mes nuevo —el cierre mensual—
+sale limpio en v2.
+
+**Los COG nuevos cuelgan de `…/s2-pasada-v2/…`**, porque la receta va en la key (`#47`). Los
+objetos de v1 quedan en el bucket bajo su prefijo; la fila de `layers` se repunta sola al
+reprocesar, porque la `natural_key` no lleva la receta. Está documentado en `claves.py`.
+
+### `RECETA_MENSUAL_V1` no se borra
+
+La receta v1 sigue en el código con su nombre propio. Es la receta de las filas que ya están
+escritas, y `measurements.receta` las nombra por su versión: borrarla dejaría filas apuntando a
+una receta que no existe, que es justo lo que la versión en cada fila viene a evitar. Su huella
+sigue fijada en `HUELLAS`.
+
+### Lo que cambió en los tests, y por qué así
+
+**Los tests que fijaban la orquestación mensual clavan `RECETA_MENSUAL_V1` explícitamente**, en
+vez de seguir a `RECETA_VIGENTE`. Lo que prueban —el plan, un step por mes, la bitácora, la
+barra, la forma de la key, lo que el repositorio hace con una fila sin valor— **no es de la
+receta**, y clavándola se sigue leyendo cuánto cuesta *un* mes sin que el test cambie de
+significado cada vez que cambia la vigente.
+
+Un test que sigue a `RECETA_VIGENTE` y afirma un literal deja de decir nada el día que la
+vigente cambia: se vuelve verde por construcción.
+
+**Y entraron tres tests de la orquestación por pasada**, que es lo que producción hace ahora:
+que un mes escriba N × 4 filas con una clave por pasada e índice —si dos ventanas cayeran en la
+misma fecha, el upsert rechazaría el lote entero y el mes se perdería—, que cueste una reducción
+por pasada, y que una pasada bajo el umbral **conserve su valor**.
+
+### Lo que falta
+
+**M.9.0d, el panel**: el eje pasa a ser una fecha y aparece el interruptor mensual / por pasada.
+Hasta entonces el panel sigue viendo la serie mensual, que es correcta — simplemente no muestra
+todavía la serie fina que ya se está guardando.
