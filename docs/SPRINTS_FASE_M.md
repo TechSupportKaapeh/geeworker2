@@ -507,9 +507,9 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 
 | | Qué | Qué toca |
 |---|---|---|
-| M.9.0 | **Medir cuántas pasadas limpias hay por mes**, parcela por parcela y mes por mes. Es la compuerta de todo lo que sigue | worker |
+| M.9.0 | **Medir cuántas pasadas limpias hay por mes y qué cobertura tiene cada una**, sobre la parcela. Es la compuerta de todo lo que sigue | worker |
 | M.9.0b | **El agrupamiento es un dato de la receta**: la ventana deja de estar cableada al mes. Refactor **sin cambio de comportamiento** | worker |
-| M.9.0c | **`s2-pasada-v2`**: estadísticas por pasada, ráster mensual. Convive con `s2-mensual-v1` | worker, Geocore |
+| M.9.0c | **`s2-pasada-v2`**: estadísticas por pasada —por defecto, sólo por pasada—, ráster mensual. Convive con `s2-mensual-v1` | worker, Geocore |
 | M.9.0d | El panel: eje de fechas y el interruptor mensual / por pasada | panel |
 | M.9.1 | El cultivo en la parcela, y la métrica del rancho agrupada por cultivo (`DECISIONS #22` de Geocore) | Geocore, panel |
 | M.9.2 | `analitica/`: anomalía contra la mediana histórica del mismo mes, tendencia y alerta de caída | worker o Geocore |
@@ -566,19 +566,56 @@ borrando la parte informativa de la curva.
 - **no reabre el mapa a demanda**, que es de un mes y no de un rango por decisión del usuario.
   El agrupamiento lo haría posible; que se use o no es otra conversación.
 
-**El costo de partir la decisión, y hay que decirlo:** `#31` cerró la pregunta B-1 "por
-construcción" —el número y el mapa salen de la misma imagen, así que no pueden discrepar—. Si
-las estadísticas pasan a ser por pasada y el ráster sigue mensual, **eso se rompe**: la
-mediana de las medianas por pasada no es la mediana del compuesto. La salida es que **v2
-escriba las dos cosas** —la fila mensual del compuesto, que es la que se muestra al lado del
-mapa, y las filas por pasada, que son la serie— y que la fila diga a qué ventana pertenece.
-Cuesta un `reduceRegion` más por mes, y es el punto que M.9.0c tiene que resolver.
+### Lo que un `GROUP BY` sobre las pasadas NO puede rehacer
+
+Si se guarda por pasada, la serie mensual —o decadal, o de cualquier rango— sale de agregar al
+leer, sin volver a GEE. Ésa es la ganancia entera. Pero **lo que se guarda por pasada no son
+píxeles: son estadísticas ya reducidas sobre la parcela**, y de ahí salen dos límites.
+
+**El menor: las medianas no componen.** La mediana de las medianas por pasada no es la mediana
+del compuesto. Con la media casi se salva; con `p10` y `p90`, no. Es una diferencia chica.
+
+**El que importa: cada pasada cubre un pedazo distinto de la parcela.** En un mes con ocho
+pasadas de las cuales seis tienen media parcela tapada, cada una de esas seis filas es una
+estadística **del 30 % que estaba despejado** — y si el pedazo despejado es siempre la misma
+ladera, las seis repiten el mismo sesgo. El compuesto, en cambio, toma para cada píxel la
+mediana de las pasadas en que **ese** píxel estaba limpio, así que cubre casi toda la parcela.
+**Eso no se puede reconstruir agregando números**: el valor que tenía el píxel tapado el día 7
+nunca se guardó.
+
+Por eso la fila mensual no sería el mismo dato otra vez: **es otra medición, que sólo existe
+si se calcula**. Y por eso la elección entre «por pasada puro» y «los dos» **la decide el
+número que mide M.9.0**: con pasadas de cobertura alta, el compuesto no hace nada que el
+`GROUP BY` no haga y el puro gana limpio —sin migración, una sola clase de fila, y el rango
+flexible gratis—; con pasadas parciales, la fila mensual se justifica sola. **Por defecto,
+puro.**
+
+### La cobertura se mide sobre la parcela, nunca sobre el rancho
+
+Decisión del usuario, 2026-09-24, y vale para todo el bloque. **Una pasada que tapa medio
+rancho puede ser perfecta para una parcela**, y evaluarla a nivel rancho la descartaría para
+todas. El umbral tiene que aplicarse con la granularidad con la que el dato se consume, que es
+la parcela: es la fila de `measurements` y es el nivel al que `cobertura_minima` ya trabaja
+hoy.
+
+El pipeline actual ya respeta el principio en dos lugares y hay que no perderlo: `nubes.py`
+enmascara **sin descartar pasadas** —una pasada parcial aporta donde está limpia— y
+`cobertura_minima` es "la fracción de **la parcela**". Lo que M.9.0 agrega es medir esa
+cobertura **por pasada**, que hoy no existe: se calcula sobre el compuesto.
+
+**Y de ahí sale una consecuencia**, que es el mismo argumento un paso más allá: hoy
+`cobertura_minima` **descarta al escribir**. Descartar al escribir es otra reducción con
+pérdida antes de guardar, y es la que no se puede deshacer. Guardando cada pasada con su
+cobertura, "descartar lo que no llega al 30 %" pasa a ser un `WHERE` — y el día que 0,3
+resulte mal puesto se cambia el número, no el histórico.
 
 ### Qué hace cada tarea
 
 **M.9.0 — medir (S, compuerta).** Sin el número, esto es una discusión de opiniones. Sale de
 `scripts/check_pipeline_real.py`, que ya hace comparaciones lado a lado: para las parcelas
-reales, mes por mes, cuántas pasadas hay, cuántas quedan limpias y con qué cobertura.
+reales, mes por mes, cuántas pasadas hay, cuántas quedan limpias y **qué cobertura tiene cada
+una sobre la parcela** — este último número **no existe hoy**, porque la cobertura se calcula
+sobre el compuesto, y es el que decide «puro» contra «los dos».
 **Termina cuando** hay una tabla y una decisión escrita en `PREGUNTAS_ABIERTAS` B-3. Si en
 seca son 5–6 y en lluvias 1, ya se sabe exactamente cuánto se está tirando y cuándo. **Si
 resulta que casi siempre son 1 o 2, el mensual está bien y este bloque se cierra acá**, que
@@ -595,8 +632,10 @@ respuesta.
 
 **M.9.0c — `s2-pasada-v2` (M).** La receta nueva agrupa **por pasada** para las estadísticas y
 **por mes** para el ráster. Convive con v1 porque la receta ya va en la key del COG y en cada
-fila. Lo que tiene que resolver: la columna que dice a qué ventana pertenece una fila, y qué
-número se muestra al lado del mapa.
+fila. **Por defecto, sólo por pasada**: así no hay migración —la clave `(parcela, índice,
+fecha)` sirve tal cual, con la fecha de adquisición— ni dos clases de fila que distinguir. Si
+M.9.0 muestra pasadas parciales, se suma la fila mensual del compuesto y ahí sí hace falta una
+columna que diga a qué ventana pertenece cada fila.
 
 **M.9.0d — el panel (M).** El eje pasa a ser una fecha y no un índice de mes, y aparece el
 interruptor. La serie ya sabe dibujar huecos, así que el cambio es del eje, no del gráfico.

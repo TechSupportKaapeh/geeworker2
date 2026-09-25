@@ -183,7 +183,7 @@ eligió mensual con la cuenta del ráster. La receta debe poder decir `estadisti
 por_pasada` y `raster: mensual` al mismo tiempo. Si la receta tuviera un solo agrupamiento
 global, se estaría repitiendo el error que M.9 viene a corregir.
 
-### Las dos cosas que este diseño tiene que resolver
+### Las tres cosas que este diseño tiene que resolver
 
 **1. Hay agrupamientos que no se conocen antes de tocar GEE.** `mensual` y `rango_libre` salen
 del calendario: se saben antes de preguntar nada. `por_pasada` y `por_dias` **dependen de qué
@@ -201,18 +201,36 @@ llama a `getInfo()`**. Las dos salidas razonables:
 La segunda es más simple y más honesta; la primera es más pura. **Es lo primero que M.9.0b
 tiene que elegir**, porque decide la forma de la firma.
 
-**2. Una fila tiene que decir a qué ventana pertenece.** Si `s2-pasada-v2` escribe la fila
-mensual del compuesto *y* las filas por pasada, `(parcela, índice, fecha)` alcanza para que no
-choquen —una pasada nunca cae a las 00:00 del día 1— pero **no alcanza para leerlas**: no hay
-forma de pedir "la serie mensual" sin adivinar por la hora. Dos opciones:
+**2. Qué se guarda: sólo las pasadas, o también la fila mensual.** Por defecto, **sólo las
+pasadas**: `(parcela, índice, fecha)` sirve tal cual con la fecha de adquisición, no hay
+migración, hay una sola clase de fila, y el mensual —o cualquier rango— sale de agregar al
+leer.
 
-- una columna **`ventana`** con la etiqueta del agrupamiento (`mes`, `pasada`, `decada`). Es
-  una migración de una columna, y hace que la consulta sea `WHERE ventana = 'mes'`. Tiene la
-  ventaja de que **la fila y la key del COG dicen lo mismo**;
-- una columna **`fecha_fin`**, que es más general —expresa cualquier ventana sin enumerar—
-  pero deja la consulta más incómoda.
+Lo que ese `GROUP BY` **no** puede rehacer es el compuesto. No por las medianas, que es lo
+menor, sino porque **cada pasada cubre un pedazo distinto de la parcela**: una estadística
+por pasada describe el pedazo que estaba despejado, mientras que el compuesto toma cada píxel
+de la pasada en que **ese** píxel estaba limpio y cubre casi toda la parcela. La fila mensual
+no es el mismo dato otra vez: **es otra medición, que sólo existe si se calcula.**
 
-`ventana` es la recomendación. La decisión es de M.9.0c.
+Si M.9.0 muestra que las pasadas vienen parciales, `s2-pasada-v2` escribe las dos y hace falta
+que la fila diga a cuál pertenece: una columna **`ventana`** (`mes`, `pasada`), que además
+deja la fila diciendo lo mismo que la etiqueta de la key del COG, o una **`fecha_fin`**, más
+general y más incómoda de consultar. `ventana` es la recomendación **en ese caso**; con
+pasadas de cobertura alta la pregunta no se llega a hacer.
+
+**3. La cobertura se mide sobre la parcela, nunca sobre el rancho** (decisión del usuario,
+2026-09-24). Una pasada que tapa medio rancho puede ser **perfecta para una parcela**, y
+evaluarla a nivel rancho la descartaría para todas. El umbral se aplica con la granularidad
+con la que el dato se consume, que es la parcela.
+
+El pipeline ya respeta el principio en dos lugares, y hay que no perderlo: `nubes.py` enmascara
+**sin descartar pasadas**, y `cobertura_minima` es "la fracción de **la parcela**". Lo que falta
+es medir esa cobertura **por pasada** — hoy se calcula sobre el compuesto.
+
+De ahí sale una consecuencia, que es el mismo argumento de esta sección un paso más allá: hoy
+`cobertura_minima` **descarta al escribir**, y eso es otra reducción con pérdida antes de
+guardar. Guardando cada pasada con su cobertura, el umbral pasa a ser un `WHERE`, y cambiarlo
+deja de costar un reproceso.
 
 ### Lo que este diseño **no** cambia
 

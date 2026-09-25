@@ -635,6 +635,28 @@ Y el diseño para que la respuesta sea barata **sea cual sea** está en
 [`ARQUITECTURA_PIPELINE.md` §3.5](ARQUITECTURA_PIPELINE.md): el agrupamiento como dato de la
 receta. Ese refactor (M.9.0b) vale aunque la cadencia no cambie nunca.
 
+### Lo que M.9.0 tiene que medir, y por qué son dos números
+
+**Cuántas pasadas limpias hay por mes** decide si el mensual está tirando información. **Qué
+cobertura tiene cada pasada** decide algo distinto: si alcanza con guardar por pasada o si
+además hace falta la fila mensual del compuesto.
+
+Una estadística por pasada describe **el pedazo de parcela que estaba despejado**; el
+compuesto toma cada píxel de la pasada en que ese píxel estaba limpio, y cubre casi toda. Con
+pasadas de cobertura alta las dos cosas coinciden y guardar por pasada alcanza; con pasadas
+parciales, la serie por pasada queda sesgada al pedazo despejado —y si es siempre la misma
+ladera, el sesgo se repite— y el compuesto está haciendo un trabajo que ninguna agregación
+rehace.
+
+**Los dos números se miden sobre la parcela, nunca sobre el rancho** (decisión del usuario,
+2026-09-24): una pasada que tapa medio rancho puede ser perfecta para una parcela, y medirla a
+nivel rancho la descartaría para todas.
+
+**Y hay una consecuencia para esta ficha:** hoy `cobertura_minima` **descarta al escribir**.
+Si se guarda por pasada con su cobertura, el umbral pasa a ser un parámetro de consulta —igual
+que la cadencia—, y dejar de descartar antes de guardar es lo que evita repetir el problema
+que esta ficha describe.
+
 ---
 
 ## B-4 · Umbral de píxeles válidos por parcela
