@@ -105,7 +105,7 @@
   .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; margin-bottom: 14px; }
   .section-head h2 { font-size: 24px; font-weight: 720; }
   .section-head p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
-  .ruta { display: grid; grid-template-columns: repeat(19, minmax(0, 1fr)); gap: 4px; }
+  .ruta { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 4px; }
   .sesion {
     display: grid; gap: 4px; align-content: start; min-height: 92px; padding: 8px 8px 10px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
@@ -212,7 +212,7 @@
     <div class="stats" aria-label="Resumen">
       <div class="stat"><span class="label">Tareas</span><b id="st-total">—</b></div>
       <div class="stat"><span class="label">Hechas</span><b id="st-hechas">—</b></div>
-      <div class="stat"><span class="label">Sesiones</span><b>~19</b></div>
+      <div class="stat"><span class="label">Sesiones</span><b>~20</b></div>
     </div>
     <div class="next" id="siguiente"></div>
   </header>
@@ -389,6 +389,11 @@ const SPRINTS = [
 // nada anterior al pipeline mensual, y todo lo que el worker escribe cuelga de `tenants/{t}/`,
 // que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
 // y no se va a hacer así; M.6.4 cerró con menos código, no con más.
+//
+// Sesión 16 (2026-09-25): M.9.0d, y el bloque M.9.0 queda CERRADO. El eje de la serie del
+// panel es una fecha y hay un interruptor mensual / por pasada (Terra-admin#21); de paso se
+// podo la solapa Tiles (#22). Hallazgo abierto: /api/measurements se come la hora de la
+// pasada. Sigue M.9, sin orden fijo; el tablero propone M.9.1.
 //
 // Sesión 15 (2026-09-25): M.9.0b y M.9.0c. s2-pasada-v2 ES LA VIGENTE: las altas y el cierre
 // escriben una fila por pasada. El panel no se rompe porque /api/measurements agrega con
