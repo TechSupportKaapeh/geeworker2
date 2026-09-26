@@ -524,6 +524,13 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | M.9.6d | La doc para la app web: las **fechas disponibles** —que ya salen de `/api/measurements` con `cadencia=pasada` y `coberturaMinima`— y los tres pedidos | Geocore | ⬜ · en diseño |
 | M.9.6e | El panel: elegir una fecha de la lista o un rango, y pedir el mapa | panel | ⬜ · en diseño |
 | M.9.6f | El RGB del compuesto como un producto más (`rgb`, 8 bits), para el mapa del mes y el a demanda. **Primero se mide** cuánto pesa y cómo se ve | worker, panel | ⬜ · en diseño |
+| M.9.7a | **La máscara del ráster por pasada**: validar en 24 meses de 2 o 3 parcelas la candidata —la de la receta **y** Cloud Score+ a la vez— y fijarla | worker | ⬜ · en diseño |
+| M.9.7b | **El COG multibanda, sin cambio de comportamiento**: el mensual de hoy pasa a un archivo con los índices como bandas (enteros ×10.000) y el panel pinta con `bidx` | worker, Geocore, panel | ⬜ · en diseño |
+| M.9.7c | **El listado de capas en el servidor**: `GET /api/layers` filtra por rancho y por rango de fechas, y el panel lo usa | Geocore, panel | ⬜ · en diseño |
+| M.9.7d | **La cobertura por pasada en una llamada**, para todas las parcelas del mes, antes de reducir: baja el costo de las estadísticas (`#71`) y decide qué pasadas del ráster se guardan | worker | ⬜ · en diseño |
+| M.9.7e | **La receta v3 y el ráster del rancho por pasada**: `agrupamiento_raster: por_pasada`, la banda verde y el color real, la etiqueta segura para la key, descargas en paralelo, y la cobertura guardada con la capa | worker | ⬜ · en diseño |
+| M.9.7f | **El mapa del rancho por fechas**: el deslizador pasa de meses a fechas, con la calidad a la vista y "la última imagen buena" | panel | ⬜ · en diseño |
+| M.9.7g | **El histórico**: se reprocesan los ranchos y parcelas de prueba con v3 | worker 👥 | ⬜ · en diseño |
 
 > **Las seis decisiones de diseño de este bloque están tomadas** (2026-09-25, `DECISIONS #63`):
 > se mide antes de decidir, el agrupamiento es un dato de la receta, **por pasada puro** —sin
@@ -708,6 +715,26 @@ ya sabe dibujar huecos, así que el cambio es del eje, no del gráfico.
   cae entero fuera de ella.
 
 **El bloque M.9.0 queda cerrado.** Lo que sigue de M.9 no tiene orden fijo.
+
+**M.9.7 — el ráster por pasada (en diseño, 2026-09-26).** Pedido del equipo: el ráster tiene
+que ser por pasada, también el histórico. **El diseño completo, con lo medido, está en
+[`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md) §3.6.** Lo corto:
+
+- **se guarda toda pasada con al menos un píxel despejado en el rancho**, y qué es útil se decide
+  al leer, por la zona del usuario. Una imagen con nubes puede ser la que le sirve a alguien;
+- **medido**: un rancho chico ocupa de 30 a 130 MB cada dos años; uno de 2.500 ha, 0,3–0,5 GB.
+  El Cauca chico, en serie, son ~46 s por mes: **las descargas van en paralelo**;
+- **la máscara es el eslabón débil**: la de la receta deja pasar sombras y bordes de nube, y
+  Cloud Score+ deja pasar bruma. **Exigir las dos a la vez** dio lo mejor en las 8 pasadas medidas;
+  se valida antes de fijarla (M.9.7a);
+- **tres costuras, no un rediseño**: el modelo de la capa (un archivo con varias bandas), el
+  listado de capas en el servidor, y el paso del ráster del rancho. Primero los cambios de forma
+  sin cambio de comportamiento, después el ráster por pasada encima;
+- cambia `#63` ("el ráster sigue mensual") y `#58` ("un COG por índice"). **El compuesto
+  mensual se queda**, para informes y comparaciones;
+- todo lo guardado es de prueba: **se reprocesa con v3**, sin convivir con datos viejos.
+
+Hace más simple M.9.6: lo a demanda por pasada pasa a ser buscar un archivo que ya existe.
 
 **M.9.6 — a demanda por ventana (en diseño, 2026-09-26).** Armado para afinar la idea: **no se
 empieza hasta cerrar las decisiones de abajo.**
