@@ -130,5 +130,5 @@ def process_rancho_mes(
         "status": "success",
         "receta": RECETA_VIGENTE.version,
         "mes": resultado["mes"],
-        "mapas": len(resultado["storage_keys"]),
+        "mapas": resultado["mapas"],
     }

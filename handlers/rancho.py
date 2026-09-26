@@ -35,7 +35,7 @@ from pipeline import ejecucion
 from pipeline.claves import claves_cog_mensual
 from pipeline.ejecucion import reduccion_de, url_de_descarga
 from pipeline.periodos import Mes
-from pipeline.productos import mapa_de
+from pipeline.productos import ESCALA_DEL_COG, mapa_multibanda_de
 from pipeline.receta import RECETA_VIGENTE, Receta
 from pipeline.ventanas import Ventana, agrupamiento, del_mes
 from repositories.db_repository import insert_layer
@@ -55,7 +55,7 @@ from handlers.altas import (
 )
 from handlers.cierre import cerrar_por_falla
 from handlers.geometria import coords_to_geometry
-from handlers.raster import NODATA_COG, parametros_del_mapa, subir_cog
+from handlers.raster import NODATA_ENTERO, parametros_del_mapa, subir_cog
 from handlers.seguimiento import RETRIES, con_seguimiento
 from handlers.utilidades import entre, ms_desde
 
@@ -181,36 +181,33 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
                 llamadas=conteo.llamadas,
                 ms=ms_desde(t0),
             )
-            return {"mes": str(mes), "cobertura": 0.0, "storage_keys": []}
+            return {"mes": str(mes), "cobertura": 0.0, "storage_keys": [], "mapas": 0}
 
-        # Las URL de todos, dentro del mismo bloque: las llamadas a GEE del mes
-        # quedan contadas juntas y traducidas por el mismo manejador.
-        parametros = parametros_del_mapa(roi, receta)
-        urls = {
-            indice: url_de_descarga(
-                mapa_de(roi, ventana, receta, indice).unmask(
-                    NODATA_COG, sameFootprint=False
-                ),
-                parametros,
-            )
-            for indice in indices
-        }
+        # **Una** descarga con todos los índices como bandas (M.9.7b, `DECISIONS
+        # #73`): antes eran cuatro. La URL va dentro del mismo bloque, así que las
+        # llamadas del mes quedan contadas juntas y traducidas por el mismo manejador.
+        url = url_de_descarga(
+            mapa_multibanda_de(roi, ventana, receta, indices).unmask(
+                NODATA_ENTERO, sameFootprint=False
+            ),
+            parametros_del_mapa(roi, receta),
+        )
 
-    inicio = ventana.inicio
-    subidos: list[str] = []
-    megas_total = 0.0
-    # Uno por uno, y cada uno con su fila: si el step se reintenta, las keys son las
-    # mismas y se sobrescribe lo mismo. Un fallo a mitad deja los anteriores subidos,
-    # que es exactamente lo que el reintento vuelve a pisar.
-    for indice in indices:
+    # Las cuatro claves comparten el archivo (`storage_key`) y difieren en la fila.
+    archivo = claves_por_indice[indices[0]].storage_key
+    bbox, megas = subir_cog(url, archivo, nodata=NODATA_ENTERO)
+
+    # Una fila por índice, como antes, y cada una dice qué banda del archivo es: la
+    # banda `i + 1` es `indices[i]`, porque `mapa_multibanda_de` las arma en ese
+    # orden. Si el step se reintenta, el archivo y las filas son los mismos y se
+    # pisan: las `natural_key` no cambiaron con el formato.
+    for banda, indice in enumerate(indices, start=1):
         claves = claves_por_indice[indice]
-        bbox, megas = subir_cog(urls[indice], claves.storage_key)
-        megas_total += megas
         insert_layer(
             natural_key=claves.natural_key,
             product=indice,
             storage_key=claves.storage_key,
-            acquired_ts=inicio,
+            acquired_ts=ventana.inicio,
             ingested_ts=datetime.now(UTC),
             tenant_id=tenant_id,
             rancho_id=rancho_id,
@@ -218,26 +215,29 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
             source="mensual",
             receta=receta.version,
             estadisticas=_estadisticas_de_la_capa(reduccion, indice),
+            bandas=[banda],
+            escala=ESCALA_DEL_COG,
         )
-        subidos.append(claves.storage_key)
 
     reportar(
         f"mes-{mes}",
-        f"Mes {posicion} de {total} ({mes}): {len(subidos)} mapas subidos "
+        f"Mes {posicion} de {total} ({mes}): {len(indices)} mapas en un archivo "
         f"({', '.join(i.upper() for i in indices)}), "
         f"cobertura {porcentaje(reduccion.cobertura)}",
         progreso=progreso,
         mes=str(mes),
         cobertura=reduccion.cobertura,
-        megas=round(megas_total, 2),
-        mapas=len(subidos),
+        megas=round(megas, 2),
+        mapas=len(indices),
         llamadas=conteo.llamadas,
         ms=ms_desde(t0),
     )
     return {
         "mes": str(mes),
         "cobertura": reduccion.cobertura,
-        "storage_keys": subidos,
+        "storage_keys": [archivo],
+        # Las capas, no los archivos: con el COG multibanda son cuatro en uno.
+        "mapas": len(indices),
     }
 
 
@@ -290,5 +290,5 @@ def process_rancho(
         "status": "success",
         "receta": plan["receta"],
         "meses": len(resultados),
-        "mapas": sum(len(r["storage_keys"]) for r in resultados),
+        "mapas": sum(r["mapas"] for r in resultados),
     }

@@ -41,11 +41,12 @@ def _claves(**cambios):
 
 
 def test_la_forma_de_la_key_queda_fijada():
+    """Desde M.9.7b el COG del rancho es multibanda: la key no lleva el indice (`#73`)."""
     assert _claves() == ClavesDeCapa(
         storage_key=(
             "tenants/7f3c2a10-5b6d-4e8f-9a01-23456789abcd/"
             "ranchos/a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d/"
-            "s2-mensual-v1/ndvi/2025-09.tif"
+            "s2-mensual-v1/2025-09.tif"
         ),
         natural_key="rancho_mensual_ndvi_a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d_2025-09",
     )
@@ -119,9 +120,21 @@ def test_otra_receta_cambia_la_key_pero_no_la_natural_key():
 
 def test_cada_mes_e_indice_es_otra_capa():
     base = _claves()
-    for otra in (_claves(ventana=del_mes(Mes(2025, 10))), _claves(indice="evi")):
-        assert otra.storage_key != base.storage_key
-        assert otra.natural_key != base.natural_key
+    otro_mes = _claves(ventana=del_mes(Mes(2025, 10)))
+    assert otro_mes.storage_key != base.storage_key
+    assert otro_mes.natural_key != base.natural_key
+
+
+def test_los_indices_de_un_mes_comparten_el_archivo_y_no_la_fila():
+    """M.9.7b: un archivo multibanda por mes, y una fila por indice que dice su banda.
+
+    Si la natural_key se compartiera, los cuatro indices escribirian la misma fila y
+    quedaria solo el ultimo: el mapa del rancho tendria un indice y no cuatro.
+    """
+    base = _claves()
+    evi = _claves(indice="evi")
+    assert evi.storage_key == base.storage_key
+    assert evi.natural_key != base.natural_key
 
 
 PARCELA = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"

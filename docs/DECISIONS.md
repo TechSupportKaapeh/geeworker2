@@ -3696,8 +3696,15 @@ las dejan casi enteras— a menos de 16 días, sin contarse a sí misma.
 | Cloud Score+ (`cs_cdf` ≥ 0,60) | 473 | 45 | 27 |
 | **Las dos a la vez** | **380** | **23** | **5** |
 
-**"Errores propios"** descuenta las 18 pasadas malas en las tres máscaras a la vez: ahí casi seguro
-cambió el cultivo (una cosecha dentro de las dos semanas), no es un error de ninguna máscara.
+**"Errores propios"** descuenta las 18 pasadas malas en las tres máscaras a la vez, porque no sirven
+para elegir entre ellas. **Corregido el mismo día**: acá decía que "casi seguro" eran cambios del
+cultivo, y al mirarlas no es así. Mirando si el valor se sostiene en las pasadas siguientes: **7 son
+cambios reales** (una cosecha, un ciclo que cierra), **10 son caídas aisladas que ninguna máscara
+detecta** —el Cauca, 2025-10-19: 0,71 → 0,23 → 0,71— y 1 no tiene pasada siguiente. La elección de
+máscara no cambia, pero queda un **error residual de ~3 % que ninguna máscara resuelve**. Se ataca
+mirando el tiempo y no la imagen: una pasada que se aparta de la anterior y de la siguiente, cuando
+esas dos coinciden, se marca como dudosa al mostrarla (M.9.7f). Es la regla de confirmación que
+ya estaba prevista para las alertas.
 
 - **Las dos a la vez reducen los errores de máscara a menos de la mitad** (11 → 5): arreglan 8 de
   la receta y agregan sólo 2. La mejora está donde más nubes hay: la parcela del Cauca pasa de 9
@@ -3724,3 +3731,63 @@ una verdad de campo.
   se reprocesa con v3**: una sola receta en la base, sin meses que mezclan v1 y v2. El borrado en
   la base lo aplica el equipo; se deja el SQL escrito.
 - **El orden (d41):** M.9.7 va antes que cultivos (M.9.1), que se saltea por ahora.
+
+---
+
+## 73. El COG del rancho es multibanda: un archivo por mes, una fila por índice (2026-09-26)
+
+> M.9.7b, la mitad del worker. La de Geocore es `DECISIONS #53` de Geocore (Geocore#67) y la del
+> panel, Terra-admin#24. **Sin cambio de comportamiento**: el mapa se ve igual.
+
+**Qué cambia.** El mapa mensual del rancho pasa de **cuatro COG en decimales**, uno por índice, a
+**un COG con los cuatro índices como bandas, en enteros ×10.000** (`productos.mapa_multibanda_de`,
+`ESCALA_DEL_COG`). Una descarga por mes en vez de cuatro. Es el formato que decidió `#72` (d38),
+aplicado primero a lo que ya existe, antes del ráster por pasada.
+
+- **La key ya no lleva el índice**: `tenants/{t}/ranchos/{r}/{receta}/{AAAA-MM}.tif`. Cambia la forma
+  de `#47` para el COG del rancho; el mapa a demanda sigue de una banda hasta M.9.6.
+- **La `natural_key` no cambió**: cada índice sigue siendo su fila de `layers`, y reprocesar un mes
+  reescribe las mismas cuatro filas. Cada fila lleva `bandas` (`[1]` a `[4]`, en el orden de la
+  receta: el `bidx` de TiTiler) y `escala` (10000).
+- **El centinela es `NODATA_ENTERO` (-32768)**, el mínimo de un int16: un índice ×10.000 no llega.
+- **El resumen del alta sigue contando mapas, no archivos**: cuatro por mes.
+- `check_schema.py` suma `bandas` y `escala` al contrato de `layers`.
+
+### Sin cambio de comportamiento, medido
+
+Contra GEE, con el camino real del worker, en los dos ranchos de prueba (Sinaloa 2025-03 y Cauca
+2025-07) y los cuatro índices, el formato viejo contra el nuevo:
+
+- **la máscara es idéntica**, píxel por píxel;
+- **la diferencia máxima es 5e-5**: exactamente medio paso del redondeo;
+- **con la escala de color de cada índice** (256 pasos, como TiTiler), **entre 0,56 % y 0,85 % de los
+  píxeles cambia de color, y a lo sumo un paso**. No se ve.
+
+### Lo que encontró la auditoría (etapa 4 del WORKFLOW)
+
+- **Corrección: el tope del int16.** `mapa_multibanda_de` confiaba en que la receta acote los índices.
+  Sin eso, un valor fuera de rango **cae en -32.768, que es el centinela**: el píxel desaparece del
+  mapa como si fuera nube. Verificado contra GEE: sin tope, -5,0 da -32.768; con el tope, -32.767.
+  Ahora se acota a ±32.767 antes de pasar a entero. Con las recetas actuales no cambia nada: la
+  comparación de formatos da lo mismo con y sin el tope.
+- **Corrección, del lado del panel:** con `escala: 0` el Diagnóstico dividía por cero. La base lo
+  rechaza, pero el panel ya no depende de eso (Terra-admin#25).
+- **Seguridad (OWASP A03):** el `INSERT` de capas va todo con parámetros, también `bandas` y
+  `escala`. La key se sigue armando con ids validados como uuid y una etiqueta que pasa la regex de
+  `claves.py`. `ruff --select S,B` sobre lo tocado da una sola alerta, **anterior a este cambio**:
+  `update_processing_job` arma los nombres de columna del `UPDATE` desde una lista fija del código,
+  con los valores parametrizados. No es inyectable; queda registrada.
+- **Eficiencia:** una descarga por mes en vez de cuatro. **Atomicidad:** cada fila se escribe con su
+  archivo y su banda en el mismo `UPSERT`, así que un mes a medio reprocesar tiene filas que se
+  pintan bien cada una; el reintento pisa lo mismo.
+
+### Orden de despliegue, y es la condición
+
+**La migración `CapasMultibanda` de Geocore tiene que estar aplicada antes de mergear esto**: el
+worker escribe `bandas` y `escala` en cada `insert_layer`, y sin las columnas el INSERT falla y el
+mes del rancho también. El orden entero: la migración, Geocore#67, el panel (ya en `main`,
+Terra-admin#24) y recién después este PR.
+
+**Lo que ya está en el bucket no se toca**: los COG viejos quedan bajo su key con el índice, y las
+filas que apuntan a ellos siguen sin `bandas`, así que se pintan como antes. Como todo es de prueba
+(`#72`, d40), se borran y se reprocesan en M.9.7g.

@@ -31,6 +31,25 @@ def test_se_puede_pedir_cualquier_indice_de_la_receta():
         productos.mapa_de(None, del_mes(Mes(2026, 7)), receta, "evi")
 
 
+
+def test_el_mapa_multibanda_rechaza_un_indice_fuera_de_la_receta():
+    """M.9.7b: sin el chequeo, la banda faltaria y el `bidx` de las filas apuntaria mal."""
+    with pytest.raises(ValueError, match="savi"):
+        productos.mapa_multibanda_de(None, del_mes(Mes(2026, 7)), RECETA_VIGENTE, ["ndvi", "savi"])
+
+
+def test_el_mapa_multibanda_sin_indices_se_rechaza():
+    with pytest.raises(ValueError, match="al menos un"):
+        productos.mapa_multibanda_de(None, del_mes(Mes(2026, 7)), RECETA_VIGENTE, [])
+
+
+def test_la_escala_del_cog_es_la_que_lee_el_panel():
+    """El panel multiplica su rango por la `escala` de la capa (Geocore `#53`).
+
+    Si cambia, cambia el color de cada mapa en silencio: tiene que cambiar en los dos lados.
+    """
+    assert productos.ESCALA_DEL_COG == 10_000
+
 # ---- Contra GEE de verdad (pytest --gee) -------------------------------------------
 
 ROI_2KM = [-100.86, 20.54, -100.84, 20.56]

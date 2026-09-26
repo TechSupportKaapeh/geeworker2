@@ -298,7 +298,8 @@ def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: 
                  ingested_ts: str, tenant_id: str, parcela_id: str = None,
                  rancho_id: str = None, bbox: Optional[list] = None,
                  source: str = 'systematic', receta: str | None = None,
-                 estadisticas: dict | None = None):
+                 estadisticas: dict | None = None,
+                 bandas: list[int] | None = None, escala: int | None = None):
     """Registra una capa raster en `geodata.layers` (tabla que administra EF Core).
 
     `natural_key` no se persiste: siembra un UUIDv5 determinista que se usa como
@@ -314,6 +315,11 @@ def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: 
     del raster (D-2). La capa vieja no los pasa y quedan en NULL, que es lo que
     ya pasaba antes de que existieran las columnas. `estadisticas` tiene que ser
     un objeto: la base tiene un CHECK que rechaza cualquier otro JSON.
+
+    `bandas` y `escala` son del COG multibanda (M.9.7b, migracion `CapasMultibanda`
+    de Geocore): que banda del archivo es esta capa —desde 1, el `bidx` de
+    TiTiler— y por cuanto esta multiplicado el valor. En NULL, un COG de una banda
+    en decimales, que es lo de antes y lo del mapa a demanda.
 
     Nota: `layers` no tiene columnas para sensor, epsg, resolucion o cog_ok.
     """
@@ -339,8 +345,10 @@ def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: 
 
         cur.execute('''
         INSERT INTO layers(id, product, storage_key, acquired_ts, created_at, bbox,
-                           tenant_id, parcela_id, rancho_id, source, receta, estadisticas)
-        VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s, 4326), %s, %s, %s, %s, %s, %s)
+                           tenant_id, parcela_id, rancho_id, source, receta, estadisticas,
+                           bandas, escala)
+        VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s, 4326), %s, %s, %s, %s, %s, %s,
+                %s, %s)
         ON CONFLICT (id) DO UPDATE SET
             product = EXCLUDED.product,
             storage_key = EXCLUDED.storage_key,
@@ -352,13 +360,16 @@ def insert_layer(natural_key: str, product: str, storage_key: str, acquired_ts: 
             rancho_id = EXCLUDED.rancho_id,
             source = EXCLUDED.source,
             receta = EXCLUDED.receta,
-            estadisticas = EXCLUDED.estadisticas
+            estadisticas = EXCLUDED.estadisticas,
+            bandas = EXCLUDED.bandas,
+            escala = EXCLUDED.escala
         ''', (
             layer_uuid, product, storage_key,
             a_timestamptz(acquired_ts, "acquired_ts"),
             a_timestamptz(ingested_ts, "ingested_ts"),
             bbox_wkt, tenant_id, parcela_id, rancho_id, source,
             receta, _json_estricto(estadisticas),
+            list(bandas) if bandas is not None else None, escala,
         ))
         conn.commit()
         return layer_uuid

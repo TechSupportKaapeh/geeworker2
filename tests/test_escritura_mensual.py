@@ -177,15 +177,24 @@ def test_insert_layer_escribe_receta_y_estadisticas(conexion):
     sql, params = conexion.ejecutado[0]
     assert "receta = EXCLUDED.receta" in sql
     assert "estadisticas = EXCLUDED.estadisticas" in sql
-    assert params[-2] == "s2-mensual-v1"
-    assert _json(params[-1]) == {"mediana": 0.5, "p90": 0.8}
+    assert params[-4] == "s2-mensual-v1"
+    assert _json(params[-3]) == {"mediana": 0.5, "p90": 0.8}
 
 
 def test_insert_layer_de_la_capa_vieja_deja_las_columnas_en_null(conexion):
     """Los llamadores viejos no las pasan: queda lo que habia antes de M.4.3."""
     _capa(source="systematic")
     _, params = conexion.ejecutado[0]
-    assert params[-2:] == (None, None)
+    # receta, estadisticas, bandas y escala: las cuatro en NULL.
+    assert params[-4:] == (None, None, None, None)
+
+
+def test_insert_layer_escribe_la_banda_y_la_escala_del_cog_multibanda(conexion):
+    """M.9.7b: cada indice es su fila, y dice que banda del archivo es (el bidx de TiTiler)."""
+    _capa(receta="s2-mensual-v1", bandas=[2], escala=10000)
+    sql, params = conexion.ejecutado[0]
+    assert "bandas = EXCLUDED.bandas" in sql and "escala = EXCLUDED.escala" in sql
+    assert params[-2:] == ([2], 10000)
 
 
 def test_insert_layer_rechaza_estadisticas_que_no_son_un_objeto(conexion):

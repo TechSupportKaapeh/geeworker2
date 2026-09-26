@@ -399,7 +399,9 @@ Primero los cambios de forma, **sin cambio de comportamiento** y con el control 
 1. **La máscara** (M.9.7a): la comparación de arriba, y la decisión.
 2. **El modelo multibanda** (M.9.7b): el mensual de hoy pasa a un archivo con los índices como
    bandas, y el panel pinta con `bidx`. Control: el mapa se ve igual; los valores de un píxel
-   coinciden hasta la cuarta decimal (la precisión de ×10.000).
+   coinciden hasta la cuarta decimal (la precisión de ×10.000). **Hecho el 2026-09-26**
+   (`DECISIONS #73`, y `#53` de Geocore): misma máscara, diferencia máxima 5e-5, y menos del 1 %
+   de los píxeles cambia de color, un paso.
 3. **El listado en el servidor** (M.9.7c): filtros por rancho y fechas, y el panel los usa.
 4. **La cobertura por pasada en una llamada** (M.9.7d): mide todas las pasadas del mes, para todas
    las parcelas, antes de reducir. Sirve a las estadísticas (baja su costo, `#71`) y al ráster

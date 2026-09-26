@@ -125,12 +125,13 @@ def mundo(monkeypatch):
     # El rancho: el mapa, la subida y la fila de `layers`.
     monkeypatch.setattr(rancho, "init_ee", lambda: None)
     monkeypatch.setattr(rancho, "coords_to_geometry", lambda c: "roi")
-    monkeypatch.setattr(rancho, "mapa_de",
+    # M.9.7b: el mapa del mes es multibanda, un archivo con los cuatro indices.
+    monkeypatch.setattr(rancho, "mapa_multibanda_de",
                         lambda *a, **k: type("Img", (), {"unmask": lambda self, *a, **k: self})())
     monkeypatch.setattr(rancho, "url_de_descarga", lambda *a, **k: "https://gee/descarga.tif")
     # `subir_cog` se mudo a `handlers/raster.py` en M.6.2b, pero `rancho` la
     # importo por nombre: se reemplaza donde la busca.
-    monkeypatch.setattr(rancho, "subir_cog", lambda url, key: ([0, 0, 1, 1], 1.5))
+    monkeypatch.setattr(rancho, "subir_cog", lambda url, key, **kw: ([0, 0, 1, 1], 1.5))
     monkeypatch.setattr(rancho, "insert_layer",
                         lambda **kw: estado["capas"].append(kw))
 
@@ -213,7 +214,8 @@ def test_el_rancho_sube_el_mapa_de_ese_mes(mundo):
     capa = mundo["capas"][indices.index("ndvi")]
     assert capa["source"] == "mensual"
     assert capa["acquired_ts"] == datetime(2026, 8, 1, tzinfo=UTC)
-    assert capa["storage_key"].endswith("/s2-mensual-v1/ndvi/2026-08.tif")
+    assert capa["storage_key"].endswith("/s2-mensual-v1/2026-08.tif")
+    assert capa["bandas"] == [indices.index("ndvi") + 1] and capa["escala"] == 10_000
     assert capa["storage_key"].startswith(f"tenants/{TENANT}/ranchos/{RANCHO}/")
 
 
