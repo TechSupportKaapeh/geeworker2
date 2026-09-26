@@ -36,6 +36,15 @@ Y aparte, con `--pasadas`:
    agrega algo que agregar las pasadas al leer no pueda dar (`DECISIONS #63`).
    Corre solo, sin los otros cinco, porque son 24 meses por parcela.
 
+Y aparte, con `--mascaras`:
+
+7. **Las mascaras** (M.9.7a, ARQUITECTURA §3.6): por pasada y sobre la parcela,
+   la mascara de la receta, Cloud Score+ (`cs_cdf` >= 0,60) y las dos a la vez.
+   Cada pasada se mide contra la mediana de las pasadas de **consenso despejado**
+   —las dos mascaras las dejan casi enteras— a menos de 16 dias, sin contarse a
+   si misma. Cuantas deja utiles cada una y cuanto se apartan: la decision es d36
+   del tablero de decisiones.
+
 EL LADO A LADO YA NO ESTA
 -------------------------
 Hasta M.6.2 el escalon 1 imprimia al lado lo que devolvia la capa vieja. Esa
@@ -74,6 +83,10 @@ USO
 M.9.0, los 24 meses de la receta sobre las parcelas reales:
 
     .venv/Scripts/python.exe scripts/check_pipeline_real.py --pasadas --parcelas scratch/parcelas_m26 --meses 2024-10 ... 2026-08 --csv scratch/m90_pasadas.csv
+
+M.9.7a, las tres mascaras sobre los mismos 24 meses:
+
+    .venv/Scripts/python.exe scripts/check_pipeline_real.py --mascaras --parcelas scratch/parcelas_m97 --meses 2024-09 ... 2026-08 --csv scratch/m97a_mascaras.csv
 
 No escribe en la base ni sube nada: solo lee de GEE e imprime. El COG, si se
 pide, queda en una carpeta temporal.
@@ -356,6 +369,33 @@ def _reducir_como_el_pipeline(imagen, roi, receta, reduce):
     )
 
 
+def _medir_pasada(imagen, roi, receta, indice):
+    """La cobertura y el indice de UNA pasada, sobre la parcela (M.9.0 y M.9.7a).
+
+    Devuelve un `ee.Dictionary` con `CLAVE_COBERTURA`, `CLAVE_VALOR` y
+    `CLAVE_FECHA`. Una pasada enteramente enmascarada no trae `CLAVE_VALOR`: GEE
+    omite la salida en vez de mandarla en `None`, y quien lee usa `dict.get`.
+    """
+    import ee
+
+    imagen = ee.Image(imagen)
+    banda = imagen.select([indice])
+    # `mask()` vale 1 donde la pasada dejo dato y 0 donde la enmascaro, y no
+    # deja pixeles enmascarados, asi que el promedio sobre el ROI es la
+    # fraccion cubierta. Es la cuenta de `reduccion.cobertura`, por pasada.
+    cubierto = _reducir_como_el_pipeline(
+        banda.mask().rename(CLAVE_COBERTURA), roi, receta, ee.Reducer.mean()
+    )
+    valor = _reducir_como_el_pipeline(
+        banda.rename(CLAVE_VALOR), roi, receta, ee.Reducer.median()
+    )
+    return (
+        ee.Dictionary(cubierto)
+        .combine(valor)
+        .set(CLAVE_FECHA, imagen.date().format("YYYY-MM-dd'T'HH:mm'Z'"))
+    )
+
+
 def _pasadas_del_mes(roi, mes, receta, indice):
     """Las pasadas de un mes sobre una parcela, y el compuesto al lado (M.9.0).
 
@@ -404,32 +444,15 @@ def _pasadas_del_mes(roi, mes, receta, indice):
         lambda imagen: etapa_compuesto.indices_de(ee.Image(imagen), receta)
     )
 
-    def medir(imagen):
-        """La cobertura y el indice de UNA pasada, sobre la parcela."""
-        imagen = ee.Image(imagen)
-        banda = imagen.select([indice])
-        # `mask()` vale 1 donde la pasada dejo dato y 0 donde la enmascaro, y no
-        # deja pixeles enmascarados, asi que el promedio sobre el ROI es la
-        # fraccion cubierta. Es la cuenta de `reduccion.cobertura`, por pasada.
-        cubierto = _reducir_como_el_pipeline(
-            banda.mask().rename(CLAVE_COBERTURA), roi, receta, ee.Reducer.mean()
-        )
-        valor = _reducir_como_el_pipeline(
-            banda.rename(CLAVE_VALOR), roi, receta, ee.Reducer.median()
-        )
-        return (
-            ee.Dictionary(cubierto)
-            .combine(valor)
-            .set(CLAVE_FECHA, imagen.date().format("YYYY-MM-dd'T'HH:mm'Z'"))
-        )
-
     respuesta = ejecucion.traer(
         ee.Dictionary({
             "escenas": escenas.size(),
             # Una `ee.FeatureCollection` metida en un `ee.Dictionary` vuelve sin
             # sus rasgos: `getInfo()` la serializa como `{type, columns}` y nada
             # mas (verificado el 2026-09-25). Con `toList` vuelve la lista entera.
-            "pasadas": pasadas.toList(pasadas.size()).map(medir),
+            "pasadas": pasadas.toList(pasadas.size()).map(
+                lambda imagen: _medir_pasada(imagen, roi, receta, indice)
+            ),
             "mensual": reduccion.valores(
                 compuesto_de(roi, del_mes(mes), receta), roi, receta
             ),
@@ -605,6 +628,214 @@ def _cierre_de_pasadas(resumen, umbral):
     return []
 
 
+# --- 7. Las mascaras (M.9.7a) ----------------------------------------------
+#
+# Con el raster por pasada (ARQUITECTURA §3.6) una sombra que la mascara deja
+# pasar queda a la vista del cliente, y se lee como una caida del indice. Este
+# escalon compara tres mascaras sobre las mismas pasadas: la de la receta
+# (s2cloudless y sombras), Cloud Score+, y las dos a la vez.
+
+COLECCION_CLOUD_SCORE = "GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED"
+BANDA_CLOUD_SCORE = "cs_cdf"
+# El umbral que recomienda Google para `cs_cdf`. Subirlo a 0,70 se probo el
+# 2026-09-26 y no arreglo la bruma, que es lo que Cloud Score+ deja pasar.
+UMBRAL_CLOUD_SCORE = 0.60
+VARIANTES_DE_MASCARA = ("receta", "cloudscore", "ambas")
+
+# Una pasada es "de consenso despejado" si las dos mascaras la dejan casi entera.
+# Esas son la referencia: si las dos coinciden en que no habia nubes, su indice es
+# lo mas parecido a la verdad que se puede medir sin ir al campo.
+_CONSENSO_DESPEJADO = 0.95
+# Contra que pasadas se compara cada una: las de consenso a menos de este margen.
+# Medio mes para cada lado: el cultivo cambia, pero en dos semanas poco.
+_VENTANA_REFERENCIA_DIAS = 16
+# Desde cuanto el apartamiento se cuenta como "pasada mala": a esa escala una
+# sombra se confunde con un problema del cultivo. Es un corte para leer la tabla.
+_APARTAMIENTO_MALO = 0.10
+
+
+def _mascaras_del_mes(roi, mes, receta, indice):
+    """Las pasadas de un mes con las tres mascaras, en una sola llamada a GEE.
+
+    Devuelve una fila por pasada: `{fecha, cob_<variante>, val_<variante>}` para
+    las tres variantes. Las tres parten de las **mismas escenas** —la fuente del
+    pipeline, con Cloud Score+ unido por `system:index`— y agrupan las teselas en
+    pasadas con el `por_pasada` del pipeline, asi que las fechas coinciden.
+    """
+    import ee
+
+    from pipeline import ejecucion
+    from pipeline.etapas import compuesto as etapa_compuesto
+    from pipeline.etapas import fuente, nubes
+    from pipeline.ventanas import del_mes
+
+    escenas = fuente.coleccion(roi, del_mes(mes), receta).linkCollection(
+        ee.ImageCollection(COLECCION_CLOUD_SCORE), [BANDA_CLOUD_SCORE]
+    )
+
+    def despejado(escena):
+        return escena.select(BANDA_CLOUD_SCORE).gte(UMBRAL_CLOUD_SCORE)
+
+    mascaras = {
+        "receta": lambda e: nubes.enmascarar(e, receta),
+        "cloudscore": lambda e: e.updateMask(despejado(e)),
+        "ambas": lambda e: nubes.enmascarar(e, receta).updateMask(despejado(e)),
+    }
+
+    def medidas(mascara):
+        limpias = escenas.map(lambda escena: mascara(ee.Image(escena)))
+        pasadas = etapa_compuesto.por_pasada(limpias).map(
+            lambda imagen: etapa_compuesto.indices_de(ee.Image(imagen), receta)
+        )
+        return pasadas.toList(pasadas.size()).map(
+            lambda imagen: _medir_pasada(imagen, roi, receta, indice)
+        )
+
+    # Tres veces el trabajo de M.9.0 en una llamada: un mes del Cauca, con 19
+    # pasadas, no entra en el plazo por defecto.
+    respuesta = ejecucion.traer(
+        ee.Dictionary({nombre: medidas(m) for nombre, m in mascaras.items()}),
+        milisegundos=300_000,
+    )
+    return _unir_variantes(respuesta)
+
+
+def _unir_variantes(respuesta):
+    """De `{variante: [pasadas]}` a una fila por fecha con las tres al lado.
+
+    Una pasada que una variante no trae —no deberia pasar: las tres salen de las
+    mismas escenas— queda con cobertura 0 y sin valor en esa variante, en vez de
+    perderse la fila entera.
+    """
+    filas = {}
+    for variante in VARIANTES_DE_MASCARA:
+        for pasada in respuesta.get(variante, []):
+            fila = filas.setdefault(pasada[CLAVE_FECHA], {"fecha": pasada[CLAVE_FECHA]})
+            fila[f"cob_{variante}"] = pasada.get(CLAVE_COBERTURA, 0.0)
+            fila[f"val_{variante}"] = pasada.get(CLAVE_VALOR)
+    for fila in filas.values():
+        for variante in VARIANTES_DE_MASCARA:
+            fila.setdefault(f"cob_{variante}", 0.0)
+            fila.setdefault(f"val_{variante}", None)
+    return sorted(filas.values(), key=lambda fila: fila["fecha"])
+
+
+def _instante(fecha):
+    """`AAAA-MM-DDTHH:MMZ`, la fecha de `_medir_pasada`, como `datetime` en UTC."""
+    from datetime import UTC, datetime
+
+    return datetime.strptime(fecha, "%Y-%m-%dT%H:%MZ").replace(tzinfo=UTC)
+
+
+def _referencias(filas, *, consenso=_CONSENSO_DESPEJADO, dias=_VENTANA_REFERENCIA_DIAS):
+    """Contra que valor se mide cada pasada: `{fecha: referencia o None}`.
+
+    La referencia de una pasada es la **mediana del indice de las pasadas de
+    consenso despejado** —las dos mascaras las dejan casi enteras— que caen a
+    menos de `dias` de ella, **sin contarse a si misma**. Contarse daria
+    apartamiento 0 a cada pasada de consenso y haria que las tres variantes
+    empataran por construccion.
+
+    Sin ninguna pasada de consenso cerca, la referencia es `None` y esa pasada no
+    entra en la comparacion: no hay contra que medirla.
+    """
+    consenso_filas = [
+        fila for fila in filas
+        if fila["cob_receta"] >= consenso and fila["cob_cloudscore"] >= consenso
+        and fila["val_receta"] is not None
+    ]
+    referencias = {}
+    for fila in filas:
+        momento = _instante(fila["fecha"])
+        cerca = sorted(
+            otra["val_receta"] for otra in consenso_filas
+            if otra["fecha"] != fila["fecha"]
+            and abs((_instante(otra["fecha"]) - momento).total_seconds()) <= dias * 86_400
+        )
+        referencias[fila["fecha"]] = _mediana(cerca) if cerca else None
+    return referencias
+
+
+def _resumen_de_variante(filas, referencias, variante, umbral):
+    """Lo que dice una mascara: cuantas pasadas deja utiles y que tan bien.
+
+    `utiles` son las que llegan a la cobertura minima de la receta, que es lo que
+    el panel muestra por defecto. De esas, las que tienen referencia se comparan:
+    `apartamientos` es el valor absoluto de la diferencia con la referencia, ya
+    ordenado, y `malas` cuantas se apartan mas que `_APARTAMIENTO_MALO`.
+    """
+    utiles = [f for f in filas if f[f"cob_{variante}"] >= umbral and f[f"val_{variante}"] is not None]
+    apartamientos = sorted(
+        abs(f[f"val_{variante}"] - referencias[f["fecha"]])
+        for f in utiles if referencias.get(f["fecha"]) is not None
+    )
+    return {
+        "utiles": len(utiles),
+        "comparadas": len(apartamientos),
+        "apartamientos": apartamientos,
+        "malas": sum(1 for a in apartamientos if a > _APARTAMIENTO_MALO),
+    }
+
+
+def escalon_mascaras(parcelas, meses, receta, indice, destino_csv=None):
+    """7. La mascara del raster por pasada (M.9.7a): receta, Cloud Score+ o las dos.
+
+    No es una compuerta automatica: imprime lo que cada mascara deja y cuanto se
+    aparta, y la decision la toma una persona (d36 del tablero de decisiones). Lo
+    que hay que mirar es el equilibrio: **cuantas pasadas utiles deja** cada una
+    contra **cuantas de esas se apartan** de lo que dicen las pasadas despejadas.
+    """
+    print(f"\n{_dato}7. LAS MASCARAS  ({len(parcelas)} parcelas x {len(meses)} meses)")
+    print(f"{_dato}receta {receta.version}; Cloud Score+ >= {UMBRAL_CLOUD_SCORE:.2f}; "
+          f"referencia: consenso >= {_CONSENSO_DESPEJADO:.2f} a +-{_VENTANA_REFERENCIA_DIAS} dias\n")
+    todas, detalle = [], []
+    for nombre, roi in parcelas:
+        for mes in meses:
+            try:
+                filas = _mascaras_del_mes(roi, mes, receta, indice)
+            except Exception as error:  # noqa: BLE001 - un mes que falla no corta el informe
+                print(f"{_falla}{nombre} {mes}: {error}")
+                continue
+            for fila in filas:
+                fila.update(parcela=nombre, mes=str(mes))
+            todas.extend(filas)
+            utiles = {v: sum(1 for f in filas if f[f"cob_{v}"] >= receta.cobertura_minima)
+                      for v in VARIANTES_DE_MASCARA}
+            print(f"{_dato}{nombre:>14s} {mes}  pasadas {len(filas):3d}   utiles: "
+                  + "  ".join(f"{v} {utiles[v]:2d}" for v in VARIANTES_DE_MASCARA))
+    if not todas:
+        return ["el escalon de mascaras no midio ningun mes"]
+
+    # La referencia se busca dentro de cada parcela: las pasadas de otra parcela
+    # son otro cultivo.
+    for nombre in sorted({f["parcela"] for f in todas}):
+        propias = [f for f in todas if f["parcela"] == nombre]
+        refs = _referencias(propias)
+        for fila in propias:
+            fila["referencia"] = refs[fila["fecha"]]
+            detalle.append(fila)
+
+    referencias = {(f["parcela"], f["fecha"]): f["referencia"] for f in todas}
+    print(f"\n{_dato}LO QUE DECIDE  ({len(todas)} pasadas de parcela)\n")
+    print(f"{_dato}{'mascara':>11s} {'utiles':>7s} {'compar.':>8s} {'|desv| med':>11s} "
+          f"{'p90':>7s} {'max':>7s} {'malas':>6s}")
+    for variante in VARIANTES_DE_MASCARA:
+        resumen = _resumen_de_variante(
+            [dict(f, fecha=(f["parcela"], f["fecha"])) for f in todas],
+            referencias, variante, receta.cobertura_minima,
+        )
+        a = resumen["apartamientos"]
+        print(f"{_dato}{variante:>11s} {resumen['utiles']:7d} {resumen['comparadas']:8d} "
+              f"{_num(_mediana(a) if a else None):>11s} {_num(_percentil(a, 90) if a else None):>7s} "
+              f"{_num(a[-1] if a else None):>7s} {resumen['malas']:6d}")
+    print(f"\n{_dato}malas = se apartan mas de {_APARTAMIENTO_MALO:.2f} de las pasadas "
+          f"despejadas cercanas. La decision es d36 del tablero de decisiones.")
+    if destino_csv:
+        _escribir_csv(destino_csv, detalle)
+        print(f"{_dato}detalle en {destino_csv}")
+    return []
+
+
 def _media(filas, clave):
     """El promedio de una columna del resumen."""
     return sum(fila[clave] for fila in filas) / len(filas)
@@ -657,8 +888,11 @@ def main():
                         help="corre SOLO el escalon 6 (M.9.0): cuantas pasadas "
                              "limpias hay por mes y que cobertura tiene cada una "
                              "sobre la parcela")
+    parser.add_argument("--mascaras", action="store_true",
+                        help="corre SOLO el escalon 7 (M.9.7a): la mascara de la "
+                             "receta contra Cloud Score+ y las dos a la vez")
     parser.add_argument("--csv", type=Path,
-                        help="con --pasadas, donde dejar el detalle pasada por "
+                        help="con --pasadas o --mascaras, donde dejar el detalle pasada por "
                              "pasada. Conviene scratch/, que esta en .gitignore")
     args = parser.parse_args()
 
@@ -690,6 +924,13 @@ def main():
     # 1 a 4 son la compuerta de M.2.6 sobre 3 meses y cuestan 6 llamadas a GEE
     # por parcela y mes; M.9.0 mide 24 meses por parcela y le alcanza con una.
     # Correr los cinco sobre 24 meses serian ~430 llamadas para leer una tabla.
+    # El escalon 7 corre solo por lo mismo que el 6: son 24 meses por parcela.
+    if args.mascaras:
+        problemas += escalon_mascaras(
+            parcelas, meses, RECETA_VIGENTE, args.indice, args.csv
+        )
+        return _cerrar(problemas)
+
     if args.pasadas:
         problemas += escalon_pasadas(
             parcelas, meses, RECETA_VIGENTE, args.indice, args.csv

@@ -366,8 +366,13 @@ pasar la bruma. **Exigir las dos se queda con lo mejor de cada una**, a cambio d
 menos. Subir el umbral de Cloud Score+ no arregla la bruma y empeora la sombra.
 
 En las pasadas despejadas las tres dan lo mismo, y en un lote en barbecho (Sinaloa, agosto) no se
-distinguen. **La muestra es chica** —8 pasadas en 2 parcelas— así que la combinación es la
-candidata, no la decisión: M.9.7a la valida en 24 meses de 2 o 3 parcelas antes de fijarla en v3.
+distinguen.
+
+**Validado y decidido el 2026-09-26** (M.9.7a, `DECISIONS #72`): sobre 5 parcelas × 24 meses
+(1.100 pasadas), los errores propios de cada máscara —descontando las pasadas donde las tres
+fallan, que son cambios del cultivo— son **11 con la receta, 27 con Cloud Score+ sola y 5 con las
+dos a la vez**, a cambio de un 7 % menos de pasadas útiles. **La receta v3 usa las dos a la vez.**
+Se reproduce con `scripts/check_pipeline_real.py --mascaras`.
 
 #### La estructura: tres costuras, no un rediseño
 

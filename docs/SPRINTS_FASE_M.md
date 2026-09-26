@@ -524,13 +524,13 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | M.9.6d | La doc para la app web: las **fechas disponibles** —que ya salen de `/api/measurements` con `cadencia=pasada` y `coberturaMinima`— y los tres pedidos | Geocore | ⬜ · en diseño |
 | M.9.6e | El panel: elegir una fecha de la lista o un rango, y pedir el mapa | panel | ⬜ · en diseño |
 | M.9.6f | El RGB del compuesto como un producto más (`rgb`, 8 bits), para el mapa del mes y el a demanda. **Primero se mide** cuánto pesa y cómo se ve | worker, panel | ⬜ · en diseño |
-| M.9.7a | **La máscara del ráster por pasada**: validar en 24 meses de 2 o 3 parcelas la candidata —la de la receta **y** Cloud Score+ a la vez— y fijarla | worker | ⬜ · en diseño |
-| M.9.7b | **El COG multibanda, sin cambio de comportamiento**: el mensual de hoy pasa a un archivo con los índices como bandas (enteros ×10.000) y el panel pinta con `bidx` | worker, Geocore, panel | ⬜ · en diseño |
-| M.9.7c | **El listado de capas en el servidor**: `GET /api/layers` filtra por rancho y por rango de fechas, y el panel lo usa | Geocore, panel | ⬜ · en diseño |
-| M.9.7d | **La cobertura por pasada en una llamada**, para todas las parcelas del mes, antes de reducir: baja el costo de las estadísticas (`#71`) y decide qué pasadas del ráster se guardan | worker | ⬜ · en diseño |
-| M.9.7e | **La receta v3 y el ráster del rancho por pasada**: `agrupamiento_raster: por_pasada`, la banda verde y el color real, la etiqueta segura para la key, descargas en paralelo, y la cobertura guardada con la capa | worker | ⬜ · en diseño |
-| M.9.7f | **El mapa del rancho por fechas**: el deslizador pasa de meses a fechas, con la calidad a la vista y "la última imagen buena" | panel | ⬜ · en diseño |
-| M.9.7g | **El histórico**: se reprocesan los ranchos y parcelas de prueba con v3 | worker 👥 | ⬜ · en diseño |
+| M.9.7a | **La máscara del ráster por pasada**: validar en 24 meses de 2 o 3 parcelas la candidata —la de la receta **y** Cloud Score+ a la vez— y fijarla | worker | ✅ 2026-09-26 · `DECISIONS #72`. **Las dos a la vez**: sobre 5 parcelas × 24 meses (1.100 pasadas), 5 errores propios de máscara contra 11 de la receta y 27 de Cloud Score+ sola, con 7 % menos de pasadas útiles. El escalón 7 de `check_pipeline_real.py` (`--mascaras`) lo reproduce |
+| M.9.7b | **El COG multibanda, sin cambio de comportamiento**: el mensual de hoy pasa a un archivo con los índices como bandas (enteros ×10.000) y el panel pinta con `bidx` | worker, Geocore, panel | ⬜ |
+| M.9.7c | **El listado de capas en el servidor**: `GET /api/layers` filtra por rancho y por rango de fechas, y el panel lo usa | Geocore, panel | ⬜ |
+| M.9.7d | **La cobertura por pasada en una llamada**, para todas las parcelas del mes, antes de reducir: baja el costo de las estadísticas (`#71`) y decide qué pasadas del ráster se guardan | worker | ⬜ |
+| M.9.7e | **La receta v3 y el ráster del rancho por pasada**: `agrupamiento_raster: por_pasada`, la banda verde y el color real, la etiqueta segura para la key, descargas en paralelo, y la cobertura guardada con la capa | worker | ⬜ |
+| M.9.7f | **El mapa del rancho por fechas**: el deslizador pasa de meses a fechas, con la calidad a la vista y "la última imagen buena" | panel | ⬜ |
+| M.9.7g | **El histórico**: se reprocesan los ranchos y parcelas de prueba con v3 | worker 👥 | ⬜ |
 
 > **Las seis decisiones de diseño de este bloque están tomadas** (2026-09-25, `DECISIONS #63`):
 > se mide antes de decidir, el agrupamiento es un dato de la receta, **por pasada puro** —sin
@@ -716,7 +716,7 @@ ya sabe dibujar huecos, así que el cambio es del eje, no del gráfico.
 
 **El bloque M.9.0 queda cerrado.** Lo que sigue de M.9 no tiene orden fijo.
 
-**M.9.7 — el ráster por pasada (en diseño, 2026-09-26).** Pedido del equipo: el ráster tiene
+**M.9.7 — el ráster por pasada (en curso desde el 2026-09-26; va antes que cultivos).** Pedido del equipo: el ráster tiene
 que ser por pasada, también el histórico. **El diseño completo, con lo medido, está en
 [`ARQUITECTURA_PIPELINE.md`](ARQUITECTURA_PIPELINE.md) §3.6.** Lo corto:
 
@@ -788,6 +788,7 @@ fechas disponibles, y si el RGB entra en el bloque.
 | Los rásters viejos, fuera de `tenants/` | M.8.1 | ✅ 2026-09-20 · se borran con sus filas (`DECISIONS #43` de Geocore) |
 | **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3) | M.9.0c | ✅ 2026-09-25 · **por pasada puro** (`DECISIONS #63`), y **confirmado con el número el 2026-09-24** (`#66`): la fila mensual del compuesto no hace falta. B-3 **cerrada** |
 | Retención de los objetos de MinIO (`PREGUNTAS_ABIERTAS` C-5) | — | ✅ 2026-09-25 · sistemático para siempre, a demanda 90 días (`DECISIONS #65`) |
+| **El ráster por pasada**: máscara, qué pasadas, formato, el mensual, los datos de prueba (d36 a d40) | M.9.7 | ✅ 2026-09-26 · `DECISIONS #72`: las dos máscaras a la vez; toda pasada con algún píxel despejado; un archivo multibanda en enteros ×10.000; el mensual se queda; se borra lo de prueba y se reprocesa con v3 |
 | **El rango máximo de un compuesto a demanda** (recomendado: 1 año) | M.9.6c | ⬜ |
 | **Qué tan frescas son las fechas disponibles**: lo guardado, hasta el último mes cerrado (recomendado), o una consulta a GEE en el momento | M.9.6d | ⬜ |
 | **¿El RGB entra en M.9.6?** Y si entra, ¿receta nueva o producto que se suma sin cambiar la versión? | M.9.6f | ⬜ |

@@ -3670,3 +3670,57 @@ no de cuántas sirven, y en el Cauca son 19 por mes. La compuerta de 60 s se pue
 parcela grande **o por una zona nublada**. La propuesta es medir la cobertura de todas las
 pasadas en una sola llamada y reducir sólo las que tienen algún píxel limpio, con el control
 negativo de M.9.0b: las filas tienen que salir idénticas.
+
+---
+
+## 72. El ráster por pasada: la máscara, el formato y los datos de prueba (2026-09-26)
+
+> M.9.7a, y las decisiones que el bloque M.9.7 necesitaba para arrancar. Todas del usuario, el
+> 2026-09-26, con los números de este mismo día. El diseño está en `ARQUITECTURA_PIPELINE.md` §3.6.
+
+**Reemplaza dos decisiones escritas**, por pedido del equipo: **el ráster es por pasada, también el
+histórico** (`#63` decía "el ráster sigue mensual"), y **un COG lleva varias bandas** (`#58`
+decía "un COG por índice"). **El compuesto mensual se queda**, para informes y comparaciones.
+
+### La máscara: la de la receta y Cloud Score+ a la vez (d36)
+
+Con una imagen por pasada, una sombra que la máscara deja pasar se ve como una caída del NDVI.
+Se validó con `scripts/check_pipeline_real.py --mascaras` (el escalón 7, nuevo): **5 parcelas × 24
+meses, 1.100 pasadas de parcela**, las 3 reales de M.9.0 y las 2 de prueba (Cauca y Sinaloa).
+Cada pasada se mide contra la mediana de las pasadas de **consenso despejado** —las dos máscaras
+las dejan casi enteras— a menos de 16 días, sin contarse a sí misma.
+
+| Máscara | Pasadas útiles (≥ 30 %) | Malas (se apartan > 0,10) | Errores propios |
+|---|---|---|---|
+| La de la receta (s2cloudless y sombras) | 409 | 29 | 11 |
+| Cloud Score+ (`cs_cdf` ≥ 0,60) | 473 | 45 | 27 |
+| **Las dos a la vez** | **380** | **23** | **5** |
+
+**"Errores propios"** descuenta las 18 pasadas malas en las tres máscaras a la vez: ahí casi seguro
+cambió el cultivo (una cosecha dentro de las dos semanas), no es un error de ninguna máscara.
+
+- **Las dos a la vez reducen los errores de máscara a menos de la mitad** (11 → 5): arreglan 8 de
+  la receta y agregan sólo 2. La mejora está donde más nubes hay: la parcela del Cauca pasa de 9
+  malas a 5; en las otras cuatro queda igual o mejor.
+- **El costo:** 29 pasadas útiles con la receta quedan bajo el mínimo (7 %), y 12 de ellas estaban
+  bien según la referencia. Se pierde algo de dato bueno a cambio de mostrar menos dato malo.
+- **Cloud Score+ sola queda descartada**: más pasadas, pero con más del doble de errores. Deja
+  pasar la bruma; la receta, en cambio, deja pasar sombras y bordes de nube. Por eso se combinan.
+- **Es un cambio de números**: va con la receta v3, no antes.
+
+La salvedad: la medida es sobre el NDVI, y la referencia es una aproximación a "lo que había", no
+una verdad de campo.
+
+### Lo demás que se decidió el mismo día
+
+- **Qué pasadas se guardan (d37):** toda pasada con **al menos un píxel despejado** en el rancho.
+  Una imagen con nubes puede ser la que le sirve a alguien para su zona; lo útil se decide al leer.
+- **El formato (d38):** **un archivo por pasada**, con los índices y el color real como bandas, en
+  **enteros ×10.000**. Una descarga en vez de cuatro, la mitad de tamaño; el panel multiplica los
+  rangos de `indices.ts` por 10.000. El color real necesita bajar la banda verde (B3), que hoy no
+  se baja.
+- **El mensual (d39):** se mantiene.
+- **Los datos de prueba (d40):** todo lo guardado es de prueba (época de desarrollo). **Se borra y
+  se reprocesa con v3**: una sola receta en la base, sin meses que mezclan v1 y v2. El borrado en
+  la base lo aplica el equipo; se deja el SQL escrito.
+- **El orden (d41):** M.9.7 va antes que cultivos (M.9.1), que se saltea por ahora.

@@ -374,6 +374,13 @@ const SPRINTS = [
       { id: "M.9.0b", t: "El agrupamiento es un dato de la receta: la ventana deja de estar cableada al mes", repo: "worker", T: "M", ok: "s2-mensual-v1 produce EXACTAMENTE las mismas filas que antes: 129 entradas comparadas contra el codigo de main, identicas" },
       { id: "M.9.0c", t: "s2-pasada-v2: estadísticas SÓLO por pasada, ráster mensual, umbral de cobertura al leer", repo: "worker · Geocore", T: "M", ok: "Sin migración: la clave (parcela, índice, fecha) sirve con la fecha de adquisición. VIGENTE desde el 2026-09-25" },
       { id: "M.9.0d", t: "El panel: eje de fechas y el interruptor mensual / por pasada", repo: "panel", T: "M", ok: "El eje es el tiempo y no el numero de la fila, con marcas del calendario; ?cadencia= desde el interruptor, y agregadas a la vista. Terra-admin#21" },
+      { id: "M.9.7a", t: "La máscara del ráster por pasada: la receta y Cloud Score+ a la vez", repo: "worker", T: "S", ok: "Validada en 5 parcelas × 24 meses: 5 errores de máscara contra 11 y 27. DECISIONS #72" },
+      { id: "M.9.7b", t: "El COG multibanda, sin cambio de comportamiento, y el panel con bidx", repo: "worker · Geocore · panel", T: "M", ok: "El mapa se ve igual; los valores coinciden a la cuarta decimal" },
+      { id: "M.9.7c", t: "El listado de capas filtra por rancho y fechas en el servidor", repo: "Geocore · panel", T: "S", ok: "—" },
+      { id: "M.9.7d", t: "La cobertura por pasada en una llamada, antes de reducir", repo: "worker", T: "M", ok: "Las filas salen idénticas; menos llamadas en zonas nubladas" },
+      { id: "M.9.7e", t: "La receta v3 y el ráster del rancho por pasada, con descargas en paralelo", repo: "worker", T: "M", ok: "Un mes del Cauca bajo 60 s" },
+      { id: "M.9.7f", t: "El mapa del rancho por fechas, con la calidad a la vista", repo: "panel", T: "M", ok: "La última imagen buena, sin buscar" },
+      { id: "M.9.7g", t: "El histórico: reprocesar los datos de prueba con v3", repo: "worker", T: "S", ok: "—", equipo: true },
       { id: "M.9.1", t: "Cultivo en la parcela, y la métrica del rancho por cultivo", repo: "Geocore · panel", T: "—", ok: "—" },
       { id: "M.9.2", t: "Anomalía contra la mediana histórica del mes, tendencia y alerta de caída", repo: "worker · Geocore", T: "—", ok: "—" },
       { id: "M.9.3", t: "Más índices, una entrada cada uno: SAVI, GNDVI o CIre, MSI, NDWI", repo: "worker", T: "—", ok: "—" },
@@ -384,14 +391,7 @@ const SPRINTS = [
       { id: "M.9.6c", t: "En diseño · POST /api/parcelas/{id}/heatmap acepta { periodo }, { fecha } o { desde, hasta }", repo: "Geocore", T: "M", ok: "Validación en ProcessingJob y rango máximo" },
       { id: "M.9.6d", t: "En diseño · La doc para la app web: las fechas disponibles y los tres pedidos", repo: "Geocore", T: "S", ok: "api-frontend.html" },
       { id: "M.9.6e", t: "En diseño · El panel: elegir una fecha disponible o un rango, y pedir el mapa", repo: "panel", T: "M", ok: "—" },
-      { id: "M.9.6f", t: "En diseño · El RGB del compuesto como un producto más, primero medido", repo: "worker · panel", T: "M", ok: "Cuánto pesa y cómo se ve, antes de decidir" },
-      { id: "M.9.7a", t: "En diseño · La máscara del ráster por pasada: validar la receta y Cloud Score+ a la vez, y fijarla", repo: "worker", T: "S", ok: "24 meses de 2 o 3 parcelas" },
-      { id: "M.9.7b", t: "En diseño · El COG multibanda, sin cambio de comportamiento, y el panel con bidx", repo: "worker · Geocore · panel", T: "M", ok: "El mapa se ve igual; los valores coinciden a la cuarta decimal" },
-      { id: "M.9.7c", t: "En diseño · El listado de capas filtra por rancho y fechas en el servidor", repo: "Geocore · panel", T: "S", ok: "—" },
-      { id: "M.9.7d", t: "En diseño · La cobertura por pasada en una llamada, antes de reducir", repo: "worker", T: "M", ok: "Las filas salen idénticas; menos llamadas en zonas nubladas" },
-      { id: "M.9.7e", t: "En diseño · La receta v3 y el ráster del rancho por pasada, con descargas en paralelo", repo: "worker", T: "M", ok: "Un mes del Cauca bajo 60 s" },
-      { id: "M.9.7f", t: "En diseño · El mapa del rancho por fechas, con la calidad a la vista", repo: "panel", T: "M", ok: "La última imagen buena, sin buscar" },
-      { id: "M.9.7g", t: "En diseño · El histórico: reprocesar los datos de prueba con v3", repo: "worker", T: "S", ok: "—", equipo: true }
+      { id: "M.9.6f", t: "En diseño · El RGB del compuesto como un producto más, primero medido", repo: "worker · panel", T: "M", ok: "Cuánto pesa y cómo se ve, antes de decidir" }
     ] }
 ];
 
@@ -458,7 +458,8 @@ const ESTADO = {
   "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.2b": "hecho", "M.6.3": "bloqueado", "M.6.4": "hecho", "M.6.5": "hecho",
   "M.7.1": "hecho", "M.7.2": "hecho", "M.7.3": "hecho", "M.7.4": "hecho", "M.7.5": "hecho", "M.7.6": "hecho",
   "M.8.1": "hecho", "M.8.2": "hecho", "M.8.3": "hecho", "M.8.4": "hecho", "M.8.5": "hecho",
-  "M.9.0": "hecho", "M.9.0b": "hecho", "M.9.0c": "hecho", "M.9.0d": "hecho"
+  "M.9.0": "hecho", "M.9.0b": "hecho", "M.9.0c": "hecho", "M.9.0d": "hecho",
+  "M.9.7a": "hecho"
 };
 
 const RUTA = [
@@ -502,7 +503,9 @@ const DECISIONES = [
   ["Qué tan frescas son las fechas disponibles: lo guardado o una consulta a GEE", "M.9.6d", "pendiente", "pendiente"],
   ["¿El RGB entra en M.9.6? ¿Receta nueva o producto sin cambiar la versión?", "M.9.6f", "pendiente", "pendiente"],
   ["El ráster es por pasada, también el histórico; el mensual se queda (pedido del equipo, 2026-09-26)", "M.9.7", "hecho", "decidida"],
-  ["La máscara del ráster por pasada: la receta y Cloud Score+ a la vez (candidata, a validar)", "M.9.7a", "pendiente", "pendiente"]
+  ["La máscara del ráster por pasada: la receta y Cloud Score+ a la vez (#72)", "M.9.7a", "hecho", "decidida"],
+  ["El ráster por pasada: toda pasada con algún píxel despejado, multibanda ×10.000, el mensual se queda, lo de prueba se reprocesa con v3 (#72)", "M.9.7", "hecho", "decidida"],
+  ["M.9.7 va antes que cultivos (M.9.1), que se saltea por ahora", "M.9.7", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
