@@ -512,7 +512,7 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | M.9.0 | **Medir cuántas pasadas limpias hay por mes y qué cobertura tiene cada una**, sobre la parcela. Es la compuerta de todo lo que sigue | worker | ✅ 2026-09-24 · geeworker2#70, `DECISIONS #66`. **Mediana de 3 pasadas limpias por mes** sobre 3 parcelas reales × 24 meses: no son «1 o 2», así que **el bloque no se cierra acá**. Y **0 de 72 meses** en que el compuesto llegue al umbral y ninguna pasada sola: «por pasada puro» confirmado, la tabla aparte no se abre. `PREGUNTAS_ABIERTAS` B-3, **cerrada** |
 | M.9.0b | **El agrupamiento es un dato de la receta**: la ventana deja de estar cableada al mes. Refactor **sin cambio de comportamiento** | worker | ✅ 2026-09-25 · geeworker2#72, `DECISIONS #67`. `pipeline/ventanas.py`: una `Ventana` es `(etiqueta, inicio, fin)` y **partir es puro**; `ejecucion.fechas_de` es la llamada declarada de `#63`, y `entero` no la usa. **Control negativo corrido contra el código de `main`**: 129 casos —24 meses × 4 coberturas, las tres familias de claves, y 9 meses de parcela contra GEE— **idénticos**. Y un hallazgo que se lleva M.9.0c: la ventana de una pasada **todavía no selecciona sus escenas** |
 | M.9.0c | **`s2-pasada-v2`**: estadísticas **sólo** por pasada, ráster mensual, y el umbral de cobertura al leer. Convive con `s2-mensual-v1` | worker, Geocore | ✅ 2026-09-25 · geeworker2#74 y #75, Geocore#60; `DECISIONS #69` y `#70` del worker, `#48` de Geocore. La receta existe, `/api/measurements` agrega con `cadencia=mensual` por defecto —que es lo que hace que el cambio no rompa el panel— y **v2 es la vigente**. Cuesta unas 9 veces más por mes (13,6–25,1 s contra 2,0–2,8), medido contra GEE |
-| M.9.0d | El panel: eje de fechas y el interruptor mensual / por pasada | panel | ⬜ |
+| M.9.0d | El panel: eje de fechas y el interruptor mensual / por pasada | panel | ✅ 2026-09-25 · Terra-admin#21, `DECISIONS #49` de Geocore. **El eje es el tiempo y no el número de la fila**: tres pasadas de marzo quedan juntas y el hueco de junio es ancho de verdad; las marcas salen del calendario. El interruptor pide `?cadencia=mensual|pasada` y arranca en mensual; **`agregadas` se ve** en una tira bajo el eje; `truncado` y la mezcla de recetas se avisan. Las cuentas del eje, en `src/lib/serie.ts` con 22 tests. **El bloque M.9.0 queda cerrado** |
 | M.9.1 | El cultivo en la parcela, y la métrica del rancho agrupada por cultivo (`DECISIONS #22` de Geocore) | Geocore, panel | ⬜ |
 | M.9.2 | `analitica/`: anomalía contra la mediana histórica del mismo mes, tendencia y alerta de caída | worker o Geocore | ⬜ |
 | M.9.3 | Más índices, una entrada de registro cada uno: SAVI (cultivo joven, suelo expuesto), GNDVI o CIre (clorofila), MSI (estrés hídrico), NDWI (agua) | worker | ⬜ |
@@ -681,8 +681,27 @@ fecha)` sirve tal cual, con la fecha de adquisición— ni dos clases de fila qu
 M.9.0 muestra pasadas parciales, se suma la fila mensual del compuesto y ahí sí hace falta una
 columna que diga a qué ventana pertenece cada fila.
 
-**M.9.0d — el panel (M).** El eje pasa a ser una fecha y no un índice de mes, y aparece el
-interruptor. La serie ya sabe dibujar huecos, así que el cambio es del eje, no del gráfico.
+**M.9.0d — el panel (M). ✅ Hecha el 2026-09-25** (Terra-admin#21, `DECISIONS #49` de
+Geocore). El eje pasa a ser una fecha y no un índice de mes, y aparece el interruptor. La serie
+ya sabe dibujar huecos, así que el cambio es del eje, no del gráfico.
+
+- **Las cuentas del eje viven en `src/lib/serie.ts`, con 22 tests**, porque un eje mal armado
+  no falla: dibuja una serie creíble. Las marcas salen del calendario —mes, trimestre, año, o
+  día en una serie corta— y no de una de cada N filas.
+- **El panel elige la cadencia y no la calcula** (`#48` de Geocore), arranca en `mensual` y
+  **no pide `coberturaMinima`**: sin el parámetro, una medición de poca cobertura se dibuja en
+  vez de desaparecer.
+- **`agregadas` va en una tira de barras bajo el eje**, no en el tamaño del punto, que ya
+  codifica la cobertura. Con `pasada` no se dibuja.
+- **Un hallazgo que queda abierto, y es de Geocore:** `MeasurementsController` formatea `fecha`
+  como `yyyy-MM-dd` para las dos cadencias, así que **la hora de adquisición no llega al
+  JSON** aunque la columna la tenga, y `api-frontend.html` promete que sí. El panel lee las dos
+  formas; lo que no puede es separar dos pasadas del mismo día.
+- **De paso se podó la solapa Tiles del Diagnóstico** (Terra-admin#22, `#50` de Geocore): sin
+  rescale ni paleta a mano, con la escala de cada índice, y un aviso nuevo para el ráster que
+  cae entero fuera de ella.
+
+**El bloque M.9.0 queda cerrado.** Lo que sigue de M.9 no tiene orden fijo.
 
 ---
 
