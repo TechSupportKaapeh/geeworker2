@@ -3629,3 +3629,44 @@ por pasada, y que una pasada bajo el umbral **conserve su valor**.
 **M.9.0d, el panel**: el eje pasa a ser una fecha y aparece el interruptor mensual / por pasada.
 Hasta entonces el panel sigue viendo la serie mensual, que es correcta — simplemente no muestra
 todavía la serie fina que ya se está guardando.
+
+---
+
+## 71. Con una fila por pasada, la bitácora cuenta pasadas, y el mes "deja dato" si una sirve (2026-09-26)
+
+> Salió de mirar el alta de una parcela de prueba en el valle del Cauca. La línea del mes decía
+> `cobertura 21,0 %, bajo el mínimo de 30,0 %: filas sin valor · 76 fechas escritas`, y las
+> tres cosas estaban mal para v2.
+
+**Lo medido primero**, contra GEE y con el código del pipeline: julio de 2025 tuvo **19
+pasadas**, 10 tapadas por completo, 5 con 1 a 15 % de la parcela a la vista y 4 con 72 a 100 %.
+La cobertura de cada una coincide con la clasificación de escena (SCL) de la ESA, así que **la
+máscara y el cruce con las nubes están bien** —el hallazgo de `#67` sigue resuelto—: son nubes.
+
+**Lo que decía la línea, y por qué era falso con v2:**
+
+- el 21 % era el **promedio de las 19**, tapadas incluidas: un número que no describe nada;
+- "bajo el mínimo: filas sin valor" es la frase de v1, donde el umbral se aplica al escribir.
+  Con v2 no se aplica, y la frase salía en **cualquier** mes con una pasada tapada, aunque
+  hubiera cuatro buenas;
+- el mes contaba como "sin valor" en el resumen del alta, porque la regla pedía que **todas**
+  las filas tuvieran valor.
+
+**Lo decidido:**
+
+- **El mes deja dato si al menos una ventana es útil**: llega a `cobertura_minima` y tiene
+  mediana. Con v1 hay una sola ventana, así que la regla da exactamente lo mismo que antes; los
+  18 tests de la orquestación mensual pasan sin tocarlos.
+- **Con v2 la línea cuenta**: `19 pasadas, 4 con al menos 30,0 % de la parcela a la vista, 10
+  tapadas por completo`, y avisa sólo si ninguna sirve. El detalle suma `pasadas`, `utiles` y
+  `tapadas`. La línea de v1 no cambia.
+- **Las pasadas tapadas se siguen guardando** (decisión del usuario, 2026-09-26): registran que
+  el satélite pasó y la parcela estaba tapada, que no es lo mismo que "no hubo pasada", y
+  sirven para medir la confianza de cada mes y dónde haría falta radar (M.9.4).
+
+**Lo que queda abierto, y es lo más importante de esto: el costo.** Hoy cada pasada, tapada o
+no, cuesta una reducción completa en GEE. El costo de un mes depende de **cuántas pasadas hay**,
+no de cuántas sirven, y en el Cauca son 19 por mes. La compuerta de 60 s se puede pasar por una
+parcela grande **o por una zona nublada**. La propuesta es medir la cobertura de todas las
+pasadas en una sola llamada y reducir sólo las que tienen algún píxel limpio, con el control
+negativo de M.9.0b: las filas tienen que salir idénticas.

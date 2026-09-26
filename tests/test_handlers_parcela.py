@@ -418,3 +418,61 @@ def test_con_v2_una_pasada_bajo_el_umbral_conserva_su_valor(monkeypatch, mundo):
     escritas = mundo["escrituras"][-1]
     assert all(f.valor is not None for f in escritas)
     assert all(f.cobertura == baja for f in escritas)
+
+
+def _mes_v2(monkeypatch, mundo, coberturas):
+    """Corre un mes de v2 con una pasada por cobertura. Una cobertura 0 contesta como GEE
+    contesta una pasada tapada: sólo la cobertura, sin las demás claves."""
+    from datetime import UTC, datetime
+
+    from pipeline import ejecucion
+    from pipeline.periodos import Mes
+    from pipeline.receta import RECETA_POR_PASADA
+
+    pasadas = tuple(datetime(2025, 7, 1 + i, 15, 32, tzinfo=UTC) for i in range(len(coberturas)))
+    por_etiqueta = {f"2025-07-{1 + i:02d}T15:32Z": c for i, c in enumerate(coberturas)}
+    monkeypatch.setattr(ejecucion, "fechas_de", lambda roi, pedido, receta: pasadas)
+    mundo["gee"] = lambda etiqueta: (
+        {"cobertura": 0} if por_etiqueta[etiqueta] == 0
+        else _respuesta_de_gee(cobertura=por_etiqueta[etiqueta])
+    )
+    # `reportar` escribe sólo con un job activo: es lo que hace el handler entero.
+    with avance_job.seguimiento("job-p", 0, 3):
+        resultado = handlers_parcela.procesar_mes(
+            parcela_id=PAYLOAD["ParcelaId"], tenant_id=PAYLOAD["TenantId"],
+            coordenadas=PAYLOAD["Coordinates"],
+            mes=Mes(2025, 7), posicion=11, total=24, receta=RECETA_POR_PASADA,
+        )
+    (linea,) = [l for l in mundo["bitacora"] if l["etapa"] == "mes-2025-07"]
+    return resultado, linea
+
+
+def test_con_v2_la_bitacora_cuenta_pasadas_y_no_dice_filas_sin_valor(monkeypatch, mundo):
+    """El caso real del 2026-09-26, en chico: pasadas tapadas y pasadas buenas en el mismo mes.
+
+    Antes la línea decía "cobertura 21,0 %, bajo el mínimo de 30,0 %: filas sin valor"
+    —el promedio de todas las pasadas, y una frase de v1 que con v2 es falsa— y el mes
+    contaba como sin valor aunque tuviera cuatro fotos buenas.
+    """
+    resultado, linea = _mes_v2(monkeypatch, mundo, [0, 0, 0.1, 0.9, 1.0])
+
+    assert linea["mensaje"] == (
+        "Mes 11 de 24 (2025-07): 5 pasadas, 2 con al menos 30,0 % de la parcela "
+        "a la vista, 2 tapadas por completo"
+    )
+    assert "filas sin valor" not in linea["mensaje"]
+    assert linea["nivel"] == "info"
+    assert linea["detalle"]["utiles"] == 2
+    assert linea["detalle"]["tapadas"] == 2
+    assert resultado["con_valor"] is True
+
+
+def test_con_v2_un_mes_sin_ninguna_pasada_util_avisa(monkeypatch, mundo):
+    """Si ninguna llega al mínimo, el mes no dejó dato, y eso sí es un aviso."""
+    resultado, linea = _mes_v2(monkeypatch, mundo, [0, 0.05, 0])
+
+    assert linea["mensaje"].endswith(": ninguna útil este mes")
+    assert linea["nivel"] == "warning"
+    assert resultado["con_valor"] is False
+    # Las filas se escriben igual: el umbral es de quien lee (`DECISIONS #63`).
+    assert mundo["escrituras"][-1]
