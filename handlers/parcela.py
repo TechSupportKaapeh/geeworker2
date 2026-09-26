@@ -31,7 +31,7 @@ from typing import Any
 import inngest
 from pipeline import ejecucion
 from pipeline.ejecucion import reduccion_de, ventanas_de
-from pipeline.filas import filas_de
+from pipeline.filas import ESTADISTICA_VALOR, filas_de
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE, Receta
 from pipeline.ventanas import del_mes
@@ -108,30 +108,35 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
 
     escritas = upsert_mediciones_mensuales(tuple(filas))
 
-    # Las filas de una ventana comparten la cobertura, y con ella si llevan valor.
-    con_valor = bool(filas) and all(fila.valor is not None for fila in filas)
-    # Con una sola ventana —lo de hoy— estos dos son los de esa ventana, así que
-    # la bitácora dice exactamente lo que decía antes de M.9.0b.
+    utiles, tapadas = _utiles_y_tapadas(coberturas, receta)
+    # **El mes dejó dato si al menos una ventana es útil.** Con una sola ventana —v1—
+    # es exactamente lo de antes: la ventana tiene valor si y sólo si llegó al
+    # mínimo. Con una por pasada, antes se pedía que TODAS las filas tuvieran valor,
+    # y un mes con 4 fotos buenas y 10 tapadas salía como "sin valor" (2026-09-26).
+    con_valor = utiles > 0
+    # Con una sola ventana estos dos son los de esa ventana, así que la bitácora de
+    # v1 dice exactamente lo que decía antes de M.9.0b. Con varias, el promedio no
+    # dice mucho —mezcla fotos tapadas con buenas— y por eso el mensaje de v2 cuenta
+    # pasadas en vez de dar un porcentaje.
     cobertura_media = _promedio([r.cobertura for r in coberturas])
     observaciones = _promedio([
         r.observaciones for r in coberturas if r.observaciones is not None
     ])
-    cobertura = porcentaje(cobertura_media) if cobertura_media is not None else "—"
-    if con_valor:
-        mensaje = f"Mes {posicion} de {total} ({mes}): cobertura {cobertura}"
-    else:
-        mensaje = (
-            f"Mes {posicion} de {total} ({mes}): cobertura {cobertura}, bajo el "
-            f"mínimo de {porcentaje(receta.cobertura_minima)}: filas sin valor"
-        )
     reportar(
         f"mes-{mes}",
-        mensaje,
+        mensaje_del_mes(
+            posicion=posicion, total=total, mes=mes, receta=receta,
+            ventanas=len(coberturas), utiles=utiles, tapadas=tapadas,
+            cobertura_media=cobertura_media,
+        ),
         progreso=entre(PROGRESO_PLAN, PROGRESO_MESES, posicion, total),
         nivel=INFO if con_valor else AVISO,
         mes=str(mes),
         cobertura=cobertura_media,
         observaciones=observaciones,
+        pasadas=len(coberturas),
+        utiles=utiles,
+        tapadas=tapadas,
         escritas=escritas,
         llamadas=conteo.llamadas,
         ms=ms_desde(t0),
@@ -142,6 +147,65 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
         "con_valor": con_valor,
         "escritas": escritas,
     }
+
+
+def _utiles_y_tapadas(reducciones: list, receta: Receta) -> tuple[int, int]:
+    """Cuántas ventanas son útiles y cuántas estaban tapadas por completo.
+
+    Útil es llegar a ``cobertura_minima`` y que la mediana exista: la misma regla
+    que decide el valor en v1 (``filas.filas_de``). En v2 no decide qué se escribe
+    —el umbral es de quien lee (``DECISIONS #63``)— pero sí qué se cuenta. Tapada
+    es no tener un solo píxel limpio.
+    """
+    utiles = sum(
+        1 for r in reducciones
+        if r.cobertura is not None
+        and r.cobertura >= receta.cobertura_minima
+        and r.estadisticas[receta.indices[0]].get(ESTADISTICA_VALOR) is not None
+    )
+    tapadas = sum(1 for r in reducciones if not r.cobertura)
+    return utiles, tapadas
+
+
+def mensaje_del_mes(  # noqa: PLR0913 - lo que dice la línea, por nombre
+    *,
+    posicion: int,
+    total: int,
+    mes: Mes,
+    receta: Receta,
+    ventanas: int,
+    utiles: int,
+    tapadas: int,
+    cobertura_media: float | None,
+) -> str:
+    """La línea de la bitácora de un mes.
+
+    **Con v1** —una ventana, el umbral al escribir— es la de siempre: la cobertura,
+    y si no llegó, que las filas van sin valor. Es verdad ahí.
+
+    **Con v2** —una ventana por pasada— esa frase mentía (2026-09-26): decía "bajo
+    el mínimo de 30 %: filas sin valor" en cualquier mes con una pasada tapada,
+    aunque hubiera cuatro buenas, y el porcentaje era el promedio de todas las
+    pasadas, tapadas incluidas. Ahora cuenta: cuántas hubo, cuántas sirven y
+    cuántas estaban tapadas. En el valle del Cauca, julio de 2025 fue 19, 4 y 10.
+    """
+    encabezado = f"Mes {posicion} de {total} ({mes})"
+    minimo = porcentaje(receta.cobertura_minima)
+    if receta.umbral_al_escribir:
+        cobertura = porcentaje(cobertura_media) if cobertura_media is not None else "—"
+        if utiles:
+            return f"{encabezado}: cobertura {cobertura}"
+        return (
+            f"{encabezado}: cobertura {cobertura}, bajo el mínimo de {minimo}: "
+            "filas sin valor"
+        )
+    if ventanas == 0:
+        return f"{encabezado}: ninguna pasada sobre la parcela"
+    linea = (
+        f"{encabezado}: {ventanas} pasadas, {utiles} con al menos {minimo} de la "
+        f"parcela a la vista, {tapadas} tapadas por completo"
+    )
+    return linea if utiles else f"{linea}: ninguna útil este mes"
 
 
 def _promedio(numeros: list[float]) -> float | None:

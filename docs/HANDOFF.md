@@ -1,5 +1,11 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-26 · La bitácora de v2 cuenta pasadas** (`DECISIONS #71`): `19 pasadas, 4 con al menos
+> 30,0 % de la parcela a la vista, 10 tapadas por completo`, en vez de un promedio y de "filas sin
+> valor". El mes deja dato si al menos una pasada sirve. **Lo abierto es el costo**: cada pasada
+> tapada cuesta una reducción completa, y en una zona nublada (19 pasadas por mes en el Cauca) la
+> compuerta de 60 s se puede pasar sin que la parcela sea grande.
+
 > **2026-09-25, sesión 16 · M.9.0d: el panel ya muestra la serie por pasada** (Terra-admin#21,
 > `DECISIONS #49` de Geocore). **El bloque M.9.0 está cerrado.** El worker no cambió.
 >
