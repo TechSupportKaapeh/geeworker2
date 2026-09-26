@@ -518,6 +518,12 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | M.9.3 | Más índices, una entrada de registro cada uno: SAVI (cultivo joven, suelo expuesto), GNDVI o CIre (clorofila), MSI (estrés hídrico), NDWI (agua) | worker | ⬜ |
 | M.9.4 | Sentinel-1 (radar) para los meses de lluvia | worker | ⬜ |
 | M.9.5 | El mes en curso, como provisorio | worker, panel | ⬜ |
+| M.9.6 | **A demanda por ventana, en el worker**: el mapa a demanda recibe un mes, **un día** (una pasada) o **un rango** (el compuesto), con claves que no chocan y reusando el COG si el mismo pedido ya existe | worker | ⬜ · en diseño, ver abajo |
+| M.9.6b | Ampliar `ck_processing_jobs_periodo` para que acepte un día y un rango, y **aplicarla** antes de mergear M.9.6c | Geocore, GeoData 👥 | ⬜ · en diseño |
+| M.9.6c | `POST /api/parcelas/{id}/heatmap` acepta `{ periodo }`, `{ fecha }` o `{ desde, hasta }`, con la validación en `ProcessingJob` y el rango máximo | Geocore | ⬜ · en diseño |
+| M.9.6d | La doc para la app web: las **fechas disponibles** —que ya salen de `/api/measurements` con `cadencia=pasada` y `coberturaMinima`— y los tres pedidos | Geocore | ⬜ · en diseño |
+| M.9.6e | El panel: elegir una fecha de la lista o un rango, y pedir el mapa | panel | ⬜ · en diseño |
+| M.9.6f | El RGB del compuesto como un producto más (`rgb`, 8 bits), para el mapa del mes y el a demanda. **Primero se mide** cuánto pesa y cómo se ve | worker, panel | ⬜ · en diseño |
 
 > **Las seis decisiones de diseño de este bloque están tomadas** (2026-09-25, `DECISIONS #63`):
 > se mide antes de decidir, el agrupamiento es un dato de la receta, **por pasada puro** —sin
@@ -703,6 +709,43 @@ ya sabe dibujar huecos, así que el cambio es del eje, no del gráfico.
 
 **El bloque M.9.0 queda cerrado.** Lo que sigue de M.9 no tiene orden fijo.
 
+**M.9.6 — a demanda por ventana (en diseño, 2026-09-26).** Armado para afinar la idea: **no se
+empieza hasta cerrar las decisiones de abajo.**
+
+La idea, del usuario: **el histórico sigue mensual**, y lo a demanda deja de estar atado al mes.
+Quien usa la app ve **las fechas disponibles** —las pasadas útiles de la parcela— y pide **el
+ráster de una de ellas**, o **el compuesto de un rango** que elige. El mensual y la pasada no se
+excluyen: el mensual es el mapa completo y comparable, la pasada es lo reciente y los eventos.
+
+**Por qué ahora es barato.** `DECISIONS #36` de Geocore dejó el mapa a demanda en "un mes"
+porque el pipeline estaba tipado sobre `Mes`, y generalizarlo era "una tarea aparte y bastante
+más grande". **Esa tarea fue M.9.0b**: el pipeline recibe una ventana, y "todo el rango en una
+imagen" es el agrupamiento `entero`, el mismo que produce el mes. Lo que falta es abrirlo hacia
+afuera.
+
+- **Las fechas disponibles ya existen**: `/api/measurements?cadencia=pasada&coberturaMinima=0.3`
+  devuelve las pasadas útiles con su cobertura (`DECISIONS #51` y `#52` de Geocore). Llegan
+  hasta el último mes cerrado.
+- **Una pasada se pide por día UTC, no por hora**: la API no manda la hora (`#49`), y si un día
+  hubo dos pasadas, juntarlas es lo correcto.
+- **Lo único delicado es la migración**: `ck_processing_jobs_periodo` exige `AAAA-MM`. Va
+  aplicada antes del merge de Geocore, y el deploy es worker primero, como en `#36`.
+- **Lo a demanda ya tiene retención**: 90 días (`DECISIONS #65`).
+
+**Decisiones abiertas**, en la tabla de abajo: el rango máximo, qué tan frescas tienen que ser las
+fechas disponibles, y si el RGB entra en el bloque.
+
+**Ideas que salieron al lado, para no perderlas:**
+
+- **"La última imagen útil"** en el mapa del rancho: probablemente lo más valioso para un técnico
+  de campo. Sale de las fechas disponibles más M.9.6.
+- **Bajar el costo de las pasadas tapadas** en el worker (`DECISIONS #71`): no es de este bloque,
+  pero va **antes de dar de alta ranchos grandes o muy nublados**.
+- **El país automático** desde la geometría (límites de Natural Earth en PostGIS) y **la altitud**
+  desde un modelo de elevación. Sin tarea todavía.
+- **Preguntarle a 2 o 3 técnicos de una federación** cómo usan hoy las imágenes, antes de invertir
+  en el ráster por pasada.
+
 ---
 
 ## Decisiones que el backlog necesita, y cuándo
@@ -718,4 +761,7 @@ ya sabe dibujar huecos, así que el cambio es del eje, no del gráfico.
 | Los rásters viejos, fuera de `tenants/` | M.8.1 | ✅ 2026-09-20 · se borran con sus filas (`DECISIONS #43` de Geocore) |
 | **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3) | M.9.0c | ✅ 2026-09-25 · **por pasada puro** (`DECISIONS #63`), y **confirmado con el número el 2026-09-24** (`#66`): la fila mensual del compuesto no hace falta. B-3 **cerrada** |
 | Retención de los objetos de MinIO (`PREGUNTAS_ABIERTAS` C-5) | — | ✅ 2026-09-25 · sistemático para siempre, a demanda 90 días (`DECISIONS #65`) |
+| **El rango máximo de un compuesto a demanda** (recomendado: 1 año) | M.9.6c | ⬜ |
+| **Qué tan frescas son las fechas disponibles**: lo guardado, hasta el último mes cerrado (recomendado), o una consulta a GEE en el momento | M.9.6d | ⬜ |
+| **¿El RGB entra en M.9.6?** Y si entra, ¿receta nueva o producto que se suma sin cambiar la versión? | M.9.6f | ⬜ |
 | Qué hacer con el hallazgo T-3 del tileserver | — | ✅ 2026-09-25 · se borra el router `/mosaic` (`DECISIONS #64`). **Hecho el 2026-09-24**, terra-tileserver#4: con él se fueron `titiler.mosaic`, `boto3` y `scripts/check_mosaic_median.py` |

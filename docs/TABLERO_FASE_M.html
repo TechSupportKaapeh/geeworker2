@@ -265,7 +265,7 @@
 
   <footer>
     <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
-    <span class="mono">Actualizado 2026-09-25</span>
+    <span class="mono">Actualizado 2026-09-26</span>
   </footer>
 </div>
 
@@ -378,7 +378,13 @@ const SPRINTS = [
       { id: "M.9.2", t: "Anomalía contra la mediana histórica del mes, tendencia y alerta de caída", repo: "worker · Geocore", T: "—", ok: "—" },
       { id: "M.9.3", t: "Más índices, una entrada cada uno: SAVI, GNDVI o CIre, MSI, NDWI", repo: "worker", T: "—", ok: "—" },
       { id: "M.9.4", t: "Sentinel-1 (radar) para los meses de lluvia", repo: "worker", T: "—", ok: "—" },
-      { id: "M.9.5", t: "El mes en curso como provisorio", repo: "worker · panel", T: "—", ok: "—" }
+      { id: "M.9.5", t: "El mes en curso como provisorio", repo: "worker · panel", T: "—", ok: "—" },
+      { id: "M.9.6", t: "En diseño · A demanda por ventana: el mapa a demanda recibe un mes, un día (una pasada) o un rango (el compuesto)", repo: "worker", T: "M", ok: "Claves que no chocan, y el mismo pedido reusa su COG" },
+      { id: "M.9.6b", t: "En diseño · Ampliar ck_processing_jobs_periodo para un día y un rango, y aplicarla antes del merge", repo: "Geocore · GeoData", T: "S", ok: "Migración aplicada; el deploy va worker primero", equipo: true },
+      { id: "M.9.6c", t: "En diseño · POST /api/parcelas/{id}/heatmap acepta { periodo }, { fecha } o { desde, hasta }", repo: "Geocore", T: "M", ok: "Validación en ProcessingJob y rango máximo" },
+      { id: "M.9.6d", t: "En diseño · La doc para la app web: las fechas disponibles y los tres pedidos", repo: "Geocore", T: "S", ok: "api-frontend.html" },
+      { id: "M.9.6e", t: "En diseño · El panel: elegir una fecha disponible o un rango, y pedir el mapa", repo: "panel", T: "M", ok: "—" },
+      { id: "M.9.6f", t: "En diseño · El RGB del compuesto como un producto más, primero medido", repo: "worker · panel", T: "M", ok: "Cuánto pesa y cómo se ve, antes de decidir" }
     ] }
 ];
 
@@ -484,7 +490,10 @@ const DECISIONES = [
   ["El número mensual es la mediana de las medianas por pasada, y lo agrega la API (#48 de Geocore)", "M.9.0c", "hecho", "decidida"],
   ["s2-pasada-v2 pasa a ser la receta vigente (#70)", "M.9.0c", "hecho", "decidida"],
   ["El panel elige la cadencia y no la calcula; arranca en mensual y muestra de cuántas pasadas salió cada mes (#49 de Geocore)", "M.9.0d", "hecho", "decidida"],
-  ["Diagnóstico → Tiles pinta con la escala de cada índice: sin rescale ni paleta a mano (#50 de Geocore)", "—", "hecho", "decidida"]
+  ["Diagnóstico → Tiles pinta con la escala de cada índice: sin rescale ni paleta a mano (#50 de Geocore)", "—", "hecho", "decidida"],
+  ["El rango máximo de un compuesto a demanda (recomendado: 1 año)", "M.9.6c", "pendiente", "pendiente"],
+  ["Qué tan frescas son las fechas disponibles: lo guardado o una consulta a GEE", "M.9.6d", "pendiente", "pendiente"],
+  ["¿El RGB entra en M.9.6? ¿Receta nueva o producto sin cambiar la versión?", "M.9.6f", "pendiente", "pendiente"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
