@@ -299,6 +299,120 @@ concurrencia, y la bitácora encima. Un framework sumaría otro servicio que
 desplegar para algo que resuelven cinco módulos. Si algún día hace falta
 paralelizar miles de parcelas por fuera de Inngest, se revisa.
 
+### 3.6 El ráster por pasada (diseño, 2026-09-26)
+
+> **En diseño, no implementado.** Pedido del equipo el 2026-09-26: **el ráster tiene que ser por
+> pasada, también el histórico**. Cambia dos decisiones escritas: `#63` ("el ráster sigue
+> mensual") y `#58` ("un COG por índice"). El compuesto mensual **no se va**: se mantiene para
+> los informes y las comparaciones entre años.
+>
+> Todo lo guardado hasta hoy es **de prueba** (época de desarrollo, sin clientes): no hay que
+> convivir con datos viejos, y eso simplifica el plan (decisión d40 del tablero de decisiones).
+
+**Por qué.** Una imagen con nubes puede ser justo la que le sirve a alguien para su parcela. Lo
+dijo el equipo, y la medición lo confirmó: en el Cauca, el 1 de julio de 2025 tenía el 68 % del
+rancho despejado y los lotes de esa mitad se ven perfectos, con una nube grande al lado. El
+compuesto mensual los mezcla con el resto del mes; la pasada los muestra tal como estaban.
+
+**La regla de qué se guarda es la mínima:** se descarta una pasada **sólo si no tiene un píxel
+despejado en todo el rancho**, porque ésa no le sirve a ninguna zona del usuario. Todo lo demás
+se guarda, y **qué es útil se decide al leer** —el mismo principio que `#63` aplicó a los números—:
+por defecto, lo que muestra al menos el 30 % de la zona del usuario; el resto, a pedido y marcado.
+
+#### Lo medido (2026-09-26, sólo lectura, con el camino real del worker)
+
+Fuente, máscara, grilla, descarga y conversión a COG del worker, sin subir nada. Un archivo por
+pasada con los 4 índices y el color real, en enteros ×10.000.
+
+| | Sinaloa, 226 ha, ago 2025 | Cauca, 226 ha, jul 2025 | Cauca, 2.508 ha, jul 2025 |
+|---|---|---|---|
+| Pasadas del mes | 8 | 19 | 9 |
+| Con algo despejado (se guardan) | 5 | 14 | 7 |
+| Tapadas por completo (se descartan) | 3 | 5 | 2 |
+| COG por pasada | 49–279 KB | 9–286 KB | 0,6–3,4 MB |
+| Descarga + COG por pasada | 3–5 s | 3–4 s | 5–6 s |
+
+- **Espacio:** un rancho chico, de 30 MB (todos los meses nublados) a 130 MB (todos despejados)
+  cada dos años; uno de 2.500 ha, del orden de 0,3–0,5 GB.
+- **Tiempo:** el Cauca chico, en serie, son ~46 s por mes, pegado a la compuerta de 60 s. **Las
+  descargas tienen que ir en paralelo** dentro del paso del mes.
+- **Tope de `getDownloadURL`** (~48 MB): una pasada de 2.500 ha pesa ~3 MB, así que alcanza hasta
+  del orden de 40.000 ha. Por encima, exportación por lotes.
+- **Cuántas pasadas hay depende de la ubicación, no del tamaño:** el Cauca chico cae donde se
+  solapan dos órbitas (19 por mes); el grande, a 10 km, queda fuera de una (9 por mes).
+- **El color real necesita una banda que hoy no se baja**, el verde (B3): la fuente trae sólo las
+  bandas que usan los índices. La primera corrida falló por eso.
+
+#### La máscara
+
+**Con una imagen por pasada, la máscara pasa a ser lo que más pesa en la confianza del cliente.**
+En el compuesto mensual, una sombra que se cuela queda diluida en la mediana; en la pasada queda a
+la vista, y una sombra se lee como una caída del NDVI: parece que el cultivo se enfermó.
+
+Se comparó la máscara de la receta (s2cloudless más el cálculo de sombras) contra **Cloud
+Score+** (`GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED`, `cs_cdf`), sobre las mismas pasadas y
+sobre la parcela. La medida es cuánto se aparta el NDVI mediano de cada pasada del de las
+pasadas del mes que quedan despejadas enteras: una sombra o una bruma que se cuela lo tira para
+abajo.
+
+| Pasada | Receta | Cloud Score+ ≥ 0,60 | Cloud Score+ ≥ 0,70 | **Las dos a la vez** |
+|---|---|---|---|---|
+| Cauca 2025-07-14 (sombra) | 72 % · −0,091 | 77 % · +0,042 | 61 % · +0,093 | **61 % · +0,023** |
+| Cauca, tres pasadas de borde de nube | 1–14 %, hasta −0,322 | 0 % | 0 % | **0 %** |
+| Sinaloa 2025-03-20 (bruma) | 40 % · −0,164 | 100 % · −0,223 | 100 % · −0,223 | **40 % · −0,164** |
+
+**Cada una falla distinto.** La receta deja pasar sombras y bordes de nube; Cloud Score+ deja
+pasar la bruma. **Exigir las dos se queda con lo mejor de cada una**, a cambio de guardar algo
+menos. Subir el umbral de Cloud Score+ no arregla la bruma y empeora la sombra.
+
+En las pasadas despejadas las tres dan lo mismo, y en un lote en barbecho (Sinaloa, agosto) no se
+distinguen. **La muestra es chica** —8 pasadas en 2 parcelas— así que la combinación es la
+candidata, no la decisión: M.9.7a la valida en 24 meses de 2 o 3 parcelas antes de fijarla en v3.
+
+#### La estructura: tres costuras, no un rediseño
+
+El núcleo ya aguanta: desde M.9.0b el pipeline trabaja con ventanas y la receta tiene
+`agrupamiento_raster` aparte. `handlers/rancho.py` tiene un freno puesto a propósito: si una
+receta pide ráster por pasada, falla con "escribirlo es su propia tarea". Lo que supone "un mes,
+un índice, un archivo" son tres lugares, y cada uno se cambia **como tarea propia**:
+
+| Costura | Qué supone hoy | Qué pasa a ser |
+|---|---|---|
+| **El modelo de la capa** (worker, Geocore, panel) | un COG = un índice (`#58`): la key lleva `{indice}`, una fila de `layers` por índice, la plantilla de tiles es de una banda | **un COG = una ventana**, con los índices (y el color real) como bandas. La capa dice qué bandas tiene; el tile elige con `bidx`. Enteros ×10.000: la mitad de tamaño y el color real entra en el mismo archivo |
+| **El listado de capas** (Geocore, panel) | `GET /api/layers` filtra por tenant o parcela; el panel filtra el rancho de su lado, con techo de 2000 | filtros en el servidor por rancho y rango de fechas |
+| **El paso del ráster del rancho** (worker) | una ventana por mes, 4 descargas en serie | N ventanas por mes, las que tienen algún píxel despejado, descargadas en paralelo |
+
+**Y una cosa chica que hoy falla:** la etiqueta de una pasada (`2025-07-14T15:42Z`) no pasa la
+validación de keys, que rechaza `:`. Hace falta una etiqueta segura para la key
+(`2025-07-14T1542Z`).
+
+#### El orden, para que no se vuelva espagueti
+
+Primero los cambios de forma, **sin cambio de comportamiento** y con el control de M.9.0b
+(comparar la salida de `main` contra la de la rama); después el ráster por pasada encima.
+
+1. **La máscara** (M.9.7a): la comparación de arriba, y la decisión.
+2. **El modelo multibanda** (M.9.7b): el mensual de hoy pasa a un archivo con los índices como
+   bandas, y el panel pinta con `bidx`. Control: el mapa se ve igual; los valores de un píxel
+   coinciden hasta la cuarta decimal (la precisión de ×10.000).
+3. **El listado en el servidor** (M.9.7c): filtros por rancho y fechas, y el panel los usa.
+4. **La cobertura por pasada en una llamada** (M.9.7d): mide todas las pasadas del mes, para todas
+   las parcelas, antes de reducir. Sirve a las estadísticas (baja su costo, `#71`) y al ráster
+   (decide qué pasadas guardar).
+5. **La receta v3 y el paso del rancho por pasada** (M.9.7e): `agrupamiento_raster: por_pasada`,
+   la banda verde, el color real, la etiqueta segura, las descargas en paralelo y la cobertura del
+   rancho guardada con la capa.
+6. **El mapa del rancho por fechas** (M.9.7f): el deslizador pasa de meses a fechas (con
+   `serie.ts`, que ya sabe hacer ejes de fechas), con la calidad a la vista y "la última imagen
+   buena".
+7. **El histórico** (M.9.7g): como todo es de prueba, se reprocesan los ranchos de prueba con v3.
+
+**Lo que esto le hace al resto de M.9:** lo a demanda por pasada (M.9.6) pasa a ser, casi
+siempre, buscar un archivo que ya existe; lo a demanda queda para los compuestos de rangos. Y el
+mes en curso (M.9.5) escribe las pasadas —números y ráster— a medida que aparecen.
+
+---
+
 ## 4. Dónde vive cada cosa
 
 ```
