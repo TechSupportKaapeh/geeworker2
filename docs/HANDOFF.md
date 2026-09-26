@@ -1,5 +1,23 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-25, sesión 16 · M.9.0d: el panel ya muestra la serie por pasada** (Terra-admin#21,
+> `DECISIONS #49` de Geocore). **El bloque M.9.0 está cerrado.** El worker no cambió.
+>
+> Lo que el worker tiene que saber de esto:
+>
+> - **Lo que escribe `s2-pasada-v2` ya se ve**: el panel pide `?cadencia=pasada` cuando alguien
+>   elige «Por pasada», y el eje del gráfico es la fecha, así que las pasadas desparejas se ven
+>   desparejas. Una fila con cobertura baja se dibuja con el punto hueco; **el panel no pide
+>   `coberturaMinima`**.
+> - **La hora de la pasada no llega al panel**: Geocore formatea `fecha` como `yyyy-MM-dd` y
+>   se come la hora que `filas.py` sí escribe. No rompe nada —el panel no usa la fecha de
+>   clave—, pero dos pasadas del mismo día quedarían en el mismo punto del eje. Pendiente en
+>   Geocore.
+> - **Un mes reprocesado con las dos recetas se avisa en pantalla**, que es para lo que la API
+>   devuelve `receta: "s2-mensual-v1,s2-pasada-v2"`.
+>
+> Crónica: [`SESSION_2026-09-25_sesion_16_el_eje_de_fechas.md`](SESSION_2026-09-25_sesion_16_el_eje_de_fechas.md).
+
 > **2026-09-25 · `s2-pasada-v2` ES LA RECETA VIGENTE** (`DECISIONS #70`, decisión del
 > usuario). Desde acá, las altas y el cierre escriben **una fila por pasada** en vez de una por
 > mes. **Esto sí cambia producción.**

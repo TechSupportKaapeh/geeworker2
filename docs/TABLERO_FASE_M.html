@@ -367,13 +367,13 @@ const SPRINTS = [
       { id: "M.8.5", t: "Retención de processing_job_events", repo: "Geocore", T: "S", ok: "Decisión y job" }
     ] },
   { id: "M.9", nombre: "Analítica y futuro", objetivo: "Sin orden fijo, salvo el bloque M.9.0: se toma cuando el pipeline esté en producción.", sesiones: "abierto",
-    aviso2: { tipo: "equipo", texto: "<b>Las seis decisiones de diseño del bloque estan tomadas</b> (2026-09-25, <code>DECISIONS #63</code> del worker): se mide antes de decidir, el agrupamiento es un dato de la receta, <b>por pasada puro</b> —sin columna <code>ventana</code> y sin migracion—, el raster sigue mensual, y <b>el umbral de cobertura se aplica al leer</b>. La cobertura se mide <b>sobre la parcela, nunca sobre el rancho</b>: una pasada que tapa medio rancho puede ser perfecta para una parcela. <b>Y el numero ya esta</b> (2026-09-24, <code>#66</code>): mediana de <b>3 pasadas limpias por mes</b>, y <b>0 de 72 meses</b> en que el compuesto llegue al umbral y ninguna pasada sola llegue." },
+    aviso2: { tipo: "equipo", texto: "<b>Las seis decisiones de diseño del bloque estan tomadas</b> (2026-09-25, <code>DECISIONS #63</code> del worker): se mide antes de decidir, el agrupamiento es un dato de la receta, <b>por pasada puro</b> —sin columna <code>ventana</code> y sin migracion—, el raster sigue mensual, y <b>el umbral de cobertura se aplica al leer</b>. La cobertura se mide <b>sobre la parcela, nunca sobre el rancho</b>: una pasada que tapa medio rancho puede ser perfecta para una parcela. <b>Y el numero ya esta</b> (2026-09-24, <code>#66</code>): mediana de <b>3 pasadas limpias por mes</b>, y <b>0 de 72 meses</b> en que el compuesto llegue al umbral y ninguna pasada sola llegue. <b>El bloque M.9.0 se cerró el 2026-09-25</b> con M.9.0d: el panel ya muestra la serie por pasada, sobre un eje de fechas. Lo que sigue de M.9 no tiene orden fijo." },
     aviso: { tipo: "compuerta", texto: "<b>M.9.0 va primero, y empieza midiendo.</b> Hoy la ventana de observación es el mes y las pasadas sueltas no se guardan (<code>DECISIONS #31</code>, que reemplazó a <code>#19</code>). La decisión se tomó con la cuenta del <b>ráster</b> —146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile— y <b>se llevó a los números, que tienen otra cuenta</b>: para una estadística no hay descargas ni MosaicJSON. Lo que la mediana del mes se lleva puesto: los <b>eventos</b> (una caída de diez días la absorbe), la <b>comparabilidad</b> entre un mes de seis pasadas limpias y uno de dos, y los meses que la cobertura mínima descarta enteros. <b>Cuánto importa depende de qué hay en las parcelas y de cuántas pasadas limpias hay</b>, y eso lo midió M.9.0 antes de tocar nada. <b>La compuerta pasó el 2026-09-24</b> (<code>DECISIONS #66</code>): sobre 3 parcelas reales × 24 meses hay una <b>mediana de 3 pasadas limpias</b> —no «1 o 2»—, y entre ellas el índice se mueve una mediana de 0,065 con un máximo de 0,336. <b>El bloque sigue.</b> La estacionalidad: 3,2 a 5,5 en seca contra 1,0 a 1,5 en el pico de lluvias." },
     tareas: [
       { id: "M.9.0", t: "Medir cuántas pasadas limpias hay por mes, parcela por parcela", repo: "worker", T: "S", ok: "Una tabla por parcela y mes, y la decisión escrita en PREGUNTAS_ABIERTAS B-3", compuerta: true },
       { id: "M.9.0b", t: "El agrupamiento es un dato de la receta: la ventana deja de estar cableada al mes", repo: "worker", T: "M", ok: "s2-mensual-v1 produce EXACTAMENTE las mismas filas que antes: 129 entradas comparadas contra el codigo de main, identicas" },
       { id: "M.9.0c", t: "s2-pasada-v2: estadísticas SÓLO por pasada, ráster mensual, umbral de cobertura al leer", repo: "worker · Geocore", T: "M", ok: "Sin migración: la clave (parcela, índice, fecha) sirve con la fecha de adquisición. VIGENTE desde el 2026-09-25" },
-      { id: "M.9.0d", t: "El panel: eje de fechas y el interruptor mensual / por pasada", repo: "panel", T: "M", ok: "—" },
+      { id: "M.9.0d", t: "El panel: eje de fechas y el interruptor mensual / por pasada", repo: "panel", T: "M", ok: "El eje es el tiempo y no el numero de la fila, con marcas del calendario; ?cadencia= desde el interruptor, y agregadas a la vista. Terra-admin#21" },
       { id: "M.9.1", t: "Cultivo en la parcela, y la métrica del rancho por cultivo", repo: "Geocore · panel", T: "—", ok: "—" },
       { id: "M.9.2", t: "Anomalía contra la mediana histórica del mes, tendencia y alerta de caída", repo: "worker · Geocore", T: "—", ok: "—" },
       { id: "M.9.3", t: "Más índices, una entrada cada uno: SAVI, GNDVI o CIre, MSI, NDWI", repo: "worker", T: "—", ok: "—" },
@@ -440,7 +440,7 @@ const ESTADO = {
   "M.6.1": "hecho", "M.6.1b": "hecho", "M.6.2": "hecho", "M.6.2b": "hecho", "M.6.3": "bloqueado", "M.6.4": "hecho", "M.6.5": "hecho",
   "M.7.1": "hecho", "M.7.2": "hecho", "M.7.3": "hecho", "M.7.4": "hecho", "M.7.5": "hecho", "M.7.6": "hecho",
   "M.8.1": "hecho", "M.8.2": "hecho", "M.8.3": "hecho", "M.8.4": "hecho", "M.8.5": "hecho",
-  "M.9.0": "hecho", "M.9.0b": "hecho", "M.9.0c": "hecho"
+  "M.9.0": "hecho", "M.9.0b": "hecho", "M.9.0c": "hecho", "M.9.0d": "hecho"
 };
 
 const RUTA = [
@@ -449,7 +449,8 @@ const RUTA = [
   ["M.4", "Altas I"], ["M.4", "Altas II"], ["M.5", "Reconciliador"], ["M.5", "Handlers y reproceso"],
   ["M.6", "Limpieza"], ["M.7", "Selector y series"], ["M.7", "Mapa mensual"], ["M.7", "Editor de geometría"],
   ["M.8", "A01 y A04"], ["M.8", "A09 y retención"], ["M.9.0", "Medir las pasadas · y borrar /mosaic"],
-  ["M.9.0b·c", "El agrupamiento y s2-pasada-v2"], ["M.9", "Analítica · desde M.9.0d"]
+  ["M.9.0b·c", "El agrupamiento y s2-pasada-v2"], ["M.9.0d", "El eje de fechas · y podar Tiles"],
+  ["M.9", "Analítica · desde M.9.1"]
 ];
 
 const DECISIONES = [
@@ -476,7 +477,9 @@ const DECISIONES = [
   ["M.9.0 medido: 3 pasadas limpias por mes y 0 de 72 meses que se perderían; sin fila mensual (#66)", "M.9.0", "hecho", "decidida"],
   ["La huella de s2-mensual-v1 se re-fija sin subir la versión: el agrupamiento no mueve ningún número (#67)", "M.9.0b", "hecho", "decidida"],
   ["El número mensual es la mediana de las medianas por pasada, y lo agrega la API (#48 de Geocore)", "M.9.0c", "hecho", "decidida"],
-  ["s2-pasada-v2 pasa a ser la receta vigente (#70)", "M.9.0c", "hecho", "decidida"]
+  ["s2-pasada-v2 pasa a ser la receta vigente (#70)", "M.9.0c", "hecho", "decidida"],
+  ["El panel elige la cadencia y no la calcula; arranca en mensual y muestra de cuántas pasadas salió cada mes (#49 de Geocore)", "M.9.0d", "hecho", "decidida"],
+  ["Diagnóstico → Tiles pinta con la escala de cada índice: sin rescale ni paleta a mano (#50 de Geocore)", "—", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
@@ -500,7 +503,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 19;
+const sesionProxima = 20;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>
