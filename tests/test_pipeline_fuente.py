@@ -56,6 +56,16 @@ def test_cada_banda_pedida_es_de_s2():
     assert set(fuente.bandas_espectrales(RECETA_VIGENTE)) <= indices.BANDAS_S2
 
 
+def test_el_color_real_suma_el_verde_y_respeta_el_orden_de_s2():
+    # M.9.7e1: el verde (B3) no lo usa ningun indice; sin `color_real` no se baja.
+    from pipeline.receta import RECETA_PASADA_V3
+
+    assert fuente.bandas_espectrales(RECETA_PASADA_V3) == (
+        "B2", "B3", "B4", "B5", "B8", "B11",
+    )
+    assert "B3" not in fuente.bandas_espectrales(RECETA_VIGENTE)
+
+
 # ---- El remuestreo ---------------------------------------------------------------
 
 

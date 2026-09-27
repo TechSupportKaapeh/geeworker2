@@ -31,6 +31,21 @@ from pipeline.estadisticas import ESTADISTICAS, claves_de_salida
 from pipeline.indices import BANDAS, INDICES
 from pipeline.ventanas import AGRUPAMIENTOS, ENTERO, POR_PASADA
 
+# Cloud Score+ (M.9.7e1, `DECISIONS #72`): comparte el `system:index` con
+# S2_HARMONIZED, y por él se une escena por escena, como la probabilidad de nubes.
+COLECCION_CLOUD_SCORE = "GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED"
+BANDA_CLOUD_SCORE = "cs_cdf"
+
+# El color real: el nombre de la banda en el compuesto y la banda de `BANDAS` de
+# donde sale, en el orden en que se pinta (R, G, B).
+COLOR_REAL = {"rojo": "RED", "verde": "GREEN", "azul": "BLUE"}
+
+# Los campos opcionales de la receta y su valor apagado, que es el de antes de
+# existir. Apagados no entran en la huella (`DECISIONS #76`). **Un campo nuevo se
+# suma acá, con el valor que el código ya tenía**: si no, re-fija la huella de
+# todas las recetas que ya escribieron filas.
+_OPCIONALES = {"cloud_score_minimo": None, "color_real": False}
+
 # Va en la columna `receta` de cada fila: minúsculas, dígitos y guiones.
 _VERSION = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _PROBABILIDAD_MAXIMA = 100
@@ -99,6 +114,20 @@ class Receta:
             [-1, 1] en el 0,012 % de los píxeles, con mínimos de -6,4
             (``DECISIONS #41``). Afecta al mínimo y al máximo que se guardan, no a
             la mediana. M.2.6 lo compara.
+        cloud_score_minimo: si no es ``None``, **además** de la máscara de la
+            receta se descarta todo píxel con Cloud Score+ (``cs_cdf``) por debajo
+            de este valor, de 0 a 1. Es la máscara de ``DECISIONS #72`` (d36): la de
+            la receta deja pasar sombras y bordes de nube, Cloud Score+ deja pasar
+            la bruma, y las dos a la vez tienen menos de la mitad de errores. v3 usa
+            0,60, el umbral que recomienda Google.
+        color_real: si el compuesto lleva también el rojo, el verde y el azul en
+            reflectancia, para el color real del mapa (``#72``, d38). No cambia
+            ningún número de las estadísticas; cambia qué trae el COG.
+
+    **Los dos últimos son opcionales** (:data:`_OPCIONALES`): valen, apagados, lo
+    que el código hacía antes de existir, y **apagados no entran en la huella**
+    (decisión del usuario del 2026-09-27, ``DECISIONS #76``). Así v1 y v2, que ya
+    escribieron filas, conservan su huella exacta, y v3 la lleva completa.
     """
 
     version: str
@@ -119,6 +148,9 @@ class Receta:
     acotar_indices: bool
     agrupamiento_estadisticas: str
     agrupamiento_raster: str
+    # Los opcionales van al final y con valor por defecto: el apagado.
+    cloud_score_minimo: float | None = None
+    color_real: bool = False
 
     def __post_init__(self) -> None:
         """Valida la receta contra los registros al armarla, que es al importar."""
@@ -171,6 +203,10 @@ class Receta:
                 f"nubes_erosion_px negativa: {self.nubes_erosion_px}",
             ),
             (
+                self.cloud_score_minimo is None or 0 < self.cloud_score_minimo <= 1,
+                f"cloud_score_minimo fuera de (0, 1]: {self.cloud_score_minimo}",
+            ),
+            (
                 self.agrupamiento_estadisticas in AGRUPAMIENTOS,
                 (
                     f"agrupamiento_estadisticas desconocido: "
@@ -221,7 +257,24 @@ class Receta:
             campo.name: getattr(self, campo.name)
             for campo in dataclasses.fields(self)
             if campo.name != "version"
+            # Un opcional apagado es lo que el código hacía antes de que existiera:
+            # dejarlo afuera es lo que hace que sumarlo no mueva ninguna huella.
+            and not (
+                campo.name in _OPCIONALES
+                and getattr(self, campo.name) == _OPCIONALES[campo.name]
+            )
         }
+        if self.cloud_score_minimo is not None:
+            # La colección y la banda son constantes de la fuente, no campos, pero
+            # cambiarlas cambia la máscara: entran por acá, como las fórmulas.
+            contenido["cloud_score"] = {
+                "coleccion": COLECCION_CLOUD_SCORE,
+                "banda": BANDA_CLOUD_SCORE,
+            }
+        if self.color_real:
+            contenido["color_real"] = {
+                nombre: BANDAS[banda] for nombre, banda in COLOR_REAL.items()
+            }
         contenido["indices"] = {
             nombre: {
                 "formula": INDICES[nombre].formula,
@@ -311,6 +364,25 @@ RECETA_POR_PASADA = dataclasses.replace(
     version="s2-pasada-v2",
     agrupamiento_estadisticas=POR_PASADA,
     umbral_al_escribir=False,
+)
+
+# Receta v3 (M.9.7e, `DECISIONS #72` y `#76`): **el ráster por pasada**. Existe
+# desde el 2026-09-27 y **NO es la vigente**: pasa a serlo con M.9.7g, después de
+# que el panel distinga la pasada del compuesto (M.9.7f). Contra v2 cambian tres
+# cosas, y las tres son del ráster:
+#
+# - **el ráster se agrupa por pasada** (d37: toda pasada con algún píxel
+#   despejado en el rancho). El compuesto mensual se sigue haciendo (d39);
+# - **la máscara es la de la receta y Cloud Score+ a la vez** (d36). Vale también
+#   para los números: el número de la parcela y el color del mapa salen de los
+#   mismos píxeles (B-1), así que esto **sí mueve números**, y por eso es v3;
+# - **el compuesto lleva el color real** (d38).
+RECETA_PASADA_V3 = dataclasses.replace(
+    RECETA_POR_PASADA,
+    version="s2-pasada-v3",
+    agrupamiento_raster=POR_PASADA,
+    cloud_score_minimo=0.60,
+    color_real=True,
 )
 
 # **La vigente, desde el 2026-09-25** (`DECISIONS #70`). Lo que sigue lo escribe

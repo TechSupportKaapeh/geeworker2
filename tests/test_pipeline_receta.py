@@ -21,12 +21,14 @@ import pipeline.receta as modulo_receta
 from pipeline.estadisticas import ESTADISTICAS, Estadistica, Tipo
 from pipeline.indices import INDICES, Indice
 from pipeline.receta import (
+    _OPCIONALES,
     RECETA_MENSUAL_V1,
+    RECETA_PASADA_V3,
     RECETA_POR_PASADA,
     RECETA_VIGENTE,
 )
 from pipeline.registro import registro
-from pipeline.ventanas import ENTERO
+from pipeline.ventanas import ENTERO, POR_PASADA
 
 # Una linea por version. Si este test sale rojo porque cambiaste un parametro:
 #   1. subi la version de RECETA_VIGENTE (s2-mensual-v2);
@@ -77,9 +79,16 @@ from pipeline.ventanas import ENTERO
 # existe, tiene tests y se verifico contra GEE, pero las altas y el cierre siguen
 # escribiendo con v1. Su huella se fija igual, porque el dia que se use va a
 # escribir filas y ahi si queda congelada.
+#
+# Desde M.9.7e1 (2026-09-27) hay una TERCERA, `s2-pasada-v3`, que tampoco es la
+# vigente (lo es con M.9.7g). Trae dos campos nuevos, `cloud_score_minimo` y
+# `color_real`, y **v1 y v2 NO se re-fijaron**: un campo opcional apagado no
+# entra en la huella (`DECISIONS #76`, decision del usuario). Las dos lineas de
+# arriba son las mismas de antes de M.9.7e1, y eso es lo que prueba la regla.
 HUELLAS = {
     "s2-mensual-v1": "4a4f24dab9075e4f7d9868e6368b19e972bc6b15dd1fefca66c5e70dc8efa161",
     "s2-pasada-v2": "ca953783ff1b487cf38e0175cbf10aed93f5ba5b10f1a77425fd5771a0d482fd",
+    "s2-pasada-v3": "b4fd6990a0266eafcd2eef5ec1e8d0c3e910a52e2523e8f6d29ad915522e2fa4",
 }
 
 # Un cambio por campo de Receta, salvo la version. Si se suma un campo, tiene
@@ -105,13 +114,18 @@ CAMBIOS = {
     # Distintos de los de v1, que desde DECISIONS #45 son 2 y True.
     "nubes_erosion_px": 3,
     "acotar_indices": False,
+    # Los opcionales (`DECISIONS #76`): la vigente los tiene apagados.
+    "cloud_score_minimo": 0.5,
+    "color_real": True,
 }
 
 
 # --- La huella fijada -----------------------------------------------------
 
 
-@pytest.mark.parametrize("receta", [RECETA_VIGENTE, RECETA_POR_PASADA])
+@pytest.mark.parametrize(
+    "receta", [RECETA_MENSUAL_V1, RECETA_POR_PASADA, RECETA_PASADA_V3]
+)
 def test_la_huella_de_cada_receta_esta_fijada(receta):
     assert receta.version in HUELLAS, "version nueva sin huella en HUELLAS"
     assert receta.huella() == HUELLAS[receta.version], (
@@ -133,6 +147,54 @@ def test_v2_es_v1_con_dos_cambios_y_nada_mas():
         if getattr(RECETA_MENSUAL_V1, campo.name) != getattr(RECETA_POR_PASADA, campo.name)
     }
     assert distintos == {"version", "agrupamiento_estadisticas", "umbral_al_escribir"}
+
+
+def test_v3_es_v2_con_tres_cambios_y_todos_del_raster():
+    """M.9.7e1 (`DECISIONS #72`): el raster por pasada, las dos mascaras y el color."""
+    distintos = {
+        campo.name
+        for campo in dataclasses.fields(RECETA_POR_PASADA)
+        if getattr(RECETA_POR_PASADA, campo.name) != getattr(RECETA_PASADA_V3, campo.name)
+    }
+    assert distintos == {"version", "agrupamiento_raster", "cloud_score_minimo", "color_real"}
+    assert RECETA_PASADA_V3.agrupamiento_raster == POR_PASADA
+    # El umbral que recomienda Google, el mismo que valido M.9.7a (d36).
+    assert RECETA_PASADA_V3.cloud_score_minimo == 0.60
+    assert RECETA_PASADA_V3.color_real is True
+
+
+def test_v3_no_es_la_vigente_todavia():
+    """Pasa a serlo con M.9.7g, despues de que el panel distinga la pasada del
+    compuesto (M.9.7f): si no, el mapa mensual mezclaria la pasada del dia 1."""
+    assert RECETA_VIGENTE is not RECETA_PASADA_V3
+
+
+def test_los_opcionales_apagados_valen_lo_de_antes_de_existir():
+    """La regla de `DECISIONS #76`: el valor apagado es el default del campo, y en
+    v1 y v2 esta apagado. Si no, sumar un campo re-fijaria sus huellas."""
+    campos = {campo.name: campo for campo in dataclasses.fields(RECETA_VIGENTE)}
+    for nombre, apagado in _OPCIONALES.items():
+        assert campos[nombre].default == apagado, nombre
+        assert getattr(RECETA_MENSUAL_V1, nombre) == apagado, nombre
+        assert getattr(RECETA_POR_PASADA, nombre) == apagado, nombre
+
+
+def test_un_opcional_apagado_no_entra_en_la_huella():
+    contenido = RECETA_POR_PASADA.contenido()
+    assert not set(_OPCIONALES) & set(contenido)
+    assert "cloud_score" not in contenido
+
+
+def test_un_opcional_prendido_si_entra_con_lo_que_toma_de_afuera():
+    """Cloud Score+ entra con su coleccion y su banda, como un indice con su formula:
+    cambiarlas cambia la mascara aunque la receta no se toque."""
+    contenido = RECETA_PASADA_V3.contenido()
+    assert contenido["cloud_score_minimo"] == 0.60
+    assert contenido["cloud_score"] == {
+        "coleccion": "GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED",
+        "banda": "cs_cdf",
+    }
+    assert contenido["color_real"] == {"rojo": "B4", "verde": "B3", "azul": "B2"}
 
 
 def test_v2_deja_el_raster_mensual():
@@ -307,6 +369,8 @@ def test_los_remuestreos_de_gee_se_aceptan(remuestreo):
     ("sombras_nir_oscuro", 1500.0, "sombras_nir_oscuro"),
     ("sombras_distancia_m", -1, "sombras_distancia_m"),
     ("nubes_erosion_px", -1, "nubes_erosion_px"),
+    ("cloud_score_minimo", 0.0, "cloud_score_minimo"),
+    ("cloud_score_minimo", 1.5, "cloud_score_minimo"),
     ("indices", (), "al menos un"),
     ("indices", ("ndvi", "savi"), "fuera del registro"),
     ("estadisticas", ("mediana", "mediana"), "repetid"),
