@@ -375,7 +375,7 @@ const SPRINTS = [
       { id: "M.9.0c", t: "s2-pasada-v2: estadísticas SÓLO por pasada, ráster mensual, umbral de cobertura al leer", repo: "worker · Geocore", T: "M", ok: "Sin migración: la clave (parcela, índice, fecha) sirve con la fecha de adquisición. VIGENTE desde el 2026-09-25" },
       { id: "M.9.0d", t: "El panel: eje de fechas y el interruptor mensual / por pasada", repo: "panel", T: "M", ok: "El eje es el tiempo y no el numero de la fila, con marcas del calendario; ?cadencia= desde el interruptor, y agregadas a la vista. Terra-admin#21" },
       { id: "M.9.7a", t: "La máscara del ráster por pasada: la receta y Cloud Score+ a la vez", repo: "worker", T: "S", ok: "Validada en 5 parcelas × 24 meses: 5 errores de máscara contra 11 y 27. DECISIONS #72" },
-      { id: "M.9.7b", t: "El COG multibanda, sin cambio de comportamiento, y el panel con bidx", repo: "worker · Geocore · panel", T: "M", ok: "El mapa se ve igual; los valores coinciden a la cuarta decimal" },
+      { id: "M.9.7b", t: "El COG multibanda, sin cambio de comportamiento, y el panel con bidx", repo: "worker · Geocore · panel", T: "M", ok: "Misma máscara, diferencia máx 5e-5, < 1 % de píxeles cambia un tono. DECISIONS #73" },
       { id: "M.9.7c", t: "El listado de capas filtra por rancho y fechas en el servidor", repo: "Geocore · panel", T: "S", ok: "—" },
       { id: "M.9.7d", t: "La cobertura por pasada en una llamada, antes de reducir", repo: "worker", T: "M", ok: "Las filas salen idénticas; menos llamadas en zonas nubladas" },
       { id: "M.9.7e", t: "La receta v3 y el ráster del rancho por pasada, con descargas en paralelo", repo: "worker", T: "M", ok: "Un mes del Cauca bajo 60 s" },
@@ -459,7 +459,7 @@ const ESTADO = {
   "M.7.1": "hecho", "M.7.2": "hecho", "M.7.3": "hecho", "M.7.4": "hecho", "M.7.5": "hecho", "M.7.6": "hecho",
   "M.8.1": "hecho", "M.8.2": "hecho", "M.8.3": "hecho", "M.8.4": "hecho", "M.8.5": "hecho",
   "M.9.0": "hecho", "M.9.0b": "hecho", "M.9.0c": "hecho", "M.9.0d": "hecho",
-  "M.9.7a": "hecho", "M.9.7b": "curso"
+  "M.9.7a": "hecho", "M.9.7b": "hecho"
 };
 
 const RUTA = [
