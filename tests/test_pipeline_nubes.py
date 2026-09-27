@@ -15,6 +15,7 @@ from pipeline.etapas import fuente, nubes
 from pipeline.indices import INDICES
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
+from pipeline.ventanas import del_mes
 
 
 def test_las_capas_de_la_mascara_no_chocan_con_otras_bandas():
@@ -30,7 +31,9 @@ def test_las_capas_de_la_mascara_no_chocan_con_otras_bandas():
 
 ROI_2KM = [-100.86, 20.54, -100.84, 20.56]
 ESCENA_NUBLADA = "20260704T171721_20260704T171846_T14QKH"
-MES = Mes(2026, 7)
+# Desde M.9.0b el pipeline recibe una `Ventana`, no un `Mes`: con el `Mes` suelto
+# estos tests fallaban con `AttributeError` y el CI no lo veia (no corre los `gee`).
+MES = del_mes(Mes(2026, 7))
 
 
 def _escena(ee):

@@ -15,6 +15,7 @@ from pipeline.etapas import compuesto, fuente, nubes, reduccion
 from pipeline.indices import INDICES
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
+from pipeline.ventanas import del_mes
 
 
 def _receta(**cambios):
@@ -133,7 +134,9 @@ def test_un_metodo_de_reduccion_desconocido_se_rechaza():
 # ---- Contra GEE de verdad (pytest --gee) -------------------------------------------
 
 ROI_2KM = [-100.86, 20.54, -100.84, 20.56]
-MES = Mes(2026, 7)
+# Desde M.9.0b el pipeline recibe una `Ventana`, no un `Mes`: con el `Mes` suelto
+# estos tests fallaban con `AttributeError` y el CI no lo veia (no corre los `gee`).
+MES = del_mes(Mes(2026, 7))
 
 
 def _compuesto_del_mes(ee):

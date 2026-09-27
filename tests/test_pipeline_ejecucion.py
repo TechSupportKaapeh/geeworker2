@@ -339,12 +339,19 @@ def test_fechas_de_no_cuesta_mas_de_una_llamada(gee_inicializado):
 
 @pytest.mark.gee
 def test_entero_no_le_pregunta_nada_a_gee_para_armar_su_ventana(gee_inicializado):
-    """Lo que hace que M.9.0b no cambie cuantas llamadas cuesta un mes."""
+    """Lo que hace que M.9.0b no cambie cuantas llamadas cuesta un mes.
+
+    Clava v1, que es la receta con `entero`: desde el 2026-09-25 la vigente es
+    `s2-pasada-v2` (`DECISIONS #70`), que SI pregunta las fechas, y siguiendo a la
+    vigente este test fallaba sin que el CI lo viera.
+    """
     import ee
+
+    from pipeline.receta import RECETA_MENSUAL_V1
 
     with ejecucion.contando() as conteo:
         ventanas = ejecucion.ventanas_de(
-            ee.Geometry.Rectangle(ROI_2KM), del_mes(MES), RECETA_VIGENTE
+            ee.Geometry.Rectangle(ROI_2KM), del_mes(MES), RECETA_MENSUAL_V1
         )
 
     assert conteo.llamadas == 0
