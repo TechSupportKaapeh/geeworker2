@@ -26,7 +26,7 @@ from typing import Final
 import ee
 
 from pipeline.indices import BANDAS, INDICES
-from pipeline.receta import Receta
+from pipeline.receta import COLOR_REAL, Receta
 
 # Cuántas pasadas limpias tuvo cada píxel en el mes. Su mediana sobre la parcela
 # va a `measurements.observaciones`.
@@ -43,8 +43,13 @@ _PROPIEDADES_DE_LA_PASADA: Final = ("system:time_start", PROPIEDAD_PASADA)
 
 
 def bandas_de_salida(receta: Receta) -> tuple[str, ...]:
-    """Las bandas del compuesto: un índice cada una, y las observaciones al final."""
-    return (*receta.indices, BANDA_OBSERVACIONES)
+    """Las bandas del compuesto, en su orden.
+
+    Un índice cada una, el color real si la receta lo pide, y las observaciones al
+    final.
+    """
+    color = tuple(COLOR_REAL) if receta.color_real else ()
+    return (*receta.indices, *color, BANDA_OBSERVACIONES)
 
 
 def por_pasada(coleccion: ee.ImageCollection) -> ee.ImageCollection:
@@ -94,6 +99,14 @@ def indices_de(imagen: ee.Image, receta: Receta) -> ee.Image:
             # M.2.6 compara las dos.
             banda = banda.clamp(*indice.rango)
         bandas.append(banda)
+    if receta.color_real:
+        # **La reflectancia tal cual**, en 0-1 y sin acotar: el color real no es un
+        # índice, y la mediana por píxel de cada banda es lo que se ve (M.9.7e1).
+        # Van después de los índices, así que la banda de cada índice no se mueve.
+        bandas.extend(
+            imagen.select(BANDAS[banda]).rename(nombre)
+            for nombre, banda in COLOR_REAL.items()
+        )
     # `copyProperties` devuelve un `Element`, y `map` sobre una colección exige una
     # `Image`: sin este `ee.Image(...)`, el mapeo falla al armarse.
     return ee.Image(

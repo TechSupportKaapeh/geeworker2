@@ -25,8 +25,17 @@ BANDAS_S2 = frozenset(
 
 # El nombre que usan las fórmulas y la banda de S2 que le corresponde. B5 y B11
 # son de 20 m y se remuestrean a los 10 m de la receta: es lo habitual.
+# En el orden de S2, que es el orden en que la fuente las pide. GREEN la usa sólo
+# el color real (M.9.7e1): ningún índice la lee, así que sumarla no cambió nada.
 BANDAS = MappingProxyType(
-    {"BLUE": "B2", "RED": "B4", "RE1": "B5", "NIR": "B8", "SWIR1": "B11"}
+    {
+        "BLUE": "B2",
+        "GREEN": "B3",
+        "RED": "B4",
+        "RE1": "B5",
+        "NIR": "B8",
+        "SWIR1": "B11",
+    }
 )
 
 

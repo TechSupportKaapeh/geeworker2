@@ -144,8 +144,9 @@ def test_el_orden_fisico_se_respeta():
 
 
 def test_un_indice_con_una_banda_que_no_existe_se_rechaza():
-    with pytest.raises(ValueError, match="GREEN"):
-        Indice("gndvi", "(NIR - GREEN) / (NIR + GREEN)", rango=(-1.0, 1.0), tema="x")
+    # Hasta M.9.7e1 el ejemplo era GREEN; desde el color real, GREEN existe.
+    with pytest.raises(ValueError, match="SWIR2"):
+        Indice("nbr", "(NIR - SWIR2) / (NIR + SWIR2)", rango=(-1.0, 1.0), tema="x")
 
 
 @pytest.mark.parametrize("rango", [(1.0, -1.0), (0.5, 0.5)])

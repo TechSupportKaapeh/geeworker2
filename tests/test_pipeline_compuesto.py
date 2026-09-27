@@ -28,6 +28,22 @@ def test_las_bandas_de_salida_son_los_indices_y_las_observaciones():
     )
 
 
+def test_el_color_real_va_despues_de_los_indices():
+    # Despues y no antes: la banda de cada indice no se mueve, y el `bidx` de las
+    # filas de `layers` que ya existen sigue apuntando al indice correcto.
+    assert compuesto.bandas_de_salida(_receta(color_real=True)) == (
+        "ndvi", "evi", "ndre", "ndmi", "rojo", "verde", "azul", "n_obs",
+    )
+
+
+def test_el_color_real_no_choca_con_un_indice_ni_con_una_banda():
+    from pipeline.receta import COLOR_REAL
+
+    assert not set(COLOR_REAL) & set(INDICES)
+    assert compuesto.BANDA_OBSERVACIONES not in COLOR_REAL
+    assert not set(COLOR_REAL) & set(BANDAS.values())
+
+
 def test_con_un_solo_indice_tambien_van_las_observaciones():
     assert compuesto.bandas_de_salida(_receta(indices=("ndvi",))) == ("ndvi", "n_obs")
 
@@ -161,7 +177,55 @@ def test_el_indice_lo_calcula_gee_igual_que_el_evaluador_de_python(gee_inicializ
 
     assert features, "ninguna muestra con dato: la pasada quedó entera enmascarada"
     pixel = features[0]["properties"]
-    valores = {nombre: pixel[banda] for nombre, banda in BANDAS.items()}
+    # Sólo las bandas que se bajaron: desde M.9.7e1 `BANDAS` tiene también el verde,
+    # que v2 no pide porque ningún índice lo usa.
+    valores = {nombre: pixel[banda] for nombre, banda in BANDAS.items() if banda in pixel}
     for nombre in RECETA_VIGENTE.indices:
         esperado = evaluar(INDICES[nombre].formula, valores)
         assert pixel[nombre] == pytest.approx(esperado, abs=1e-6), nombre
+
+
+# ---- v3 (M.9.7e1), contra GEE ---------------------------------------------------
+
+
+@pytest.mark.gee
+def test_el_compuesto_de_v3_trae_el_color_real_en_reflectancia(gee_inicializado):
+    """El rojo, el verde y el azul en 0-1, despues de los indices (`DECISIONS #76`)."""
+    import ee
+
+    from pipeline.receta import RECETA_PASADA_V3
+
+    roi = ee.Geometry.Rectangle(ROI_2KM)
+    enmascarada = fuente.coleccion(roi, MES, RECETA_PASADA_V3).map(
+        lambda img: nubes.enmascarar(ee.Image(img), RECETA_PASADA_V3)
+    )
+    mes = compuesto.compuesto(enmascarada, RECETA_PASADA_V3)
+    info = ee.Dictionary({
+        "bandas": mes.bandNames(),
+        "valores": mes.select(["rojo", "verde", "azul"]).reduceRegion(
+            reducer=ee.Reducer.median(), geometry=roi, scale=10,
+            bestEffort=False, maxPixels=1e7,
+        ),
+    }).getInfo()
+
+    assert info["bandas"] == list(compuesto.bandas_de_salida(RECETA_PASADA_V3))
+    for banda in ("rojo", "verde", "azul"):
+        # Reflectancia de superficie de un campo: decimos, no miles (la fuente divide).
+        assert 0 < info["valores"][banda] < 0.5, (banda, info["valores"])
+
+
+@pytest.mark.gee
+def test_la_mascara_de_v3_nunca_deja_mas_que_la_de_la_receta(gee_inicializado):
+    """Es la interseccion (d36): por pasada, la cobertura de v3 no pasa la de v2."""
+    import ee
+
+    from pipeline import ejecucion
+    from pipeline.receta import RECETA_PASADA_V3, RECETA_POR_PASADA
+
+    roi = ee.Geometry.Rectangle(ROI_2KM)
+    ventanas = ejecucion.ventanas_de(roi, MES, RECETA_POR_PASADA)
+    v2 = ejecucion.reducciones_de(roi, ventanas, RECETA_POR_PASADA)
+    v3 = ejecucion.reducciones_de(roi, ventanas, RECETA_PASADA_V3)
+
+    assert ventanas
+    assert all(b.cobertura <= a.cobertura + 1e-9 for a, b in zip(v2, v3, strict=True))

@@ -1,5 +1,16 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-27 · M.9.7e1: `RECETA_PASADA_V3` existe y NO es la vigente** (`DECISIONS #76`). La
+> vigente sigue siendo v2; v3 lo es con M.9.7g, después del panel.
+>
+> - **v3 = v2 + ráster por pasada + Cloud Score+ ≥ 0,60 + color real.** La doble máscara vale
+>   también para los números. El rancho rechaza v3 hasta M.9.7e2 (el freno de `handlers/rancho.py`).
+> - **`receta._OPCIONALES`**: un campo nuevo se suma apagado, con el valor que el código ya tenía, y
+>   apagado no entra en la huella. Así v1 y v2 no se re-fijaron.
+> - **`BANDAS` tiene `GREEN` (B3)**: la usa sólo el color real; ningún índice la lee.
+> - **`#75`, ya en `main`**: la ventana de una pasada arranca en su tesela más temprana y dura un
+>   minuto. Antes dejaba teselas afuera (Sinaloa: 5 de 7 pasadas).
+
 > **2026-09-27 · M.9.7d: la parcela pide todas las pasadas del mes en UNA llamada** (`DECISIONS #74`).
 > Un mes cuesta **dos llamadas** —las fechas y los números— en vez de N + 1, con los mismos números.
 >

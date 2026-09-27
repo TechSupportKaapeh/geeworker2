@@ -3928,3 +3928,69 @@ lo de prueba antes de reprocesar con v3.
 
 **Tests:** los de `ventanas` fijan el caso de Sinaloa, los 10 minutos del Cauca y el rechazo; uno
 `gee`, `test_cada_pasada_trae_todas_sus_teselas`, lo verifica contra GEE con la parcela de Sinaloa.
+
+
+---
+
+## 76. La receta v3 existe, y no es la vigente: las dos máscaras y el color real (2026-09-27)
+
+> M.9.7e1. **M.9.7e se partió en dos** (decisión del usuario del 2026-09-27): **e1**, la receta
+> v3 en el código, y **e2**, el paso del rancho por pasada. **Ninguna de las dos cambia
+> producción**: v3 pasa a ser la vigente recién con M.9.7g, después del panel (M.9.7f).
+
+**Por qué v3 no puede ser la vigente antes del panel.** El mapa mensual del panel pide las capas
+con `desde = hasta = el día 1` (M.9.7c). Con v3, una pasada que cae el día 1 aparece en esa
+consulta mezclada con el compuesto mensual. El panel tiene que distinguirlas primero.
+
+### Lo que v3 cambia contra v2, y nada más
+
+Un test lo fija: `test_v3_es_v2_con_tres_cambios_y_todos_del_raster`.
+
+- **`agrupamiento_raster: por_pasada`** (d37). El rancho la rechaza hasta e2, con el freno que
+  `handlers/rancho.py` tiene puesto a propósito.
+- **`cloud_score_minimo: 0.60`** (d36): además de la máscara de la receta, se descarta todo píxel
+  con `cs_cdf` < 0,60. **Vale también para los números**: el número de la parcela y el color del
+  mapa salen de los mismos píxeles (B-1), así que v3 sí mueve números, y por eso es una versión.
+- **`color_real: True`** (d38): la fuente baja también el verde (B3), y el compuesto lleva `rojo`,
+  `verde` y `azul` en reflectancia 0-1, **después** de los índices. Así la banda de cada índice no
+  se mueve.
+
+**Cloud Score+ se une como la probabilidad de nubes**: por `system:index`, con la fecha como
+superconjunto y sin `outer`. Una escena sin su Cloud Score+ queda afuera, por lo mismo que una sin
+probabilidad: sin él la máscara de v3 no se puede armar, y dejarla pasar con la de la receta sola
+metería justo lo que d36 vino a sacar. En un mes cerrado no pasa, porque la colección cubre todo S2.
+
+### La huella: los opcionales apagados no entran
+
+Los dos campos nuevos habrían re-fijado la huella de v1 y v2, que ya escribieron filas. **Decisión
+del usuario**: un campo **opcional** vale, apagado, lo que el código hacía antes de existir, y
+**apagado no entra en la huella** (`receta._OPCIONALES`). Así:
+
+- **v1 y v2 conservan su huella exacta** (`4a4f24…` y `ca9537…`, las mismas de antes);
+- v3 la lleva completa, con la colección y la banda de Cloud Score+ y las bandas del color real,
+  que entran como entran las fórmulas de los índices;
+- **la regla para el próximo campo**: se suma a `_OPCIONALES` con el valor que el código ya tenía.
+  Un test comprueba que el valor apagado es el default del campo y que v1 y v2 lo tienen.
+
+Es distinto de `#67`: ahí se re-fijó la huella de v1 sin subir la versión. Acá no se re-fija nada.
+
+### Verificado contra GEE
+
+- **La máscara de v3 es la "ambas" de M.9.7a, pasada por pasada**: en el Cauca (2025-07 y 2025-10)
+  y en Sinaloa (2025-03, el mes de la bruma), **42 de 42 pasadas con la misma cobertura** y el
+  mismo NDVI a menos de 1e-8, contra `check_pipeline_real._mascaras_del_mes`. La primera corrida
+  dio 41 de 42, y la que no coincidía destapó el error de `#75`.
+- **No cuesta más**: un mes del Cauca, 6,1 s con v3 contra 6,8 s con v2; uno del Yaqui, 4,7 s
+  contra 4,4 s.
+- Tests `gee` nuevos: el compuesto de v3 trae el color real en reflectancia, y la cobertura de v3
+  nunca pasa la de v2 en ninguna pasada (es la intersección).
+
+### Lo que encontró la auditoría (etapa 4 del WORKFLOW)
+
+- **Corrección:** un test `gee` de la fórmula armaba los valores con todas las bandas de `BANDAS`, y
+  el verde no está en lo que baja v2: se acotó a lo que se bajó. No era un error del pipeline.
+- **Seguridad:** no hay entrada nueva: la colección de Cloud Score+ es pública y su nombre es una
+  constante. `ruff --select S,B` limpio sobre `pipeline/`.
+- **Eficiencia:** sin costo medible (arriba). **Atomicidad:** sin cambios.
+- **Mantenibilidad:** la regla de los opcionales queda en el código, al lado de `_OPCIONALES`, y
+  fijada por tests.

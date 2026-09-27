@@ -20,7 +20,12 @@ from typing import Final
 import ee
 
 from pipeline.indices import BANDAS, INDICES
-from pipeline.receta import Receta
+from pipeline.receta import (
+    BANDA_CLOUD_SCORE,
+    COLECCION_CLOUD_SCORE,
+    COLOR_REAL,
+    Receta,
+)
 from pipeline.ventanas import Ventana
 
 # S2 SR guarda la reflectancia multiplicada por esto.
@@ -33,6 +38,8 @@ BANDA_PROBABILIDAD: Final = "probability"
 _NOMBRE_SOMBRAS: Final = "NIR"
 # La propiedad donde el join deja la imagen de probabilidad de cada escena.
 _CLAVE_UNION: Final = "probabilidad_de_nube"
+# Y donde deja la de Cloud Score+, si la receta la pide (M.9.7e1).
+_CLAVE_CLOUD_SCORE: Final = "cloud_score"
 _MS_POR_SEGUNDO: Final = 1000
 
 # Cuánto se ensancha el filtro de fecha de la colección de nubes, de cada lado.
@@ -45,13 +52,19 @@ MARGEN_DE_NUBES_MS: Final = 24 * 60 * 60 * _MS_POR_SEGUNDO
 def bandas_espectrales(receta: Receta) -> tuple[str, ...]:
     """Las bandas de S2 que la receta necesita: las de sus índices, más el NIR.
 
-    Van en el orden de ``BANDAS``, que es el de S2 (B2, B4, B5, B8, B11). Ordenar
-    el texto pondría B11 antes que B2. Pedir solo estas achica cada imagen: las
-    etapas siguientes no cargan bandas que ningún índice usa.
+    Van en el orden de ``BANDAS``, que es el de S2 (B2, B3, B4, B5, B8, B11).
+    Ordenar el texto pondría B11 antes que B2. Pedir solo estas achica cada
+    imagen: las etapas siguientes no cargan bandas que ningún índice usa.
+
+    Con ``color_real`` se suman el rojo, el verde y el azul (M.9.7e1). El verde
+    (B3) es la única que ningún índice usa: sin esto no se bajaba, y la primera
+    prueba del color real falló por eso (``ARQUITECTURA`` §3.6).
     """
     nombres = {_NOMBRE_SOMBRAS}.union(
         *(INDICES[indice].bandas for indice in receta.indices)
     )
+    if receta.color_real:
+        nombres |= set(COLOR_REAL.values())
     return tuple(banda for nombre, banda in BANDAS.items() if nombre in nombres)
 
 
@@ -120,11 +133,27 @@ def coleccion(roi: ee.Geometry, ventana: Ventana, receta: Receta) -> ee.ImageCol
         .filterBounds(roi)
         .filterDate(inicio - MARGEN_DE_NUBES_MS, fin + MARGEN_DE_NUBES_MS)
     )
-    unidas = ee.Join.saveFirst(matchKey=_CLAVE_UNION).apply(
-        escenas,
-        nubes,
-        ee.Filter.equals(leftField="system:index", rightField="system:index"),
-    )
+    por_indice = ee.Filter.equals(leftField="system:index", rightField="system:index")
+    unidas = ee.Join.saveFirst(matchKey=_CLAVE_UNION).apply(escenas, nubes, por_indice)
+    con_cloud_score = receta.cloud_score_minimo is not None
+    if con_cloud_score:
+        # **Cloud Score+ se une igual que la probabilidad**: por `system:index`,
+        # que comparte con S2, con la fecha como superconjunto, y sin `outer`.
+        # Una escena sin su Cloud Score+ queda afuera, por lo mismo que una sin
+        # probabilidad: sin él la máscara de v3 no se puede armar, y dejarla
+        # pasar con la de la receta sola metería en la pasada justo lo que d36
+        # vino a sacar. Para un mes cerrado no pasa: la colección cubre todo S2.
+        puntajes = (
+            ee.ImageCollection(COLECCION_CLOUD_SCORE)
+            .filterBounds(roi)
+            .filterDate(inicio - MARGEN_DE_NUBES_MS, fin + MARGEN_DE_NUBES_MS)
+        )
+        unidas = ee.Join.saveFirst(matchKey=_CLAVE_CLOUD_SCORE).apply(
+            ee.ImageCollection(unidas), puntajes, por_indice
+        )
+    salida = [*espectrales, BANDA_CLASIFICACION, BANDA_PROBABILIDAD]
+    if con_cloud_score:
+        salida.append(BANDA_CLOUD_SCORE)
 
     def preparar(escena: ee.Image) -> ee.Image:
         escena = ee.Image(escena)
@@ -137,11 +166,15 @@ def coleccion(roi: ee.Geometry, ventana: Ventana, receta: Receta) -> ee.ImageCol
         # Se arma sobre la escena, con `addBands`, y no a partir de la cuenta: la
         # aritmética de GEE no conserva las propiedades, y la máscara necesita el
         # azimut solar de la escena.
-        return (
+        preparada = (
             escena.select([BANDA_CLASIFICACION])
             .addBands(reflectancia)
             .addBands(probabilidad)
-            .select([*espectrales, BANDA_CLASIFICACION, BANDA_PROBABILIDAD])
         )
+        if con_cloud_score:
+            preparada = preparada.addBands(
+                ee.Image(escena.get(_CLAVE_CLOUD_SCORE)).select(BANDA_CLOUD_SCORE)
+            )
+        return preparada.select(salida)
 
     return ee.ImageCollection(unidas).map(preparar)

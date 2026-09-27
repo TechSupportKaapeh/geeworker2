@@ -26,7 +26,7 @@ import ee
 
 from pipeline.etapas.fuente import BANDA_CLASIFICACION, BANDA_PROBABILIDAD
 from pipeline.indices import BANDAS
-from pipeline.receta import Receta
+from pipeline.receta import BANDA_CLOUD_SCORE, Receta
 
 # En SCL, 6 es agua. Un píxel oscuro de agua no es una sombra.
 SCL_AGUA: Final = 6
@@ -102,6 +102,15 @@ def enmascarar(escena: ee.Image, receta: Receta) -> ee.Image:
 
     Conserva las bandas y las propiedades de la escena. Un pedido a otra escala
     muestrea la máscara de ``escala_m``: no la vuelve a calcular.
+
+    **Con** ``cloud_score_minimo`` **(v3), además** se enmascara lo que Cloud
+    Score+ no da por despejado (``DECISIONS #72``, d36). Es la intersección: un
+    píxel queda si lo dejan las dos. Cloud Score+ viene a 10 m en la grilla de la
+    escena, así que no hace falta la proyección fija de las sombras.
     """
     descarte = componentes(escena, receta).select(BANDA_DESCARTE)
-    return escena.updateMask(descarte.Not())
+    limpia = escena.updateMask(descarte.Not())
+    if receta.cloud_score_minimo is None:
+        return limpia
+    despejado = escena.select(BANDA_CLOUD_SCORE).gte(receta.cloud_score_minimo)
+    return limpia.updateMask(despejado)

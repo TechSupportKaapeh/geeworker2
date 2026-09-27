@@ -409,9 +409,14 @@ Primero los cambios de forma, **sin cambio de comportamiento** y con el control 
    así que se pide **el mes entero en una llamada**, por entidad: de 5 a 9 veces más barato en
    cualquier clima, con los mismos números. Cada respuesta trae su cobertura, que es lo que el
    ráster usa para decidir qué pasadas guardar.
-5. **La receta v3 y el paso del rancho por pasada** (M.9.7e): `agrupamiento_raster: por_pasada`,
-   la banda verde, el color real, la etiqueta segura, las descargas en paralelo y la cobertura del
-   rancho guardada con la capa.
+5. **La receta v3 y el paso del rancho por pasada** (M.9.7e), **partida en dos** el 2026-09-27:
+   - **e1, la receta** (**hecha**, `DECISIONS #76`): las dos máscaras, la banda verde y el color
+     real en el compuesto. Existe y **no es la vigente**;
+   - **e2, el paso del rancho**: la etiqueta segura, la cobertura del rancho en una llamada, las
+     descargas en paralelo, un COG por pasada con una fila `rgb`, y el mensual al lado.
+
+   **v3 pasa a ser la vigente en el paso 7**, no acá: el mapa mensual del panel pide el día 1, y
+   una pasada de ese día se mezclaría con el compuesto hasta que el panel las distinga (paso 6).
 6. **El mapa del rancho por fechas** (M.9.7f): el deslizador pasa de meses a fechas (con
    `serie.ts`, que ya sabe hacer ejes de fechas), con la calidad a la vista y "la última imagen
    buena".
