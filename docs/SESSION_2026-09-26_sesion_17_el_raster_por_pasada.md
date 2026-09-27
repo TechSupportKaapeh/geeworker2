@@ -80,6 +80,23 @@ rancho nuevo del Valle del Yaqui: los cuatro índices se ven bien.
 caía en -32.768, el centinela de "sin dato", y el píxel desaparecía del mapa. Verificado contra
 GEE; ahora se acota a ±32.767.
 
+## M.9.7c: el listado de capas en el servidor
+
+Después del cierre, en la misma sesión. `GET /api/layers` suma `ranchoId`, `desde` y `hasta`
+(Geocore#71, `DECISIONS #54` de Geocore), y el mapa del rancho pide `?ranchoId=` en vez de
+traer el tenant entero y filtrar (Terra-admin#26). `ranchoId` trae las capas del rancho **sin
+las de sus parcelas**, y las fechas son días UTC, los dos incluidos, sobre `acquired_ts`.
+
+- **Índice nuevo `ix_layers_tenant_rancho_acquired`** (migración `CapasPorRancho`): `layers` no
+  tenía ninguno. Con el `EXPLAIN`, Postgres lo recorre hacia atrás y el `LIMIT` sale sin ordenar.
+  **Falta aplicarlo**, pero no bloquea nada, porque el código funciona sin él.
+- **La auditoría encontró un 500:** `hasta=9999-12-31` no tiene día siguiente, y cualquier
+  usuario podía tirar la excepción con un parámetro. Ahora ese valor no filtra nada.
+- **Un test contra Postgres de verdad pagó su costo:** Npgsql rechaza un `DateTimeOffset` con
+  offset distinto de cero. El proveedor en memoria no lo habría visto.
+- Geocore: 597 verdes con PostgreSQL local, 15 nuevos. Panel: 117 verdes, 4 nuevos. Control
+  negativo hecho en los dos.
+
 ## Lecciones
 
 - **Un parámetro que cruza dos caminos de código necesita un test en cada uno.** `coberturaMinima`
@@ -94,8 +111,10 @@ GEE; ahora se acota a ±32.767.
 
 ## Lo que queda
 
-- **M.9.7c**: el listado de capas en el servidor (por rancho y fechas). Es la siguiente.
-- M.9.7d (la cobertura por pasada en una llamada, que también baja el costo de `#71`), M.9.7e (la
+- **M.9.7d**: la cobertura por pasada en una llamada, que también baja el costo de `#71`. Es la
+  siguiente.
+- Aplicar `geocore/docs/sql/2026-09-26_CapasPorRancho.sql` (el índice de M.9.7c).
+- M.9.7e (la
   receta v3 y el ráster por pasada), M.9.7f (el mapa por fechas y la pasada dudosa), M.9.7g (el
   histórico: se borran los datos de prueba y se reprocesa, d40).
 - Abiertas en el tablero de decisiones: d03 (el default de `coberturaMinima` en la API), d04 (la
