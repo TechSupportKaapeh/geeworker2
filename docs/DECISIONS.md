@@ -3781,6 +3781,12 @@ Contra GEE, con el camino real del worker, en los dos ranchos de prueba (Sinaloa
   archivo y su banda en el mismo `UPSERT`, así que un mes a medio reprocesar tiene filas que se
   pintan bien cada una; el reintento pisa lo mismo.
 
+### Verificado en producción
+
+El 2026-09-26, después del despliegue, el usuario dio de alta un rancho de prueba en el Valle
+del Yaqui (Sonora) y revisó su mapa: **los cuatro índices se ven bien y distintos entre sí**, que
+es lo que falla si la banda o la escala no llegan (todo de un color, o los cuatro iguales).
+
 ### Orden de despliegue, y es la condición
 
 **La migración `CapasMultibanda` de Geocore tiene que estar aplicada antes de mergear esto**: el
