@@ -15,6 +15,7 @@ from pipeline.formulas import evaluar
 from pipeline.indices import BANDAS, INDICES
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE
+from pipeline.ventanas import del_mes
 
 
 def _receta(**cambios):
@@ -42,7 +43,9 @@ def test_la_banda_de_observaciones_no_choca_con_un_indice():
 # ---- Contra GEE de verdad (pytest --gee) -------------------------------------------
 
 ROI_2KM = [-100.86, 20.54, -100.84, 20.56]
-MES = Mes(2026, 7)
+# Desde M.9.0b el pipeline recibe una `Ventana`, no un `Mes`: con el `Mes` suelto
+# estos tests fallaban con `AttributeError` y el CI no lo veia (no corre los `gee`).
+MES = del_mes(Mes(2026, 7))
 # Lo que dio el sondeo del 2026-09-15 sobre ese cuadrado.
 IMAGENES = 16
 PASADAS = 8
