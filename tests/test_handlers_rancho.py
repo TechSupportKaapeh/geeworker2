@@ -130,6 +130,12 @@ def mundo(monkeypatch):
         estado["pedidos"].append(ventana.etiqueta)
         return _Expresion(lambda: estado["gee"](ventana.etiqueta))
 
+    def _estadisticas_de_ventanas(roi, ventanas, receta):
+        # Desde M.9.7e2 el rancho pide el mes y sus pasadas en UN pedido
+        # (`reducciones_de`); con v1 y v2 es una lista de una ventana.
+        expresiones = [_estadisticas_de(roi, ventana, receta) for ventana in ventanas]
+        return _Expresion(lambda: [e.getInfo() for e in expresiones])
+
     def _descargar(url, destino):
         estado["descargas"].append((url, destino))
         return _geotiff_como_el_de_gee(destino)
@@ -156,6 +162,7 @@ def mundo(monkeypatch):
     # cuesta UN mes. La orquestacion por pasada tiene sus propios tests abajo.
     monkeypatch.setattr(handlers_rancho, "RECETA_VIGENTE", RECETA_MENSUAL_V1)
     monkeypatch.setattr(ejecucion, "estadisticas_de", _estadisticas_de)
+    monkeypatch.setattr(ejecucion, "estadisticas_de_ventanas", _estadisticas_de_ventanas)
     def _mapa_multibanda(roi, ventana, receta, indices):
         estado.setdefault("indices_pedidos", []).append(tuple(indices))
         return _Imagen(estado, str(ventana.etiqueta))
@@ -417,3 +424,120 @@ def test_el_handler_no_importa_la_capa_vieja_ni_abre_conexiones():
         capture_output=True, text=True, timeout=120, check=False,
     )
     assert resultado.returncode == 0, resultado.stderr
+
+
+# --- M.9.7e2: el rancho por pasada con v3 (`DECISIONS #77`) ----------------------
+
+
+def _mes_v3(monkeypatch, mundo, coberturas, *, cobertura_del_mes=0.8):
+    """Un mes de v3 con una pasada por cobertura; una cobertura 0 contesta como una
+    pasada tapada. Devuelve el resultado del step y las fechas de las pasadas."""
+    from pipeline.periodos import Mes
+    from pipeline.receta import RECETA_PASADA_V3
+
+    pasadas = tuple(datetime(2026, 8, 3 + 10 * i, 17, 57, 35, tzinfo=UTC)
+                    for i in range(len(coberturas)))
+    por_etiqueta = {"2026-08": cobertura_del_mes}
+    por_etiqueta |= {f"2026-08-{3 + 10 * i:02d}T1757Z": c for i, c in enumerate(coberturas)}
+    monkeypatch.setattr(ejecucion, "fechas_de", lambda roi, pedido, receta: pasadas)
+    mundo["gee"] = lambda etiqueta: (
+        {"cobertura": 0} if por_etiqueta[etiqueta] == 0
+        else _respuesta_de_gee(cobertura=por_etiqueta[etiqueta])
+    )
+    with avance_job.seguimiento("job-r", 0, 3):
+        resultado = rancho.procesar_mes(
+            rancho_id=RANCHO, tenant_id=TENANT, coordenadas=PAYLOAD["Coordinates"],
+            mes=Mes(2026, 8), posicion=1, total=1, receta=RECETA_PASADA_V3,
+        )
+    return resultado, pasadas
+
+
+def test_v3_sube_el_mes_y_cada_pasada_con_algun_pixel(monkeypatch, mundo):
+    """d37: toda pasada con al menos un pixel despejado. d39: el mensual, al lado."""
+    resultado, _ = _mes_v3(monkeypatch, mundo, [0.9, 0, 0.02])
+
+    base = f"tenants/{TENANT}/ranchos/{RANCHO}/s2-pasada-v3"
+    assert sorted(s["key"] for s in mundo["subidas"]) == sorted([
+        f"{base}/2026-08.tif", f"{base}/2026-08-03T1757Z.tif", f"{base}/2026-08-23T1757Z.tif",
+    ])
+    # La tapada (13) no se sube. Cinco filas por archivo: cuatro indices y el color.
+    assert resultado["mapas"] == 3 * 5
+    assert len(mundo["capas"]) == 15
+
+
+def test_v3_pide_los_numeros_del_mes_y_de_las_pasadas_en_una_llamada(monkeypatch, mundo):
+    _mes_v3(monkeypatch, mundo, [0.9, 0, 0.02])
+
+    assert mundo["pedidos"] == ["2026-08", "2026-08-03T1757Z", "2026-08-13T1757Z",
+                                "2026-08-23T1757Z"]
+    (linea,) = [l for l in mundo["bitacora"] if l["etapa"] == "mes-2026-08"]
+    # Una de numeros y una URL por archivo, contadas aunque se pidan desde los
+    # hilos (`en_paralelo` copia el contexto). `fechas_de` es un doble y no cuenta.
+    assert linea["detalle"]["llamadas"] == 1 + 3
+    assert linea["mensaje"].endswith("; 2 de 3 pasadas con mapa")
+
+
+def test_v3_cada_fila_dice_su_fuente_su_instante_y_sus_bandas(monkeypatch, mundo):
+    _, pasadas = _mes_v3(monkeypatch, mundo, [0.9])
+
+    mensual = [c for c in mundo["capas"] if c["source"] == "mensual"]
+    pasada = [c for c in mundo["capas"] if c["source"] == "pasada"]
+    assert [c["product"] for c in pasada] == ["ndvi", "evi", "ndre", "ndmi", "rgb"]
+    assert [c["bandas"] for c in pasada] == [[1], [2], [3], [4], [5, 6, 7]]
+    # El instante de la pasada: el mapa del panel filtra por esto (M.9.7c).
+    assert {c["acquired_ts"] for c in pasada} == {pasadas[0]}
+    assert {c["acquired_ts"] for c in mensual} == {datetime(2026, 8, 1, tzinfo=UTC)}
+    assert {c["escala"] for c in mundo["capas"]} == {10_000}
+    # El color real no tiene estadisticas de indice: solo las de la ventana.
+    (rgb,) = [c for c in pasada if c["product"] == "rgb"]
+    assert set(rgb["estadisticas"]) == {"cobertura", "observaciones"}
+    # Las natural_key no chocan entre el mensual y la pasada.
+    assert len({c["natural_key"] for c in mundo["capas"]}) == len(mundo["capas"])
+
+
+def test_v3_pide_el_color_real_en_el_archivo(monkeypatch, mundo):
+    _mes_v3(monkeypatch, mundo, [0.9])
+
+    assert set(mundo["indices_pedidos"]) == {
+        ("ndvi", "evi", "ndre", "ndmi", "rojo", "verde", "azul"),
+    }
+
+
+def test_v3_sin_un_pixel_en_el_mes_no_sube_nada(monkeypatch, mundo):
+    resultado, _ = _mes_v3(monkeypatch, mundo, [0, 0], cobertura_del_mes=0)
+
+    assert resultado["mapas"] == 0
+    assert mundo["subidas"] == [] and mundo["capas"] == []
+
+
+def test_v3_si_falla_una_subida_no_escribe_ninguna_fila(monkeypatch, mundo):
+    """Las filas van al final: ninguna apunta a un archivo que no llego al bucket."""
+    def _descargar(url, destino):
+        if "T1757Z" in url and "08-13" in url:
+            raise OSError("se corto la descarga")
+        return _geotiff_como_el_de_gee(destino)
+
+    monkeypatch.setattr(raster, "descargar_a_archivo", _descargar)
+    mundo["url"] = lambda etiqueta: f"https://gee/{etiqueta}"
+
+    with pytest.raises(OSError, match="se corto"):
+        _mes_v3(monkeypatch, mundo, [0.9, 0.5, 0.4])
+
+    assert mundo["capas"] == []
+
+
+def test_v2_sigue_siendo_un_archivo_por_mes_sin_pasadas(monkeypatch, mundo):
+    """La vigente no cambia con M.9.7e2: una ventana, cuatro filas, la misma linea."""
+    from pipeline.periodos import Mes
+    from pipeline.receta import RECETA_POR_PASADA
+
+    with avance_job.seguimiento("job-r", 0, 3):
+        resultado = rancho.procesar_mes(
+            rancho_id=RANCHO, tenant_id=TENANT, coordenadas=PAYLOAD["Coordinates"],
+            mes=Mes(2026, 8), posicion=1, total=1, receta=RECETA_POR_PASADA,
+        )
+
+    assert resultado["mapas"] == 4
+    assert {c["source"] for c in mundo["capas"]} == {"mensual"}
+    (linea,) = [l for l in mundo["bitacora"] if l["etapa"] == "mes-2026-08"]
+    assert "pasadas" not in linea["mensaje"]

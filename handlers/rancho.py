@@ -18,6 +18,11 @@ Los steps son los del alta de una parcela (``handlers/altas.py``): ``plan`` y un
    descarga, el COG y la subida a la key de ``claves_cog_mensual``;
 4. ``insert_layer`` con ``source="mensual"``, la receta y las estadísticas.
 
+**Con la receta v3 el mes suma sus pasadas** (M.9.7e2, ``DECISIONS #77``): además
+del compuesto, un COG por cada pasada con algún píxel despejado en el rancho,
+bajados en paralelo, con ``source="pasada"`` y ``acquired_ts`` en el instante de
+la pasada. Ver :func:`procesar_mes`.
+
 Los temporales no cruzan steps: lo que sale del step son las ``storage_keys``.
 
 Reemplaza al ``process_rancho`` de la capa vieja con el mismo ``fn_id``, y a su
@@ -28,14 +33,21 @@ No importa ``services/inngest_handlers.py``, que M.6.1 borra.
 
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final, NamedTuple
 
 import inngest
 from pipeline import ejecucion
-from pipeline.claves import claves_cog_mensual
-from pipeline.ejecucion import reduccion_de, url_de_descarga
+from pipeline.claves import ClavesDeCapa, claves_cog_mensual, claves_cog_pasada
+from pipeline.ejecucion import reducciones_de, url_de_descarga, ventanas_de
+from pipeline.etapas.reduccion import Reduccion
 from pipeline.periodos import Mes
-from pipeline.productos import ESCALA_DEL_COG, mapa_multibanda_de
+from pipeline.productos import (
+    ESCALA_DEL_COG,
+    bandas_de_producto,
+    bandas_del_cog,
+    mapa_multibanda_de,
+    productos_del_cog,
+)
 from pipeline.receta import RECETA_VIGENTE, Receta
 from pipeline.ventanas import Ventana, agrupamiento, del_mes
 from repositories.db_repository import insert_layer
@@ -55,7 +67,7 @@ from handlers.altas import (
 )
 from handlers.cierre import cerrar_por_falla
 from handlers.geometria import coords_to_geometry
-from handlers.raster import NODATA_ENTERO, parametros_del_mapa, subir_cog
+from handlers.raster import NODATA_ENTERO, en_paralelo, parametros_del_mapa, subir_cog
 from handlers.seguimiento import RETRIES, con_seguimiento
 from handlers.utilidades import entre, ms_desde
 
@@ -64,11 +76,7 @@ from handlers.utilidades import entre, ms_desde
 # 2026-09-20 era sólo NDVI, que fue con lo que se probó el pipeline.
 #
 # No es un parámetro de la receta y por eso **no rompe el congelamiento de
-# `s2-mensual-v1`**: no cambia ningún número, cambia qué se dibuja. Los cuatro índices
-# ya se calculaban; lo que faltaba era descargarlos. El índice va en la key y en la
-# `natural_key`, así que son cuatro objetos y cuatro filas por mes, sin pisarse.
-#
-# El costo es de descargas: cuatro por mes en vez de una.
+# `s2-mensual-v1`**: no cambia ningún número, cambia qué se dibuja.
 def indices_del_mapa(receta: Receta) -> tuple[str, ...]:
     """Los índices que se suben como mapa: todos los de la receta."""
     return receta.indices
@@ -77,51 +85,56 @@ def indices_del_mapa(receta: Receta) -> tuple[str, ...]:
 # M.6.2b: el mapa a demanda hace lo mismo, y el nodata y la escala son un
 # contrato con el tileserver que no puede vivir en dos lados.
 
+# `layers.source` de cada familia de COG del rancho. El panel distingue por esto
+# el compuesto del mes de una pasada (M.9.7f).
+FUENTE_MENSUAL: Final = "mensual"
+FUENTE_PASADA: Final = "pasada"
 
-def _estadisticas_de_la_capa(reduccion: Any, indice: str) -> dict[str, float | None]:  # noqa: ANN401 - una Reduccion
-    """Los números del mapa: los de su índice, con cobertura y observaciones (D-2)."""
+
+def _estadisticas_de_la_capa(reduccion: Reduccion, producto: str) -> dict[str, Any]:
+    """Los números del mapa: los de su índice, con cobertura y observaciones (D-2).
+
+    El color real no tiene estadísticas de índice: lleva sólo la cobertura y las
+    observaciones, que son de la ventana y no del producto.
+    """
     return {
-        **reduccion.estadisticas[indice],
+        **reduccion.estadisticas.get(producto, {}),
         "cobertura": reduccion.cobertura,
         "observaciones": reduccion.observaciones,
     }
 
 
-def _la_unica_ventana(rancho_id: str, mes: Mes, receta: Receta) -> Ventana:
-    """La ventana del ráster del mes, y la garantía de que es una sola.
+class _Cog(NamedTuple):
+    """Un COG del mes para subir: su ventana, su familia y sus números."""
 
-    **El ráster sigue siendo mensual** (``DECISIONS #63``): los motivos de ``#31``
-    —146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile— no cambiaron.
-    Por eso acá se lee ``agrupamiento_raster`` de la receta, se arma su ventana, y
-    **se exige que sea una**.
+    ventana: Ventana
+    fuente: str
+    reduccion: Reduccion
 
-    No se generaliza a N ventanas a propósito. Este es el camino más caro y más
-    frágil del worker —descarga, conversión a COG y subida—, y un bucle cuyo N es
-    siempre 1 sería código que nadie ejecuta hasta que alguien cambie la receta, y
-    que fallaría justo ahí. Prefiero que la receta que pida un ráster por pasada
-    se encuentre con este error, que dice qué falta hacer, antes que con un camino
-    nunca probado. Escribirlo es su propia tarea.
 
-    **No le pregunta nada a GEE**, y por eso se resuelve acá y no con
-    ``ventanas_de``: un agrupamiento que necesita las fechas de las pasadas no
-    puede dar una sola ventana por mes, así que se rechaza sin gastar una llamada
-    —y sin necesitar el ROI, que en este punto todavía no se armó—.
+class _Subido(NamedTuple):
+    """Un COG ya subido: lo que hace falta para escribir sus filas."""
 
-    Raises:
-        inngest.NonRetriableError: si la receta no parte el mes en exactamente una
-            ventana para el ráster. Reintentarlo daría lo mismo: es la receta.
+    cog: _Cog
+    archivo: str
+    bbox: list[float]
+    megas: float
+
+
+def _ventanas_del_raster(
+    roi: object, mes: Mes, receta: Receta
+) -> tuple[Ventana, tuple[Ventana, ...]]:
+    """El compuesto del mes y, si la receta lo pide, sus pasadas (M.9.7e2).
+
+    **El compuesto mensual va siempre** (d39, ``DECISIONS #72``): para informes y
+    comparaciones. Las pasadas, sólo si ``agrupamiento_raster`` es por pasada, y
+    eso cuesta una llamada —las fechas—; con ``entero`` no se le pregunta nada a
+    GEE, como antes.
     """
-    modo = agrupamiento(receta.agrupamiento_raster)
-    ventanas = () if modo.necesita_fechas else modo.partir(del_mes(mes), ())
-    if len(ventanas) != 1:
-        msg = (
-            f"la receta {receta.version} pide el ráster con agrupamiento "
-            f"{receta.agrupamiento_raster!r}, que no da una sola ventana por mes; "
-            f"el mapa del rancho {rancho_id} es de una sola "
-            f"(DECISIONS #63: el ráster sigue siendo mensual)"
-        )
-        raise inngest.NonRetriableError(msg)
-    return ventanas[0]
+    mensual = del_mes(mes)
+    if not agrupamiento(receta.agrupamiento_raster).necesita_fechas:
+        return mensual, ()
+    return mensual, ventanas_de(roi, mensual, receta, para_raster=True)
 
 
 def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
@@ -134,11 +147,25 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     total: int,
     receta: Receta,
 ) -> dict[str, Any]:
-    """El step ``mes-AAAA-MM``: el mapa del mes, si hubo algo que ver.
+    """El step ``mes-AAAA-MM``: el mapa del mes y, con v3, el de cada pasada.
 
-    Es idempotente: la key y la ``natural_key`` salen del rancho, el índice, la
-    receta y el mes, así que repetir el step sobrescribe el mismo objeto y la
-    misma fila.
+    Es idempotente: la key y la ``natural_key`` salen del rancho, el producto, la
+    receta y la ventana, así que repetir el step sobrescribe los mismos objetos y
+    las mismas filas.
+
+    **Con v3** (``agrupamiento_raster: por_pasada``, M.9.7e2, ``DECISIONS #77``):
+
+    1. **una llamada con los números del mes y de todas sus pasadas**
+       (``reducciones_de``, M.9.7d): la cobertura de cada pasada sobre el rancho
+       sale de ahí, sin otro pedido;
+    2. se sube **toda pasada con al menos un píxel despejado** (d37), y el
+       compuesto del mes si tiene alguno (``#51``);
+    3. **en paralelo** (``raster.en_paralelo``): la URL, la descarga, el COG y la
+       subida de cada uno. En serie, el Cauca se iba a ~46 s por mes;
+    4. **las filas, al final**, cuando subió todo. Si algo falla antes, el step
+       se reintenta sin haber escrito filas que apunten a archivos que no están.
+
+    **Con v2 hace lo de antes**: una sola ventana, el mes, y la misma bitácora.
 
     Raises:
         inngest.NonRetriableError: si un id del evento no es un uuid, o si GEE
@@ -146,21 +173,17 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
             píxeles, un rancho que no entra en una descarga).
     """
     t0 = time.monotonic()
-    indices = indices_del_mapa(receta)
-    ventana = _la_unica_ventana(rancho_id, mes, receta)
-    # Las claves primero, las de **todos** los índices: validan los uuid antes de
-    # pedirle nada a GEE. Un id que no es un uuid no se arregla reintentando.
+    productos = productos_del_cog(receta)
+    bandas = bandas_del_cog(receta)
+    # Las claves del mes primero, las de todos los productos: validan los uuid
+    # antes de pedirle nada a GEE. Un id que no es un uuid no se arregla
+    # reintentando. Las de las pasadas usan los mismos ids.
     try:
-        claves_por_indice = {
-            indice: claves_cog_mensual(
-                tenant_id=tenant_id,
-                rancho_id=rancho_id,
-                receta=receta,
-                indice=indice,
-                ventana=ventana,
+        for producto in productos:
+            claves_cog_mensual(
+                tenant_id=tenant_id, rancho_id=rancho_id, receta=receta,
+                indice=producto, ventana=del_mes(mes),
             )
-            for indice in indices
-        }
     except (TypeError, ValueError) as error:
         msg = f"el evento no trae ids válidos para la key del mapa: {error}"
         raise inngest.NonRetriableError(msg) from error
@@ -168,9 +191,51 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     roi = coords_to_geometry(coordenadas)
     progreso = entre(PROGRESO_PLAN, PROGRESO_MESES, posicion, total)
 
+    def claves_de(cog: _Cog, producto: str) -> ClavesDeCapa:
+        if cog.fuente == FUENTE_PASADA:
+            return claves_cog_pasada(
+                tenant_id=tenant_id, rancho_id=rancho_id, receta=receta,
+                producto=producto, ventana=cog.ventana,
+            )
+        return claves_cog_mensual(
+            tenant_id=tenant_id, rancho_id=rancho_id, receta=receta,
+            indice=producto, ventana=cog.ventana,
+        )
+
+    def subir(cog: _Cog) -> _Subido:
+        # **Una** descarga con todas las bandas (M.9.7b). La URL es un pedido a
+        # GEE: se cuenta y se traduce igual, porque el hilo corre en una copia
+        # del contexto del step.
+        url = url_de_descarga(
+            mapa_multibanda_de(roi, cog.ventana, receta, bandas).unmask(
+                NODATA_ENTERO, sameFootprint=False
+            ),
+            parametros_del_mapa(roi, receta),
+        )
+        archivo = claves_de(cog, productos[0]).storage_key
+        bbox, megas = subir_cog(url, archivo, nodata=NODATA_ENTERO)
+        return _Subido(cog, archivo, bbox, megas)
+
     with errores_de_gee(mes, "este rancho"), ejecucion.contando() as conteo:
-        reduccion = reduccion_de(roi, ventana, receta)
-        if reduccion.cobertura == 0:
+        mensual, pasadas = _ventanas_del_raster(roi, mes, receta)
+        # Una llamada: el compuesto y todas las pasadas (M.9.7d).
+        reduccion_del_mes, *de_pasadas = reducciones_de(
+            roi, (mensual, *pasadas), receta
+        )
+        # d37: toda pasada con al menos un píxel despejado en el rancho.
+        con_pixeles = [
+            _Cog(ventana, FUENTE_PASADA, reduccion)
+            for ventana, reduccion in zip(pasadas, de_pasadas, strict=True)
+            if reduccion.cobertura > 0
+        ]
+        # `#51`: un mes sin un píxel limpio no tiene COG. Con cobertura 0 en el
+        # compuesto, tampoco la tiene ninguna pasada.
+        a_subir = (
+            [_Cog(mensual, FUENTE_MENSUAL, reduccion_del_mes)]
+            if reduccion_del_mes.cobertura > 0
+            else []
+        ) + con_pixeles
+        if not a_subir:
             reportar(
                 f"mes-{mes}",
                 f"Mes {posicion} de {total} ({mes}): sin un píxel limpio, sin mapa",
@@ -178,67 +243,85 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
                 nivel=AVISO,
                 mes=str(mes),
                 cobertura=0.0,
+                pasadas=len(pasadas),
                 llamadas=conteo.llamadas,
                 ms=ms_desde(t0),
             )
             return {"mes": str(mes), "cobertura": 0.0, "storage_keys": [], "mapas": 0}
+        subidos = en_paralelo(subir, a_subir)
 
-        # **Una** descarga con todos los índices como bandas (M.9.7b, `DECISIONS
-        # #73`): antes eran cuatro. La URL va dentro del mismo bloque, así que las
-        # llamadas del mes quedan contadas juntas y traducidas por el mismo manejador.
-        url = url_de_descarga(
-            mapa_multibanda_de(roi, ventana, receta, indices).unmask(
-                NODATA_ENTERO, sameFootprint=False
-            ),
-            parametros_del_mapa(roi, receta),
-        )
+    # Las filas al final, cuando subió todo. Cada producto es su fila y dice qué
+    # bandas del archivo es: un índice, una; el color real, tres.
+    for subido in subidos:
+        for producto in productos:
+            insert_layer(
+                natural_key=claves_de(subido.cog, producto).natural_key,
+                product=producto,
+                storage_key=subido.archivo,
+                # El instante de la pasada, o el día 1 del mes: el mapa del panel
+                # filtra por esto desde M.9.7c.
+                acquired_ts=subido.cog.ventana.inicio,
+                ingested_ts=datetime.now(UTC),
+                tenant_id=tenant_id,
+                rancho_id=rancho_id,
+                bbox=subido.bbox,
+                source=subido.cog.fuente,
+                receta=receta.version,
+                estadisticas=_estadisticas_de_la_capa(subido.cog.reduccion, producto),
+                bandas=bandas_de_producto(receta, producto),
+                escala=ESCALA_DEL_COG,
+            )
 
-    # Las cuatro claves comparten el archivo (`storage_key`) y difieren en la fila.
-    archivo = claves_por_indice[indices[0]].storage_key
-    bbox, megas = subir_cog(url, archivo, nodata=NODATA_ENTERO)
-
-    # Una fila por índice, como antes, y cada una dice qué banda del archivo es: la
-    # banda `i + 1` es `indices[i]`, porque `mapa_multibanda_de` las arma en ese
-    # orden. Si el step se reintenta, el archivo y las filas son los mismos y se
-    # pisan: las `natural_key` no cambiaron con el formato.
-    for banda, indice in enumerate(indices, start=1):
-        claves = claves_por_indice[indice]
-        insert_layer(
-            natural_key=claves.natural_key,
-            product=indice,
-            storage_key=claves.storage_key,
-            acquired_ts=ventana.inicio,
-            ingested_ts=datetime.now(UTC),
-            tenant_id=tenant_id,
-            rancho_id=rancho_id,
-            bbox=bbox,
-            source="mensual",
-            receta=receta.version,
-            estadisticas=_estadisticas_de_la_capa(reduccion, indice),
-            bandas=[banda],
-            escala=ESCALA_DEL_COG,
-        )
-
+    mapas = len(subidos) * len(productos)
     reportar(
         f"mes-{mes}",
-        f"Mes {posicion} de {total} ({mes}): {len(indices)} mapas en un archivo "
-        f"({', '.join(i.upper() for i in indices)}), "
-        f"cobertura {porcentaje(reduccion.cobertura)}",
+        _mensaje_del_mes(
+            posicion=posicion, total=total, mes=mes, productos=productos,
+            cobertura=reduccion_del_mes.cobertura, pasadas=len(pasadas),
+            subidas=len(con_pixeles),
+        ),
         progreso=progreso,
         mes=str(mes),
-        cobertura=reduccion.cobertura,
-        megas=round(megas, 2),
-        mapas=len(indices),
+        cobertura=reduccion_del_mes.cobertura,
+        megas=round(sum(s.megas for s in subidos), 2),
+        mapas=mapas,
+        pasadas=len(pasadas),
+        pasadas_con_mapa=len(con_pixeles),
         llamadas=conteo.llamadas,
         ms=ms_desde(t0),
     )
     return {
         "mes": str(mes),
-        "cobertura": reduccion.cobertura,
-        "storage_keys": [archivo],
-        # Las capas, no los archivos: con el COG multibanda son cuatro en uno.
-        "mapas": len(indices),
+        "cobertura": reduccion_del_mes.cobertura,
+        "storage_keys": [s.archivo for s in subidos],
+        # Las capas, no los archivos: con el COG multibanda son varias en uno.
+        "mapas": mapas,
     }
+
+
+def _mensaje_del_mes(  # noqa: PLR0913 - lo que dice la línea, por nombre
+    *,
+    posicion: int,
+    total: int,
+    mes: Mes,
+    productos: tuple[str, ...],
+    cobertura: float,
+    pasadas: int,
+    subidas: int,
+) -> str:
+    """La línea de la bitácora del mes.
+
+    Con v2 es la de siempre. Con v3 suma las pasadas: cuántas hubo y de cuántas
+    quedó mapa, que son las que tienen algún píxel despejado en el rancho.
+    """
+    linea = (
+        f"Mes {posicion} de {total} ({mes}): {len(productos)} mapas en un archivo "
+        f"({', '.join(p.upper() for p in productos)}), "
+        f"cobertura {porcentaje(cobertura)}"
+    )
+    if not pasadas:
+        return linea
+    return f"{linea}; {subidas} de {pasadas} pasadas con mapa"
 
 
 @inngest_client.create_function(

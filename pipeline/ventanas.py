@@ -179,13 +179,18 @@ def _por_pasada(pedido: Ventana, fechas: Sequence[datetime]) -> tuple[Ventana, .
 
 
 def etiqueta_de_instante(instante: datetime) -> str:
-    """``AAAA-MM-DDTHH:MMZ``: la etiqueta de una pasada.
+    """``AAAA-MM-DDTHHMMZ``: la etiqueta de una pasada, que sirve para una key.
 
-    Minutos y no segundos: alcanza para distinguir dos pasadas —que están a
-    días— y no promete una precisión que el instante de la pasada no tiene, que
-    sale de la primera de sus teselas.
+    Minutos y no segundos: alcanza para distinguir dos pasadas —que están a 10
+    minutos como mínimo— y no promete una precisión que el instante no tiene.
+
+    **Sin los dos puntos** desde M.9.7e2 (``DECISIONS #77``): la etiqueta va al
+    nombre del COG de la pasada, y la validación de keys rechaza ``:``, que en una
+    URL de tile es incómodo. Es ISO 8601 en su forma básica para la hora. No se
+    guarda en ninguna fila —la ``fecha`` de la fila es el instante—, así que
+    cambiarla no movió nada escrito.
     """
-    return instante.astimezone(UTC).strftime("%Y-%m-%dT%H:%MZ")
+    return instante.astimezone(UTC).strftime("%Y-%m-%dT%H%MZ")
 
 
 @dataclass(frozen=True, slots=True)

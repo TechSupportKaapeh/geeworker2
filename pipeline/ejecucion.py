@@ -107,6 +107,18 @@ class Conteo:
 
 
 _conteo: ContextVar[Conteo | None] = ContextVar("conteo_de_llamadas", default=None)
+# Desde M.9.7e2 el paso del rancho pide URLs desde varios hilos con el mismo
+# contexto, y por lo tanto el mismo `Conteo`: `+= 1` sobre un atributo no es
+# atómico, así que va con candado.
+_candado_del_conteo = threading.Lock()
+
+
+def _contar() -> None:
+    """Suma una llamada al conteo del contexto, si hay uno."""
+    conteo = _conteo.get()
+    if conteo is not None:
+        with _candado_del_conteo:
+            conteo.llamadas += 1
 
 
 class _PlazoCompartido:
@@ -225,9 +237,7 @@ def traer(expresion: Any, *, milisegundos: int = PLAZO_MS) -> Any:  # noqa: ANN4
     Raises:
         ErrorDeGEE: siempre que el pedido falle, con ``reintentable`` puesto.
     """
-    conteo = _conteo.get()
-    if conteo is not None:
-        conteo.llamadas += 1
+    _contar()
     with plazo(milisegundos):
         try:
             return expresion.getInfo()
@@ -249,9 +259,7 @@ def url_de_descarga(
     Va acá y no en el servicio de descarga porque también es pedirle a GEE que
     calcule: el mismo plazo, la misma traducción de errores y el mismo conteo.
     """
-    conteo = _conteo.get()
-    if conteo is not None:
-        conteo.llamadas += 1
+    _contar()
     with plazo(milisegundos):
         try:
             return imagen.getDownloadURL(parametros)

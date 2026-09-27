@@ -38,7 +38,7 @@ import re
 import uuid
 from typing import NamedTuple
 
-from pipeline.receta import Receta
+from pipeline.receta import PRODUCTO_COLOR_REAL, Receta
 from pipeline.ventanas import Ventana
 
 PREFIJO_TENANTS = "tenants"
@@ -116,12 +116,17 @@ def _claves_mensuales(  # noqa: PLR0913 - todo por nombre, y son datos distintos
     ventana: Ventana,
     multibanda: bool = False,
 ) -> ClavesDeCapa:
-    """El armador único de las dos claves. Ver los tres envoltorios de abajo.
+    """El armador único de las dos claves. Ver los envoltorios de abajo.
 
     Con ``multibanda`` la key no lleva el índice: el archivo los tiene a todos.
+    ``indice`` es el producto de la fila: un índice de la receta, o
+    ``PRODUCTO_COLOR_REAL`` si la receta lleva el color real (M.9.7e2).
     """
-    if indice not in receta.indices:
-        msg = f"la receta {receta.version} no calcula {indice!r}: {receta.indices}"
+    productos = (
+        (*receta.indices, PRODUCTO_COLOR_REAL) if receta.color_real else receta.indices
+    )
+    if indice not in productos:
+        msg = f"la receta {receta.version} no produce {indice!r}: {productos}"
         raise ValueError(msg)
     if _ETIQUETA.fullmatch(ventana.etiqueta) is None:
         msg = f"la etiqueta de la ventana no sirve para una key: {ventana.etiqueta!r}"
@@ -167,6 +172,31 @@ def claves_cog_mensual(
         familia="mensual",
         receta=receta,
         indice=indice,
+        ventana=ventana,
+        multibanda=True,
+    )
+
+
+def claves_cog_pasada(
+    *, tenant_id: str, rancho_id: str, receta: Receta, producto: str, ventana: Ventana
+) -> ClavesDeCapa:
+    """Las claves del COG de **una pasada** de un rancho (M.9.7e2, ``DECISIONS #77``).
+
+    Mismo archivo por pasada para todos los productos, como el mensual:
+    ``tenants/{t}/ranchos/{r}/{receta}/{2025-07-14T1542Z}.tif``. No choca con el
+    mensual (``…/{AAAA-MM}.tif``) porque las etiquetas no se parecen.
+
+    La familia es ``pasada``, así que la ``natural_key`` de una pasada no choca con
+    la del mensual aunque las dos fueran del mismo producto.
+    """
+    return _claves_mensuales(
+        tenant_id=tenant_id,
+        carpeta="ranchos",
+        entidad="rancho",
+        entidad_id=rancho_id,
+        familia="pasada",
+        receta=receta,
+        indice=producto,
         ventana=ventana,
         multibanda=True,
     )

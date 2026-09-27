@@ -3994,3 +3994,77 @@ Es distinto de `#67`: ahí se re-fijó la huella de v1 sin subir la versión. Ac
 - **Eficiencia:** sin costo medible (arriba). **Atomicidad:** sin cambios.
 - **Mantenibilidad:** la regla de los opcionales queda en el código, al lado de `_OPCIONALES`, y
   fijada por tests.
+
+
+---
+
+## 77. El rancho por pasada: un COG por pasada con algún píxel, en paralelo (2026-09-27)
+
+> M.9.7e2. **No cambia producción**: sólo corre con `s2-pasada-v3`, que no es la vigente. Con v2
+> el paso del rancho hace exactamente lo de antes, y un test lo fija.
+
+**Qué hace un mes con v3** (`handlers/rancho.procesar_mes`):
+
+1. **una llamada con los números del compuesto y de todas las pasadas** (`reducciones_de`,
+   `#74`): la cobertura de cada pasada sobre el rancho sale de ahí, sin otro pedido. Más la de
+   las fechas: dos llamadas antes de bajar nada;
+2. se sube **el compuesto** si tiene algún píxel (`#51`, d39) y **toda pasada con cobertura mayor
+   que 0 sobre el rancho** (d37);
+3. **en paralelo**, con `raster.en_paralelo` (4 hilos): la URL, la descarga, el COG y la subida
+   de cada archivo. Cada hilo corre en una copia del contexto, porque el job de la bitácora y el
+   conteo de llamadas viven en `ContextVar`; y el conteo pasó a sumar con candado;
+4. **las filas, al final**, cuando subió todo: ninguna fila apunta a un archivo que no llegó.
+
+**Lo que escribe:**
+
+- **Un archivo por ventana**, con los 4 índices y el color real en 7 bandas int16 (×10.000):
+  `…/s2-pasada-v3/{AAAA-MM}.tif` para el compuesto y `…/s2-pasada-v3/{2025-07-14T1542Z}.tif`
+  para cada pasada (`claves_cog_pasada`).
+- **Cinco filas por archivo**: una por índice (`bandas` = `[1]` a `[4]`) y una **`rgb`** con
+  `bandas = [5, 6, 7]` (decisión del usuario del 2026-09-27). Geocore ya arma un `&bidx=` por
+  banda, y con tres TiTiler pinta en color: **no hace falta migración**, porque `product` no tiene
+  CHECK y `bandas` acepta varias. La fila `rgb` lleva sólo la cobertura y las observaciones.
+- **`source`**: `mensual` para el compuesto y **`pasada`** para las pasadas. Es lo que el panel usa
+  para distinguirlas (M.9.7f). La `natural_key` de cada familia es distinta, así que no chocan.
+- **`acquired_ts` es el instante de la pasada**, y el día 1 en el compuesto: el mapa del panel
+  filtra por eso desde M.9.7c.
+
+**La etiqueta segura:** `etiqueta_de_instante` da `2025-07-14T1542Z`, sin los dos puntos que la
+validación de keys rechaza. No se guarda en ninguna fila, así que no movió nada escrito.
+
+### Verificado contra GEE
+
+Con el paso real —descarga, COG y conversión de verdad—, la subida a una carpeta local y las
+filas en una lista:
+
+| Rancho y mes | Tiempo | Archivos | Filas |
+|---|---|---|---|
+| Cauca 226 ha, 2025-07 | **24,0 s** | 11 (el mes y 10 pasadas) | 55 |
+| Yaqui 226 ha, 2026-03 | **19,9 s** | 10 (el mes y 9) | 50 |
+| Cauca ~2.500 ha, 2025-07 | **48,6 s** | 14 (el mes y 13) | 70 |
+
+Cada COG con 7 bandas int16 y valores plausibles (NDVI 0,62 y reflectancias de 0,05 a 0,08 en el
+compuesto del Cauca). En serie, el Cauca chico eran ~46 s (§3.6).
+
+**Más hilos no ayuda**: el de 2.500 ha tarda 61,2 s con 2 hilos, 48,6 s con 4 y 56,9 s con 8. El
+cuello es GEE generando cada descarga, no la red. Por eso son 4.
+
+### ⚠️ Lo que queda para M.9.7g
+
+**Un rancho de ~2.500 ha en zona nublada ronda los 50 s por mes**, cerca de la compuerta de 60 s
+de M.2.6. Hay que medirlo con un rancho real antes de poner v3 vigente. Si no entra, la salida es
+partir el mes en más de un step (el compuesto y las pasadas por separado), que cambia "un step por
+mes". Esa decisión es del usuario, y no se toma antes de tener el número.
+
+### Lo que encontró la auditoría (etapa 4 del WORKFLOW)
+
+- **Seguridad (A01):** las keys se siguen armando con ids validados como uuid y una etiqueta que
+  pasa la regex de `claves.py`, siempre bajo `tenants/{t}/`. No hay entrada nueva.
+- **Concurrencia:** lo único compartido entre hilos es el `Conteo` —ahora con candado— y el
+  cliente de MinIO, que es uno (`lru_cache`) y seguro entre hilos. Si dos hilos lo construyen a la
+  vez la primera vez, se construye dos veces, y es inofensivo. El plazo de GEE ya estaba pensado
+  para varios hilos (`_PlazoCompartido`, M.4.8).
+- **Atomicidad:** las filas van después de todas las subidas. Si una falla, el step se reintenta y
+  vuelve a subir a las mismas keys; lo que quedó subido sin fila se pisa.
+- **Corrección:** con v2, una ventana, cuatro filas, `source="mensual"` y la misma línea de
+  bitácora. Los 20 tests del rancho de antes pasan sin tocarlos (salvo el doble del pedido en lista).

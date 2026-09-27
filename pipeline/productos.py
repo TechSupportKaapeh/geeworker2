@@ -23,7 +23,7 @@ from typing import Final
 import ee
 
 from pipeline.etapas import compuesto, fuente, nubes, reduccion
-from pipeline.receta import Receta
+from pipeline.receta import COLOR_REAL, PRODUCTO_COLOR_REAL, Receta
 from pipeline.ventanas import Ventana
 
 
@@ -103,6 +103,45 @@ def mapa_de(
 ESCALA_DEL_COG: Final = 10_000
 
 
+def productos_del_cog(receta: Receta) -> tuple[str, ...]:
+    """Las filas de ``layers`` que salen de un COG del rancho, en orden.
+
+    Un índice por fila y, si la receta lleva el color real, una fila más,
+    ``PRODUCTO_COLOR_REAL``, que pinta las tres bandas del color (M.9.7e2).
+    """
+    if receta.color_real:
+        return (*receta.indices, PRODUCTO_COLOR_REAL)
+    return receta.indices
+
+
+def bandas_del_cog(receta: Receta) -> tuple[str, ...]:
+    """Las bandas del COG del rancho, en orden: la ``bidx`` de cada una es su lugar.
+
+    Los índices y, detrás, el rojo, el verde y el azul si la receta lleva el color
+    real. Detrás y no delante: la banda de cada índice es la misma que en v2.
+    """
+    color = tuple(COLOR_REAL) if receta.color_real else ()
+    return (*receta.indices, *color)
+
+
+def bandas_de_producto(receta: Receta, producto: str) -> list[int]:
+    """Las ``bandas`` de la fila de ``layers`` de un producto: su ``bidx``, desde 1.
+
+    Un índice es una banda; el color real son tres, en el orden R, G, B, que es
+    como TiTiler las pinta cuando recibe tres ``bidx``.
+
+    Raises:
+        ValueError: si el producto no sale de esta receta.
+    """
+    bandas = bandas_del_cog(receta)
+    if producto == PRODUCTO_COLOR_REAL and receta.color_real:
+        return [bandas.index(nombre) + 1 for nombre in COLOR_REAL]
+    if producto in receta.indices:
+        return [bandas.index(producto) + 1]
+    msg = f"la receta {receta.version} no produce {producto!r}"
+    raise ValueError(msg)
+
+
 def mapa_multibanda_de(
     roi: ee.Geometry, ventana: Ventana, receta: Receta, indices: Sequence[str]
 ) -> ee.Image:
@@ -118,15 +157,19 @@ def mapa_multibanda_de(
     archivo. Lo enmascarado sigue enmascarado: quien descarga lo rellena con su
     centinela.
 
+    ``indices`` puede traer también las bandas del color real si la receta lo
+    lleva (``bandas_del_cog``): la reflectancia por 10.000 es el número de S2 tal
+    cual, y cabe en un int16.
+
     Raises:
-        ValueError: si algún índice no es de la receta, o si no se pide ninguno.
+        ValueError: si alguna banda no es de la receta, o si no se pide ninguna.
     """
     if not indices:
         msg = "el mapa multibanda necesita al menos un índice"
         raise ValueError(msg)
-    fuera = [indice for indice in indices if indice not in receta.indices]
+    fuera = [indice for indice in indices if indice not in bandas_del_cog(receta)]
     if fuera:
-        msg = f"la receta {receta.version} no calcula {fuera}: {list(receta.indices)}"
+        msg = f"la receta {receta.version} no calcula {fuera}: {bandas_del_cog(receta)}"
         raise ValueError(msg)
     return (
         compuesto_de(roi, ventana, receta)
