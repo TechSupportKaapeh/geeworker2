@@ -3885,3 +3885,46 @@ Al correr `pytest --gee -m gee` para el control, **fallaron 11 tests que no toca
 fallan igual en `main`: diez le pasan un `Mes` a funciones que desde M.9.0b reciben una
 `Ventana`, y uno sigue a `RECETA_VIGENTE`, que desde v2 es por pasada. El CI no corre los `gee`
 (no tiene credenciales, `CI.md`), así que nadie lo vio. Se arreglan en un PR aparte.
+
+---
+
+## 75. La ventana de una pasada dejaba teselas afuera (2026-09-27)
+
+> Un error de v2, en producción desde el 2026-09-25, que apareció verificando la máscara de v3
+> (M.9.7e1). **Se corrige para todas las recetas sin subir la versión de v2**: es un error del
+> código, no un parámetro, y todo lo que v2 escribió es de prueba y se borra en M.9.7g (`#72`,
+> d40). Decisión del usuario del 2026-09-27.
+
+**Lo que pasaba.** Las teselas de una misma toma no tienen el mismo `system:time_start`. En
+Sinaloa, cada pasada son dos teselas a **medio segundo** —T12RZN y T13RBH, una en cada zona UTM—.
+La ventana de una pasada era `[instante, instante + 1 s)`, con el instante de **la primera tesela
+que apareciera** (`tesela.first()`), y `fuente.milisegundos` corta al segundo. Si la tesela tardía
+era la primera y la temprana caía en el segundo anterior, la temprana quedaba afuera: **5 de las 7
+pasadas de marzo de 2025 entraban con una sola**.
+
+**Qué cambia en los números.** Cuando la parcela cae entera en el solape de las dos teselas, poco:
+los mismos píxeles, con la máscara calculada en la proyección de una sola zona UTM. Medido en
+Sinaloa, 2025-03: una pasada pasa de **0,401 a 0,451** de cobertura, y en las otras cuatro el NDVI
+se mueve en la cuarta decimal o menos. Sinaloa en agosto y el Cauca en julio no cambian. **Donde
+una tesela sola no cubre la parcela, faltaba el pedazo que trae la otra**: no se vio en estas
+parcelas, pero es el caso que hace que esto no sea cosmético.
+
+**Lo decidido:**
+
+- **El instante de la pasada es el de su tesela más temprana** (`compuesto.por_pasada`, con
+  `aggregate_min`), no el de una cualquiera.
+- **La ventana dura un minuto** (`ventanas._CIERRE`). Las teselas de una toma están a segundos:
+  medio segundo entre zonas UTM, ~15 s entre vecinas a lo largo de la órbita. **El techo es la
+  pasada siguiente sobre el mismo punto**, que no está a días —como decía el comentario— sino a
+  **10 minutos** cuando dos órbitas se solapan (el Cauca, 2025-07-06, 15:32 y 15:42).
+- **Dos pasadas a menos de un minuto se rechazan** con un error: sus ventanas se pisarían y una
+  tesela escribiría la misma observación dos veces.
+
+**Lo que se movió de paso:** la etiqueta y la `fecha` de la fila pasan a ser las de la tesela más
+temprana, que antes eran las de una cualquiera. La diferencia es de menos de un segundo, y la
+etiqueta, que va al minuto, casi nunca cambia. Un reproceso de una pasada ya escrita puede dejar
+una fila al lado de la vieja, con milisegundos de diferencia: no importa, porque M.9.7g borra todo
+lo de prueba antes de reprocesar con v3.
+
+**Tests:** los de `ventanas` fijan el caso de Sinaloa, los 10 minutos del Cauca y el rechazo; uno
+`gee`, `test_cada_pasada_trae_todas_sus_teselas`, lo verifica contra GEE con la parcela de Sinaloa.
