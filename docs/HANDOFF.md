@@ -1,5 +1,19 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-26, sesión 17 · El ráster por pasada, en marcha.** M.9.7a y M.9.7b en producción
+> (`DECISIONS #72` y `#73`). Lo que hay que saber para tocar el worker:
+>
+> - **El COG del rancho es multibanda**: un archivo por mes (`…/{receta}/{AAAA-MM}.tif`, sin el
+>   índice), los índices como bandas en enteros ×10.000 (`productos.ESCALA_DEL_COG`), y una fila de
+>   `layers` por índice con `bandas` y `escala`. El mapa a demanda sigue de una banda.
+> - **El centinela del COG multibanda es `raster.NODATA_ENTERO` (-32.768)**, y el valor se acota a
+>   ±32.767 antes de pasar a entero: sin eso un píxel válido podía caer en el centinela.
+> - **La máscara del ráster por pasada será la receta y Cloud Score+ a la vez** (M.9.7e, receta v3).
+>   Se reproduce con `scripts/check_pipeline_real.py --mascaras`.
+> - **Las credenciales de la base del `.env` están muertas**: `check_schema.py` no conecta.
+>
+> Crónica: [`SESSION_2026-09-26_sesion_17_el_raster_por_pasada.md`](SESSION_2026-09-26_sesion_17_el_raster_por_pasada.md).
+
 > **2026-09-26 · La bitácora de v2 cuenta pasadas** (`DECISIONS #71`): `19 pasadas, 4 con al menos
 > 30,0 % de la parcela a la vista, 10 tapadas por completo`, en vez de un promedio y de "filas sin
 > valor". El mes deja dato si al menos una pasada sirve. **Lo abierto es el costo**: cada pasada
