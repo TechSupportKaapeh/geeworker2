@@ -98,6 +98,12 @@ def mundo(monkeypatch):
         estado["pedidos"].append(ventana.etiqueta)
         return _Expresion(lambda: estado["gee"](ventana.etiqueta))
 
+    def _estadisticas_de_ventanas(roi, ventanas, receta):
+        # La parcela pide todas sus ventanas juntas desde M.9.7d (`DECISIONS #74`);
+        # el rancho sigue pidiendo la suya sola. Las dos pasan por el mismo doble.
+        expresiones = [_estadisticas_de(roi, ventana, receta) for ventana in ventanas]
+        return _Expresion(lambda: [e.getInfo() for e in expresiones])
+
     def _registrar(job_id, attempt, stage, level, message, detail=None, progress=None):
         estado["bitacora"].append({"etapa": stage, "nivel": level, "mensaje": message,
                                    "detalle": detail or {}, "progreso": progress})
@@ -112,6 +118,7 @@ def mundo(monkeypatch):
     monkeypatch.setattr(handlers_parcela, "RECETA_VIGENTE", RECETA_MENSUAL_V1)
     monkeypatch.setattr(handlers_rancho, "RECETA_VIGENTE", RECETA_MENSUAL_V1)
     monkeypatch.setattr(ejecucion, "estadisticas_de", _estadisticas_de)
+    monkeypatch.setattr(ejecucion, "estadisticas_de_ventanas", _estadisticas_de_ventanas)
     monkeypatch.setattr(avance_job, "registrar_evento_job", _registrar)
     monkeypatch.setattr(db_repository, "update_processing_job",
                         lambda job_id, status, **kw: estado["jobs"].append((status, kw)))

@@ -3797,3 +3797,91 @@ Terra-admin#24) y recién después este PR.
 **Lo que ya está en el bucket no se toca**: los COG viejos quedan bajo su key con el índice, y las
 filas que apuntan a ellos siguen sin `bandas`, así que se pintan como antes. Como todo es de prueba
 (`#72`, d40), se borran y se reprocesan en M.9.7g.
+
+---
+
+## 74. Todas las pasadas del mes en un pedido: el costo de v2 era ir y volver (2026-09-27)
+
+> M.9.7d. **La tarea decía otra cosa**, y la medición la dio vuelta: el tablero pedía medir
+> primero la cobertura de todas las pasadas y reducir sólo las que tuvieran píxeles (`#71`).
+> Decisión del usuario del 2026-09-27, con los números de abajo: **se pide el mes entero en una
+> llamada**, y **por entidad**, no juntando parcelas distintas.
+
+### Lo medido antes de tocar código
+
+Contra GEE, sólo lectura, con el camino real del worker. Dos cuadrados de prueba de 25 ha y
+226 ha —el del Cauca de siempre y uno propio sobre campo regado del Valle del Yaqui, que **no es
+el rancho del equipo**— y uno de ~2.500 ha en el Cauca. Tres caminos, con las reducciones
+comparadas elemento por elemento contra las de hoy:
+
+| Mes | Hoy: una por pasada | Cobertura primero (`#71`) | **Todo en una** |
+|---|---|---|---|
+| Cauca 25 ha, 2025-07 (19 pasadas, 10 tapadas) | 44,0 s · 20 llamadas | 22,1 s · 11 | **5,3 s · 2** |
+| Cauca 25 ha, 2025-10 (16 pasadas, 10 tapadas) | 33,6 s · 17 | 15,1 s · 8 | **5,5 s · 2** |
+| Yaqui 25 ha, 2026-03 (9 pasadas, 0 tapadas) | 17,8 s · 10 | 20,5 s · 11 | **3,4 s · 2** |
+| Cauca 226 ha, 2025-07 (19 pasadas, 7 tapadas) | 39,3 s · 20 | 26,5 s · 14 | **5,0 s · 2** |
+| Yaqui 226 ha, 2026-03 (9 pasadas, 0 tapadas) | 20,0 s · 10 | 26,9 s · 11 | **3,6 s · 2** |
+| Cauca ~2.500 ha, 2025-07 (19 pasadas, 4 tapadas) | **87,9 s** · 20 | — | **10,4 s · 2** |
+| Cauca ~2.500 ha, 2025-10 (16 pasadas, 9 tapadas) | **65,4 s** · 17 | — | **15,1 s · 2** |
+
+"Todo en una" se midió **primero y en frío**, porque GEE cachea y medirlo después del otro lo
+habría favorecido. **En los siete casos las reducciones salen idénticas** a las de hoy.
+
+**Lo que dice:**
+
+- **Una pasada tapada cuesta lo mismo que una útil**, unos 2 s cada una: lo que se pagaba era el
+  ida y vuelta de cada llamada, no la reducción. Por eso "cobertura primero" ahorraba sólo en zona
+  nublada, y en zona despejada **sumaba** una llamada.
+- **Todo en una baja el mes de 5 a 9 veces, en cualquier clima**, y deja v2 cerca de lo que
+  costaba v1 (2–3 s, `#70`).
+- **Había un riesgo vivo en producción:** una parcela de ~2.500 ha en zona nublada pasaba la
+  compuerta de 60 s (88 y 65 s). Es lo que `#70` anticipaba para una parcela grande, y resultó
+  que la zona también lo dispara.
+
+### Lo que cambió
+
+- `productos.estadisticas_de_ventanas` arma **una** expresión: la lista de `estadisticas_de`, una
+  por ventana. Cada elemento es la misma expresión que se pedía suelta, y por eso los números no
+  se mueven: **no cambia la receta ni su huella**.
+- `ejecucion.reducciones_de` la pide y lee cada elemento con `leer`. Sin ventanas no llama a GEE.
+  Si la respuesta no trae una por ventana, levanta: una lista corta pegaría los números de una
+  pasada en la fecha de otra.
+- `handlers/parcela.procesar_mes` hace **dos llamadas por mes** —las fechas y los números— en vez
+  de N + 1. Lo usan el alta y el cierre de mes, que comparten esa función.
+- **El rancho y el mapa a demanda no cambian**: piden una sola ventana. La cobertura por pasada
+  del rancho, que es lo que decide qué pasadas del ráster se guardan (d37), sale de esta misma
+  función en M.9.7e, porque cada respuesta trae su cobertura.
+- `scripts/check_pipeline_real.py --costo` (escalón 8) reproduce la medición y **falla si las dos
+  formas no dan lo mismo**. Y un test `gee`, `test_pedir_las_pasadas_juntas_da_lo_mismo_que_de_a_una`,
+  lo fija sobre el cuadrado del Bajío.
+
+### Lo que se descartó
+
+- **Cobertura primero** (`#71`): la propuesta original. Descartada por la tabla.
+- **Juntar parcelas distintas en un pedido**: cada parcela es su evento, su job y su bitácora
+  (`#30` de Geocore, un step por mes). Juntarlas cambiaría ese modelo, y con el mes en dos
+  llamadas no hace falta.
+- **Cobertura primero y después una llamada con las útiles**: tres llamadas para ahorrar una
+  reducción que no cuesta.
+
+### Lo que encontró la auditoría (etapa 4 del WORKFLOW)
+
+- **Seguridad:** no hay entrada nueva ni cambia el aislamiento, porque las filas siguen colgando
+  de la parcela y el tenant del evento. Hallazgo menor, corregido: si GEE devolvía algo que no era
+  una lista, el error volcaba la respuesta entera al log y a la bitácora. Ahora dice el tipo.
+- **Eficiencia:** el riesgo nuevo es que **un pedido haga N reducciones**. Si alguna vez contesta
+  `user memory limit exceeded` —que es definitivo, así que el mes no se reintenta—, la salida es
+  partir las ventanas en lotes dentro de `reducciones_de`. **No se hizo ahora**: sobre ~2.500 ha ×
+  19 pasadas el pedido tarda 10–15 s, lejos del plazo de 120 s, y un camino de lotes que nunca
+  corre es el que falla el día que hace falta (el mismo criterio de `handlers/rancho.py`).
+- **Atomicidad:** igual que antes. Si el pedido falla, falla el mes entero, y el step se reintenta
+  sin haber escrito nada: el upsert va después.
+- **Corrección:** el orden de la respuesta es el de las ventanas, fijado por un test que le da a
+  cada pasada una mediana distinta. El `zip` es `strict`.
+
+### De paso: los tests `gee` estaban rotos, y el CI no podía verlo
+
+Al correr `pytest --gee -m gee` para el control, **fallaron 11 tests que no tocan esto**, y
+fallan igual en `main`: diez le pasan un `Mes` a funciones que desde M.9.0b reciben una
+`Ventana`, y uno sigue a `RECETA_VIGENTE`, que desde v2 es por pasada. El CI no corre los `gee`
+(no tiene credenciales, `CI.md`), así que nadie lo vio. Se arreglan en un PR aparte.

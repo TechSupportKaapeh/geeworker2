@@ -36,6 +36,14 @@ Y aparte, con `--pasadas`:
    agrega algo que agregar las pasadas al leer no pueda dar (`DECISIONS #63`).
    Corre solo, sin los otros cinco, porque son 24 meses por parcela.
 
+Y aparte, con `--costo`:
+
+8. **Cuanto cuesta un mes por pasada** (M.9.7d, `DECISIONS #74`): por parcela y
+   por mes, el camino de antes —una reduccion por pasada, en serie— contra el de
+   ahora —todas las pasadas en un pedido—, con el tiempo, las llamadas, y la
+   comprobacion de que las reducciones salen **identicas**. Corre el de ahora
+   primero, en frio: GEE cachea, y medirlo despues del otro lo favoreceria.
+
 Y aparte, con `--mascaras`:
 
 7. **Las mascaras** (M.9.7a, ARQUITECTURA §3.6): por pasada y sobre la parcela,
@@ -87,6 +95,10 @@ M.9.0, los 24 meses de la receta sobre las parcelas reales:
 M.9.7a, las tres mascaras sobre los mismos 24 meses:
 
     .venv/Scripts/python.exe scripts/check_pipeline_real.py --mascaras --parcelas scratch/parcelas_m97 --meses 2024-09 ... 2026-08 --csv scratch/m97a_mascaras.csv
+
+M.9.7d, el costo de un mes nublado contra uno despejado:
+
+    .venv/Scripts/python.exe scripts/check_pipeline_real.py --costo --parcelas scratch/parcelas_m97d --meses 2025-07 2025-10 2026-03
 
 No escribe en la base ni sube nada: solo lee de GEE e imprime. El COG, si se
 pide, queda en una carpeta temporal.
@@ -875,6 +887,41 @@ def _num(valor, decimales=3):
     return f"{valor:.{decimales}f}"
 
 
+def escalon_costo(parcelas, meses, receta):
+    """8. Cuanto cuesta un mes por pasada (M.9.7d): de a una contra todas juntas.
+
+    La compuerta automatica es que las reducciones salgan **identicas**: es la
+    misma expresion por ventana, pedida junta. El tiempo lo lee una persona; lo
+    medido el 2026-09-27 esta en `DECISIONS #74`.
+    """
+    from pipeline import ejecucion
+    from pipeline.ventanas import del_mes
+
+    print(f"\n{_dato}8. EL COSTO DE UN MES  ({len(parcelas)} parcelas x {len(meses)} meses)")
+    print(f"{_dato}{'parcela':<18} {'mes':<8} {'pasadas':>7} {'tapadas':>7} "
+          f"{'juntas':>12} {'de a una':>14}")
+    problemas = []
+    for nombre, roi in parcelas:
+        for mes in meses:
+            ventanas = ejecucion.ventanas_de(roi, del_mes(mes), receta)
+            # Juntas primero, en frio: GEE cachea, y medirlo despues favoreceria al nuevo.
+            reloj = time.monotonic()
+            with ejecucion.contando() as conteo:
+                juntas = ejecucion.reducciones_de(roi, ventanas, receta)
+            t_juntas, l_juntas = time.monotonic() - reloj, conteo.llamadas
+            reloj = time.monotonic()
+            with ejecucion.contando() as conteo:
+                de_a_una = tuple(ejecucion.reduccion_de(roi, v, receta) for v in ventanas)
+            t_una, l_una = time.monotonic() - reloj, conteo.llamadas
+            tapadas = sum(1 for r in juntas if not r.cobertura)
+            # `fechas_de` es una llamada mas en los dos caminos, y no entra en la tabla.
+            print(f"{_dato}{nombre:<18} {mes!s:<8} {len(ventanas):>7} {tapadas:>7} "
+                  f"{t_juntas:6.1f} s {l_juntas:>2} ll {t_una:6.1f} s {l_una:>3} ll")
+            if juntas != de_a_una:
+                problemas.append(f"{nombre} {mes}: juntas no da lo mismo que de a una")
+    return problemas
+
+
 def main():
     parser = argparse.ArgumentParser(description="M.2.6 y M.9.0: el pipeline contra la realidad")
     parser.add_argument("--parcelas", type=Path,
@@ -891,6 +938,9 @@ def main():
     parser.add_argument("--mascaras", action="store_true",
                         help="corre SOLO el escalon 7 (M.9.7a): la mascara de la "
                              "receta contra Cloud Score+ y las dos a la vez")
+    parser.add_argument("--costo", action="store_true",
+                        help="corre SOLO el escalon 8 (M.9.7d): cuanto cuesta un mes "
+                             "por pasada, de a una contra todas juntas")
     parser.add_argument("--csv", type=Path,
                         help="con --pasadas o --mascaras, donde dejar el detalle pasada por "
                              "pasada. Conviene scratch/, que esta en .gitignore")
@@ -925,6 +975,9 @@ def main():
     # por parcela y mes; M.9.0 mide 24 meses por parcela y le alcanza con una.
     # Correr los cinco sobre 24 meses serian ~430 llamadas para leer una tabla.
     # El escalon 7 corre solo por lo mismo que el 6: son 24 meses por parcela.
+    if args.costo:
+        return _cerrar(escalon_costo(parcelas, meses, RECETA_VIGENTE))
+
     if args.mascaras:
         problemas += escalon_mascaras(
             parcelas, meses, RECETA_VIGENTE, args.indice, args.csv

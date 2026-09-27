@@ -10,9 +10,11 @@ Los steps:
   correr el cuerpo del handler en cada request: un reloj leído afuera daría otros
   meses si el run cruza el fin de mes, o si un reintento espera días.
 - ``mes-AAAA-MM``, uno por mes, del más viejo al más nuevo: la reducción del mes
-  (una llamada a GEE), las filas y el upsert. El id lleva el mes y no un número de
-  orden, así que un step memoizado nunca se confunde con otro mes. Lo que cruza
-  entre steps es texto (``DECISIONS #26``): el ROI se arma adentro de cada uno.
+  (una llamada a GEE con v1; dos con v2, las fechas y los números de todas las
+  pasadas juntas, ``DECISIONS #74``), las filas y el upsert. El id lleva el mes y
+  no un número de orden, así que un step memoizado nunca se confunde con otro
+  mes. Lo que cruza entre steps es texto (``DECISIONS #26``): el ROI se arma
+  adentro de cada uno.
 
 Reemplaza al ``process_parcela`` de la capa vieja **con el mismo** ``fn_id``: para
 Inngest es la misma función con otro código, no dos funciones sobre el mismo
@@ -26,11 +28,13 @@ No importa ``services/inngest_handlers.py``, que M.6.1 borra.
 """
 
 import time
+from collections.abc import Sequence
 from typing import Any
 
 import inngest
 from pipeline import ejecucion
-from pipeline.ejecucion import reduccion_de, ventanas_de
+from pipeline.ejecucion import reducciones_de, ventanas_de
+from pipeline.etapas.reduccion import Reduccion
 from pipeline.filas import ESTADISTICA_VALOR, filas_de
 from pipeline.periodos import Mes
 from pipeline.receta import RECETA_VIGENTE, Receta
@@ -88,27 +92,29 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     pedido = del_mes(mes)
 
     # El trabajo de GEE del step entero va bajo el mismo manejador y el mismo
-    # conteo: la bitácora sigue diciendo cuántas llamadas costó el mes, sea una
-    # ventana o sean ocho.
-    filas = []
-    coberturas = []
+    # conteo: la bitácora sigue diciendo cuántas llamadas costó el mes.
+    #
+    # **Todas las ventanas del mes en un pedido** (M.9.7d, `DECISIONS #74`): con
+    # v2 eran una llamada por pasada, y el costo de un mes era sobre todo ir y
+    # volver. Ahora son dos —las fechas y los números—, tenga el mes 1 pasada o 19.
     with errores_de_gee(mes, "esta parcela"), ejecucion.contando() as conteo:
-        for ventana in ventanas_de(roi, pedido, receta):
-            reduccion = reduccion_de(roi, ventana, receta)
-            coberturas.append(reduccion)
-            filas.extend(
-                filas_de(
-                    parcela_id=parcela_id,
-                    tenant_id=tenant_id,
-                    ventana=ventana,
-                    reduccion=reduccion,
-                    receta=receta,
-                )
-            )
+        ventanas = ventanas_de(roi, pedido, receta)
+        reducciones = reducciones_de(roi, ventanas, receta)
 
+    filas = [
+        fila
+        for ventana, reduccion in zip(ventanas, reducciones, strict=True)
+        for fila in filas_de(
+            parcela_id=parcela_id,
+            tenant_id=tenant_id,
+            ventana=ventana,
+            reduccion=reduccion,
+            receta=receta,
+        )
+    ]
     escritas = upsert_mediciones_mensuales(tuple(filas))
 
-    utiles, tapadas = _utiles_y_tapadas(coberturas, receta)
+    utiles, tapadas = _utiles_y_tapadas(reducciones, receta)
     # **El mes dejó dato si al menos una ventana es útil.** Con una sola ventana —v1—
     # es exactamente lo de antes: la ventana tiene valor si y sólo si llegó al
     # mínimo. Con una por pasada, antes se pedía que TODAS las filas tuvieran valor,
@@ -118,15 +124,15 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     # v1 dice exactamente lo que decía antes de M.9.0b. Con varias, el promedio no
     # dice mucho —mezcla fotos tapadas con buenas— y por eso el mensaje de v2 cuenta
     # pasadas en vez de dar un porcentaje.
-    cobertura_media = _promedio([r.cobertura for r in coberturas])
+    cobertura_media = _promedio([r.cobertura for r in reducciones])
     observaciones = _promedio([
-        r.observaciones for r in coberturas if r.observaciones is not None
+        r.observaciones for r in reducciones if r.observaciones is not None
     ])
     reportar(
         f"mes-{mes}",
         mensaje_del_mes(
             posicion=posicion, total=total, mes=mes, receta=receta,
-            ventanas=len(coberturas), utiles=utiles, tapadas=tapadas,
+            ventanas=len(reducciones), utiles=utiles, tapadas=tapadas,
             cobertura_media=cobertura_media,
         ),
         progreso=entre(PROGRESO_PLAN, PROGRESO_MESES, posicion, total),
@@ -134,7 +140,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
         mes=str(mes),
         cobertura=cobertura_media,
         observaciones=observaciones,
-        pasadas=len(coberturas),
+        pasadas=len(reducciones),
         utiles=utiles,
         tapadas=tapadas,
         escritas=escritas,
@@ -149,7 +155,9 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
     }
 
 
-def _utiles_y_tapadas(reducciones: list, receta: Receta) -> tuple[int, int]:
+def _utiles_y_tapadas(
+    reducciones: Sequence[Reduccion], receta: Receta
+) -> tuple[int, int]:
     """Cuántas ventanas son útiles y cuántas estaban tapadas por completo.
 
     Útil es llegar a ``cobertura_minima`` y que la mediana exista: la misma regla

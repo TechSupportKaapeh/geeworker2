@@ -527,7 +527,7 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | M.9.7a | **La máscara del ráster por pasada**: validar en 24 meses de 2 o 3 parcelas la candidata —la de la receta **y** Cloud Score+ a la vez— y fijarla | worker | ✅ 2026-09-26 · `DECISIONS #72`. **Las dos a la vez**: sobre 5 parcelas × 24 meses (1.100 pasadas), 5 errores propios de máscara contra 11 de la receta y 27 de Cloud Score+ sola, con 7 % menos de pasadas útiles. El escalón 7 de `check_pipeline_real.py` (`--mascaras`) lo reproduce |
 | M.9.7b | **El COG multibanda, sin cambio de comportamiento**: el mensual de hoy pasa a un archivo con los índices como bandas (enteros ×10.000) y el panel pinta con `bidx` | worker, Geocore, panel | ✅ 2026-09-26 · Terra-admin#24 y #25, Geocore#67, geeworker2#82; migración `CapasMultibanda` aplicada por el equipo. `DECISIONS #73` y `#53` de Geocore. **Verificado en producción** con un rancho nuevo del Valle del Yaqui: los cuatro índices se ven bien. Verificado contra GEE: misma máscara, diferencia máxima 5e-5, < 1 % de píxeles cambia un tono |
 | M.9.7c | **El listado de capas en el servidor**: `GET /api/layers` filtra por rancho y por rango de fechas, y el panel lo usa | Geocore, panel | ✅ 2026-09-26 · Geocore#71, Terra-admin#26. `DECISIONS #54` de Geocore: `?ranchoId=` trae las capas del rancho sin las de sus parcelas, `desde`/`hasta` son días UTC incluidos, e índice `ix_layers_tenant_rancho_acquired` (migración `CapasPorRancho`, **falta aplicarla**; no bloquea nada). 597 tests en Geocore y 117 en el panel |
-| M.9.7d | **La cobertura por pasada en una llamada**, para todas las parcelas del mes, antes de reducir: baja el costo de las estadísticas (`#71`) y decide qué pasadas del ráster se guardan | worker | ⬜ |
+| M.9.7d | **La cobertura por pasada en una llamada**, para todas las parcelas del mes, antes de reducir: baja el costo de las estadísticas (`#71`) y decide qué pasadas del ráster se guardan | worker | ✅ 2026-09-27 · `DECISIONS #74`. **Redefinida con la medición**: una pasada tapada costaba lo mismo que una útil (~2 s de ida y vuelta), así que se pide **el mes entero en una llamada**, por entidad. Un mes del Cauca de 19 pasadas, de 44 s y 20 llamadas a 5 s y 2; uno del Yaqui, de 18 s a 3,4 s; una parcela de ~2.500 ha nublada, de 88 s —pasaba la compuerta— a 10 s. Mismos números. `check_pipeline_real.py --costo` lo reproduce |
 | M.9.7e | **La receta v3 y el ráster del rancho por pasada**: `agrupamiento_raster: por_pasada`, la banda verde y el color real, la etiqueta segura para la key, descargas en paralelo, y la cobertura guardada con la capa | worker | ⬜ |
 | M.9.7f | **El mapa del rancho por fechas**: el deslizador pasa de meses a fechas, con la calidad a la vista y "la última imagen buena" | panel | ⬜ |
 | M.9.7g | **El histórico**: se reprocesan los ranchos y parcelas de prueba con v3 | worker 👥 | ⬜ |
@@ -766,8 +766,8 @@ fechas disponibles, y si el RGB entra en el bloque.
 
 - **"La última imagen útil"** en el mapa del rancho: probablemente lo más valioso para un técnico
   de campo. Sale de las fechas disponibles más M.9.6.
-- **Bajar el costo de las pasadas tapadas** en el worker (`DECISIONS #71`): no es de este bloque,
-  pero va **antes de dar de alta ranchos grandes o muy nublados**.
+- ~~**Bajar el costo de las pasadas tapadas** en el worker (`DECISIONS #71`)~~: **hecho en M.9.7d**
+  (`DECISIONS #74`), pidiendo el mes entero en una llamada.
 - **El país automático** desde la geometría (límites de Natural Earth en PostGIS) y **la altitud**
   desde un modelo de elevación. Sin tarea todavía.
 - **Preguntarle a 2 o 3 técnicos de una federación** cómo usan hoy las imágenes, antes de invertir

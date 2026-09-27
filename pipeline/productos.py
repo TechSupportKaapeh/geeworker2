@@ -50,6 +50,23 @@ def estadisticas_de(
     return reduccion.valores(compuesto_de(roi, ventana, receta), roi, receta)
 
 
+def estadisticas_de_ventanas(
+    roi: ee.Geometry, ventanas: Sequence[Ventana], receta: Receta
+) -> ee.List:
+    """Los números de una parcela en varias ventanas, en **una** expresión (M.9.7d).
+
+    Es la lista de :func:`estadisticas_de`, una por ventana y en el mismo orden:
+    cada elemento es exactamente la expresión que se pedía suelta, así que cada
+    número sale igual que antes. Lo que cambia es que se pide todo junto.
+
+    **Por qué junto** (``DECISIONS #74``): con una ventana por pasada, lo que
+    costaba un mes no era reducir sino ir y volver. Medido el 2026-09-27, una
+    pasada tapada costaba lo mismo que una útil —unos 2 s cada una, casi todo
+    latencia— y un mes del Cauca de 19 pasadas, 44 s en serie contra 5 s junto.
+    """
+    return ee.List([estadisticas_de(roi, ventana, receta) for ventana in ventanas])
+
+
 def mapa_de(
     roi: ee.Geometry, ventana: Ventana, receta: Receta, indice: str
 ) -> ee.Image:

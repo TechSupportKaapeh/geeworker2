@@ -1,7 +1,7 @@
 """M.4.4: `process_parcela` sobre el pipeline mensual (`handlers/parcela.py`).
 
-Sin GEE ni base: lo falso es lo minimo. `estadisticas_del_mes` devuelve una
-expresion cuyo `getInfo()` contesta con las claves que da GEE, asi que el borde
+Sin GEE ni base: lo falso es lo minimo. `estadisticas_de_ventanas` devuelve una
+expresion cuyo `getInfo()` contesta, por ventana, con las claves que da GEE, asi que el borde
 (`ejecucion.traer`, con su conteo y su traduccion de errores), `reduccion.leer` y
 `filas_del_mes` corren de verdad. Se reemplazan `init_ee`, el ROI, el reloj y el
 upsert.
@@ -90,15 +90,20 @@ class _Expresion:
 
 @pytest.fixture
 def mundo(monkeypatch):
-    """GEE, la base y el reloj, falsos. `mundo["gee"]` decide que contesta cada mes."""
-    estado = {"pedidos": [], "escrituras": [], "bitacora": [], "jobs": [],
+    """GEE, la base y el reloj, falsos. `mundo["gee"]` decide que contesta cada ventana."""
+    estado = {"pedidos": [], "lotes": [], "escrituras": [], "bitacora": [], "jobs": [],
               "gee": lambda mes: _respuesta_de_gee()}
 
-    def _estadisticas_de(roi, ventana, receta):
+    def _estadisticas_de_ventanas(roi, ventanas, receta):
         # `ventana.etiqueta` de una ventana mensual es el mismo `AAAA-MM` que antes
         # era `str(mes)`: lo que el doble graba no cambia con M.9.0b.
-        estado["pedidos"].append(ventana.etiqueta)
-        return _Expresion(lambda: estado["gee"](ventana.etiqueta))
+        #
+        # Desde M.9.7d el mes entero es **un** pedido con una respuesta por ventana
+        # (`DECISIONS #74`): el doble contesta la lista, y `traer` la cuenta una vez.
+        etiquetas = [ventana.etiqueta for ventana in ventanas]
+        estado["pedidos"].extend(etiquetas)
+        estado["lotes"].append(etiquetas)
+        return _Expresion(lambda: [estado["gee"](etiqueta) for etiqueta in etiquetas])
 
     def _upsert(filas):
         filas = list(filas)
@@ -116,7 +121,7 @@ def mundo(monkeypatch):
     # bitacora, la barra— no cambia con eso, y clavando v1 se sigue leyendo cuanto
     # cuesta UN mes. La orquestacion por pasada tiene sus propios tests abajo.
     monkeypatch.setattr(handlers_parcela, "RECETA_VIGENTE", RECETA_MENSUAL_V1)
-    monkeypatch.setattr(ejecucion, "estadisticas_de", _estadisticas_de)
+    monkeypatch.setattr(ejecucion, "estadisticas_de_ventanas", _estadisticas_de_ventanas)
     monkeypatch.setattr(parcela, "init_ee", lambda: None)
     monkeypatch.setattr(parcela, "coords_to_geometry", lambda c: "roi")
     monkeypatch.setattr(altas, "hoy_utc", lambda: HOY)
@@ -362,12 +367,13 @@ def test_un_mes_con_v2_escribe_una_fila_por_pasada_e_indice(monkeypatch, mundo):
     assert {f.fecha for f in escritas} == set(pasadas)
 
 
-def test_un_mes_con_v2_cuesta_una_llamada_mas_que_pasadas_tenga(monkeypatch, mundo):
-    """Una reduccion por pasada, y cada una sobre la ventana de SU pasada.
+def test_un_mes_con_v2_pide_todas_sus_pasadas_en_una_llamada(monkeypatch, mundo):
+    """Todas las pasadas del mes en UN pedido, y cada una sobre la ventana de SU pasada.
 
-    Es el costo de v2 y conviene tenerlo fijado: contra GEE son N + 1 llamadas
-    —las fechas y una reduccion por pasada—, y medido el 2026-09-25 un mes pasa de
-    2 s y 1 llamada a 13-25 s y 6-11 llamadas.
+    Es M.9.7d (`DECISIONS #74`). Hasta el 2026-09-27 era una reduccion por pasada,
+    N + 1 llamadas contra GEE, y el costo era casi todo ir y volver: una pasada
+    tapada costaba lo mismo que una util. Medido ese dia, un mes del Cauca de 19
+    pasadas bajo de 44 s y 20 llamadas a 5 s y 2.
     """
     from datetime import UTC, datetime
 
@@ -378,9 +384,36 @@ def test_un_mes_con_v2_cuesta_una_llamada_mas_que_pasadas_tenga(monkeypatch, mun
     pasadas = tuple(
         datetime(2026, 8, dia, 15, 11, tzinfo=UTC) for dia in (3, 13, 23)
     )
-    # `fechas_de` es del borde y cuenta como llamada: se cuenta a mano porque el
-    # doble reemplaza justo la funcion que la contaria.
+    # `fechas_de` es del borde y cuenta como llamada; el doble la reemplaza, asi
+    # que la llamada que la cuenta no aparece: contra GEE son 2.
     monkeypatch.setattr(ejecucion, "fechas_de", lambda roi, pedido, receta: pasadas)
+
+    with avance_job.seguimiento("job-p", 0, 3):
+        handlers_parcela.procesar_mes(
+            parcela_id=PAYLOAD["ParcelaId"], tenant_id=PAYLOAD["TenantId"],
+            coordenadas=PAYLOAD["Coordinates"],
+            mes=Mes(2026, 8), posicion=1, total=1, receta=RECETA_POR_PASADA,
+        )
+
+    assert mundo["lotes"] == [["2026-08-03T15:11Z", "2026-08-13T15:11Z",
+                               "2026-08-23T15:11Z"]]
+    (linea,) = [l for l in mundo["bitacora"] if l["etapa"] == "mes-2026-08"]
+    assert linea["detalle"]["llamadas"] == 1
+
+
+def test_cada_pasada_se_escribe_con_su_propia_respuesta(monkeypatch, mundo):
+    """El orden de la respuesta es el de las ventanas: los numeros de una pasada no
+    pueden quedar en la fecha de otra. Es el riesgo nuevo de pedir todo junto."""
+    from datetime import UTC, datetime
+
+    from pipeline import ejecucion
+    from pipeline.periodos import Mes
+    from pipeline.receta import RECETA_POR_PASADA
+
+    pasadas = tuple(datetime(2026, 8, dia, 15, 11, tzinfo=UTC) for dia in (3, 13, 23))
+    medianas = {"2026-08-03T15:11Z": 0.3, "2026-08-13T15:11Z": 0.5, "2026-08-23T15:11Z": 0.7}
+    monkeypatch.setattr(ejecucion, "fechas_de", lambda roi, pedido, receta: pasadas)
+    mundo["gee"] = lambda etiqueta: _respuesta_de_gee(mediana=medianas[etiqueta])
 
     handlers_parcela.procesar_mes(
         parcela_id=PAYLOAD["ParcelaId"], tenant_id=PAYLOAD["TenantId"],
@@ -388,10 +421,27 @@ def test_un_mes_con_v2_cuesta_una_llamada_mas_que_pasadas_tenga(monkeypatch, mun
         mes=Mes(2026, 8), posicion=1, total=1, receta=RECETA_POR_PASADA,
     )
 
-    # Una reduccion por pasada. `fechas_de` esta reemplazada por el doble, asi que
-    # la llamada que la cuenta no aparece: contra GEE son N + 1.
-    assert mundo["pedidos"] == ["2026-08-03T15:11Z", "2026-08-13T15:11Z",
-                                "2026-08-23T15:11Z"]
+    por_fecha = {f.fecha.day: f.valor for f in mundo["escrituras"][-1] if f.indice == "ndvi"}
+    assert por_fecha == {3: 0.3, 13: 0.5, 23: 0.7}
+
+
+def test_un_mes_sin_pasadas_no_le_pide_numeros_a_gee(monkeypatch, mundo):
+    """Sin ventanas no hay pedido: un `ee.List` vacio seria una llamada para nada."""
+    from pipeline import ejecucion
+    from pipeline.periodos import Mes
+    from pipeline.receta import RECETA_POR_PASADA
+
+    monkeypatch.setattr(ejecucion, "fechas_de", lambda roi, pedido, receta: ())
+
+    resultado = handlers_parcela.procesar_mes(
+        parcela_id=PAYLOAD["ParcelaId"], tenant_id=PAYLOAD["TenantId"],
+        coordenadas=PAYLOAD["Coordinates"],
+        mes=Mes(2026, 8), posicion=1, total=1, receta=RECETA_POR_PASADA,
+    )
+
+    assert mundo["lotes"] == []
+    assert resultado["escritas"] == 0
+    assert resultado["con_valor"] is False
 
 
 def test_con_v2_una_pasada_bajo_el_umbral_conserva_su_valor(monkeypatch, mundo):
