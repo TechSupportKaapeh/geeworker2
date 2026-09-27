@@ -105,7 +105,7 @@
   .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; margin-bottom: 14px; }
   .section-head h2 { font-size: 24px; font-weight: 720; }
   .section-head p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
-  .ruta { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 4px; }
+  .ruta { display: grid; grid-template-columns: repeat(21, minmax(0, 1fr)); gap: 4px; }
   .sesion {
     display: grid; gap: 4px; align-content: start; min-height: 92px; padding: 8px 8px 10px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
@@ -212,7 +212,7 @@
     <div class="stats" aria-label="Resumen">
       <div class="stat"><span class="label">Tareas</span><b id="st-total">—</b></div>
       <div class="stat"><span class="label">Hechas</span><b id="st-hechas">—</b></div>
-      <div class="stat"><span class="label">Sesiones</span><b>~20</b></div>
+      <div class="stat"><span class="label">Sesiones</span><b>~21</b></div>
     </div>
     <div class="next" id="siguiente"></div>
   </header>
@@ -403,6 +403,11 @@ const SPRINTS = [
 // que es lo que M.8.1 necesitaba. M.6.3 quedó vaciada (de cinco `Request*Async` sobrevivió uno)
 // y no se va a hacer así; M.6.4 cerró con menos código, no con más.
 //
+// Sesión 17 (2026-09-26): tres errores de la cobertura al leer (el panel no pedia el umbral,
+// la API lo ignoraba por pasada, la bitacora decia filas sin valor) y el raster por pasada:
+// disenado y medido, M.9.7a (las dos mascaras a la vez) y M.9.7b (COG multibanda) en
+// produccion. M.9.7 pasa adelante de cultivos. Sigue M.9.7c.
+//
 // Sesión 16 (2026-09-25): M.9.0d, y el bloque M.9.0 queda CERRADO. El eje de la serie del
 // panel es una fecha y hay un interruptor mensual / por pasada (Terra-admin#21); de paso se
 // podo la solapa Tiles (#22). Hallazgo abierto: /api/measurements se come la hora de la
@@ -469,7 +474,7 @@ const RUTA = [
   ["M.6", "Limpieza"], ["M.7", "Selector y series"], ["M.7", "Mapa mensual"], ["M.7", "Editor de geometría"],
   ["M.8", "A01 y A04"], ["M.8", "A09 y retención"], ["M.9.0", "Medir las pasadas · y borrar /mosaic"],
   ["M.9.0b·c", "El agrupamiento y s2-pasada-v2"], ["M.9.0d", "El eje de fechas · y podar Tiles"],
-  ["M.9", "Analítica · desde M.9.1"]
+  ["M.9.7a·b", "La máscara y el COG multibanda"], ["M.9.7", "Ráster por pasada · desde M.9.7c"]
 ];
 
 const DECISIONES = [
@@ -529,7 +534,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 20;
+const sesionProxima = 21;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>
