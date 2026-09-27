@@ -2,7 +2,14 @@
 
 La forma es::
 
-    tenants/{tenantId}/ranchos/{ranchoId}/{receta}/{indice}/{AAAA-MM}.tif
+    tenants/{tenantId}/ranchos/{ranchoId}/{receta}/{AAAA-MM}.tif
+
+**Desde M.9.7b el COG del rancho es multibanda** (``DECISIONS #73``): los índices
+van como bandas de un solo archivo, así que la key ya no lleva ``{indice}``. Hasta
+ahí era ``…/{receta}/{indice}/{AAAA-MM}.tif`` (``#47``), y lo sigue siendo para el
+mapa a demanda, que todavía es de un índice. **La** ``natural_key`` **no cambió**:
+cada índice sigue siendo su fila de ``layers``, con su banda, así que reprocesar un
+mes reescribe las mismas cuatro filas en vez de sumar otras.
 
 Va de lo más estable a lo que más varía, porque S3 filtra por prefijo
 (``PREGUNTAS_ABIERTAS`` A-7), y cada pregunta útil queda como un prefijo:
@@ -107,8 +114,12 @@ def _claves_mensuales(  # noqa: PLR0913 - todo por nombre, y son datos distintos
     receta: Receta,
     indice: str,
     ventana: Ventana,
+    multibanda: bool = False,
 ) -> ClavesDeCapa:
-    """El armador único de las dos claves. Ver los tres envoltorios de abajo."""
+    """El armador único de las dos claves. Ver los tres envoltorios de abajo.
+
+    Con ``multibanda`` la key no lleva el índice: el archivo los tiene a todos.
+    """
     if indice not in receta.indices:
         msg = f"la receta {receta.version} no calcula {indice!r}: {receta.indices}"
         raise ValueError(msg)
@@ -118,8 +129,8 @@ def _claves_mensuales(  # noqa: PLR0913 - todo por nombre, y son datos distintos
     ident = _uuid_canonico(entidad_id, f"{entidad}_id")
     return ClavesDeCapa(
         storage_key=(
-            f"{prefijo_de_tenant(tenant_id)}{carpeta}/{ident}/"
-            f"{receta.version}/{indice}/{ventana.etiqueta}.tif"
+            f"{prefijo_de_tenant(tenant_id)}{carpeta}/{ident}/{receta.version}/"
+            f"{'' if multibanda else f'{indice}/'}{ventana.etiqueta}.tif"
         ),
         # `familia` separa capas que comparten entidad, índice y ventana. Se llama
         # así desde M.9.0b: antes era `etiqueta`, y ahora ese nombre es el de la
@@ -136,6 +147,9 @@ def claves_cog_mensual(
     *, tenant_id: str, rancho_id: str, receta: Receta, indice: str, ventana: Ventana
 ) -> ClavesDeCapa:
     """Las claves del COG sistemático de un rancho, un índice y una ventana.
+
+    **El COG es multibanda** (M.9.7b): las cuatro claves de un mes comparten la
+    ``storage_key`` —el archivo— y difieren en la ``natural_key`` —la fila—.
 
     Los argumentos van por nombre: ``tenant_id`` y ``rancho_id`` son los dos
     texto, e intercambiarlos daría una key válida en el lugar equivocado.
@@ -154,6 +168,7 @@ def claves_cog_mensual(
         receta=receta,
         indice=indice,
         ventana=ventana,
+        multibanda=True,
     )
 
 

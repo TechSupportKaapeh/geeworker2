@@ -30,6 +30,10 @@ from handlers.utilidades import borrar_temporales
 # índice normalizado puede dar, y el COG lo convierte en su máscara.
 NODATA_COG: Final = -9999.0
 
+# El mismo centinela para el COG multibanda de enteros (M.9.7b): el mínimo de un
+# int16. Un índice por 10.000 va de -10.000 a 10.000, así que no puede darlo.
+NODATA_ENTERO: Final = -32768
+
 _BYTES_POR_MEGA: Final = 1_000_000
 
 
@@ -43,8 +47,14 @@ def parametros_del_mapa(roi: object, receta: Receta) -> dict[str, Any]:
     return {**parametros_de_descarga(roi), "scale": receta.escala_m}
 
 
-def subir_cog(url: str, storage_key: str) -> tuple[list[float], float]:
+def subir_cog(
+    url: str, storage_key: str, *, nodata: float = NODATA_COG
+) -> tuple[list[float], float]:
     """Baja el GeoTIFF, lo pasa a COG y lo sube. Devuelve el bbox y los megas.
+
+    ``nodata`` es el centinela con que se rellenó lo enmascarado antes de bajarlo:
+    ``NODATA_COG`` en los de un índice en decimales, ``NODATA_ENTERO`` en los
+    multibanda de enteros.
 
     Los temporales se borran en ``finally``: el proceso es de larga vida y los
     reintentos se acumulan.
@@ -57,7 +67,7 @@ def subir_cog(url: str, storage_key: str) -> tuple[list[float], float]:
         megas = round(os.path.getsize(crudo) / _BYTES_POR_MEGA, 2)  # noqa: PTH202 - la ruta es str de tempfile
         with rasterio.open(crudo) as fuente:
             bbox = list(fuente.bounds)
-        cog = convert_to_cog(crudo, nodata=NODATA_COG)
+        cog = convert_to_cog(crudo, nodata=nodata)
         get_storage_service().upload_file(storage_key, cog, "image/tiff")
     finally:
         borrar_temporales(crudo, cog)

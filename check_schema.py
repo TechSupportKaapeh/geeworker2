@@ -84,6 +84,10 @@ CONTRATO: dict[str, tuple[Columna, ...]] = {
         # FASE M (M.3.1).
         Columna("receta", "text", True),
         Columna("estadisticas", "jsonb", True),
+        # M.9.7b (migracion CapasMultibanda de Geocore): el COG multibanda. Nullable:
+        # el mapa a demanda sigue siendo de una banda.
+        Columna("bandas", "ARRAY", True, "que banda del COG es la capa: el bidx de TiTiler"),
+        Columna("escala", "integer", True, "por cuanto esta multiplicado el valor guardado"),
     ),
     "processing_jobs": (
         Columna("id", "uuid", False),

@@ -17,6 +17,9 @@ acá. Con una ventana de una pasada, la mediana es de una sola imagen y devuelve
 esa imagen.
 """
 
+from collections.abc import Sequence
+from typing import Final
+
 import ee
 
 from pipeline.etapas import compuesto, fuente, nubes, reduccion
@@ -73,3 +76,56 @@ def mapa_de(
         msg = f"el índice {indice!r} no está en la receta: {list(receta.indices)}"
         raise ValueError(msg)
     return compuesto_de(roi, ventana, receta).select([indice]).clip(roi)
+
+
+# Por cuánto se multiplica cada índice para guardarlo como entero (M.9.7b,
+# `DECISIONS #73`). Cuatro decimales es más de lo que el sensor sostiene, y un
+# índice acotado a [-1, 1] cabe de sobra en un int16 (±32.767). Es lo habitual en
+# Sentinel-2, y el mismo número va en la fila de `layers` (`escala`) para que quien
+# pinta multiplique su rango.
+ESCALA_DEL_COG: Final = 10_000
+
+
+def mapa_multibanda_de(
+    roi: ee.Geometry, ventana: Ventana, receta: Receta, indices: Sequence[str]
+) -> ee.Image:
+    """Los índices de la ventana en **una** imagen, una banda cada uno, como enteros.
+
+    Es el COG multibanda de M.9.7 (``ARQUITECTURA_PIPELINE.md`` §3.6): un archivo
+    por ventana en vez de uno por índice, así que una descarga en vez de cuatro.
+    Las bandas salen **en el orden de** ``indices``, y ese orden es el ``bidx`` de
+    cada capa: la banda 1 es ``indices[0]``.
+
+    Los valores van **por** ``ESCALA_DEL_COG`` **y redondeados**, en int16: la
+    mitad de tamaño que en float32, y el color real (M.9.7e) entra en el mismo
+    archivo. Lo enmascarado sigue enmascarado: quien descarga lo rellena con su
+    centinela.
+
+    Raises:
+        ValueError: si algún índice no es de la receta, o si no se pide ninguno.
+    """
+    if not indices:
+        msg = "el mapa multibanda necesita al menos un índice"
+        raise ValueError(msg)
+    fuera = [indice for indice in indices if indice not in receta.indices]
+    if fuera:
+        msg = f"la receta {receta.version} no calcula {fuera}: {list(receta.indices)}"
+        raise ValueError(msg)
+    return (
+        compuesto_de(roi, ventana, receta)
+        .select(list(indices))
+        .multiply(ESCALA_DEL_COG)
+        .round()
+        # **El tope del int16, sin el mínimo.** Con \`acotar_indices\` un índice ya
+        # vive en [-1, 1] y esto no hace nada. Sin él —una receta futura— un EVI de 4
+        # daría 40.000, que en int16 se corrompe sin error; y un píxel válido que
+        # cayera en -32.768 se confundiría con el centinela \`NODATA_ENTERO\` y
+        # desaparecería del mapa. Acotar a ±32.767 hace imposibles las dos cosas.
+        .clamp(-_TOPE_INT16, _TOPE_INT16)
+        .toInt16()
+        .clip(roi)
+    )
+
+
+# El mayor int16 en valor absoluto que no es el centinela de "sin dato" (-32.768).
+_TOPE_INT16: Final = 32_767

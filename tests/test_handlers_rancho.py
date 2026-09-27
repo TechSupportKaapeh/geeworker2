@@ -9,6 +9,10 @@ Sin GEE, sin bucket y sin base, pero con lo mas posible de verdad:
 - la "descarga" escribe **un GeoTIFF de verdad**, con el centinela donde GEE
   tendria lo enmascarado, y `convert_to_cog` corre con `rio-cogeo`. Asi el test
   ve la mascara del COG que se sube.
+
+Desde M.9.7b (`DECISIONS #73`) el COG del mes es **multibanda**: un archivo con
+los cuatro indices como bandas, en enteros por 10.000, y una fila de `layers` por
+indice que dice que banda es.
 """
 import subprocess
 import sys
@@ -100,13 +104,17 @@ class _Imagen:
 
 
 def _geotiff_como_el_de_gee(destino):
-    """4x4 en EPSG:4326, con la mitad en el centinela: lo que baja de GEE tras el `unmask`."""
-    datos = np.full((4, 4), 0.6, dtype="float32")
-    datos[:2, :] = rancho.NODATA_COG
-    perfil = {"driver": "GTiff", "height": 4, "width": 4, "count": 1, "dtype": "float32",
+    """4x4 en EPSG:4326, una banda por indice en enteros, con la mitad en el centinela.
+
+    Es lo que baja de GEE tras el `unmask` del mapa multibanda: un NDVI de 0,6 guardado
+    como 6000, en las cuatro bandas.
+    """
+    datos = np.full((len(INDICES), 4, 4), 6000, dtype="int16")
+    datos[:, :2, :] = raster.NODATA_ENTERO
+    perfil = {"driver": "GTiff", "height": 4, "width": 4, "count": len(INDICES), "dtype": "int16",
               "crs": "EPSG:4326", "transform": from_origin(-101.2, 20.5, 0.0001, 0.0001)}
     with rasterio.open(destino, "w", **perfil) as salida:
-        salida.write(datos, 1)
+        salida.write(datos)
     return destino
 
 
@@ -131,6 +139,7 @@ def mundo(monkeypatch):
             with rasterio.open(ruta) as cog:
                 datos = cog.read(1, masked=True)
                 estado["subidas"].append({"key": key, "ruta": ruta, "tipo": tipo,
+                                          "bandas": cog.count, "dtype": cog.dtypes[0],
                                           "enmascarados": int(np.ma.count_masked(datos)),
                                           "min": float(datos.min()), "total": datos.size})
             return key
@@ -147,7 +156,11 @@ def mundo(monkeypatch):
     # cuesta UN mes. La orquestacion por pasada tiene sus propios tests abajo.
     monkeypatch.setattr(handlers_rancho, "RECETA_VIGENTE", RECETA_MENSUAL_V1)
     monkeypatch.setattr(ejecucion, "estadisticas_de", _estadisticas_de)
-    monkeypatch.setattr(rancho, "mapa_de", lambda roi, mes, receta, indice: _Imagen(estado, str(mes)))
+    def _mapa_multibanda(roi, ventana, receta, indices):
+        estado.setdefault("indices_pedidos", []).append(tuple(indices))
+        return _Imagen(estado, str(ventana.etiqueta))
+
+    monkeypatch.setattr(rancho, "mapa_multibanda_de", _mapa_multibanda)
     # La descarga y la subida viven en `handlers/raster.py` desde M.6.2b: las
     # comparte con el mapa a demanda.
     monkeypatch.setattr(raster, "descargar_a_archivo", _descargar)
@@ -210,15 +223,25 @@ def test_cada_capa_lleva_las_estadisticas_de_SU_indice(mundo):
 
 
 def test_la_key_es_la_de_claves_cog_mensual(mundo):
-    """`tenants/{t}/ranchos/{r}/{receta}/{indice}/{AAAA-MM}.tif` (`DECISIONS #47`), nunca a mano."""
+    """`tenants/{t}/ranchos/{r}/{receta}/{AAAA-MM}.tif` (`DECISIONS #73`), nunca a mano.
+
+    Desde M.9.7b el archivo es multibanda: **uno por mes**, sin el indice en la key.
+    """
     _correr(_Step())
 
-    # El indice va en la key: cuatro mapas por mes, ninguno pisa a otro.
     assert [s["key"] for s in mundo["subidas"]] == [
-        f"tenants/{TENANT}/ranchos/{RANCHO}/s2-mensual-v1/{i}/{m}.tif"
-        for m in MESES_V1 for i in INDICES
+        f"tenants/{TENANT}/ranchos/{RANCHO}/s2-mensual-v1/{m}.tif" for m in MESES_V1
     ]
     assert {s["tipo"] for s in mundo["subidas"]} == {"image/tiff"}
+
+
+def test_el_archivo_trae_los_indices_como_bandas_de_enteros(mundo):
+    """M.9.7b: las bandas en el orden de la receta, que es el `bidx` de cada fila."""
+    _correr(_Step())
+
+    assert set(mundo["indices_pedidos"]) == {tuple(INDICES)}
+    assert {s["bandas"] for s in mundo["subidas"]} == {len(INDICES)}
+    assert {s["dtype"] for s in mundo["subidas"]} == {"int16"}
 
 
 def test_cada_mes_escribe_una_capa_por_indice(mundo):
@@ -229,8 +252,13 @@ def test_cada_mes_escribe_una_capa_por_indice(mundo):
     assert [c["product"] for c in delMes] == INDICES, "uno por indice, en el orden de la receta"
 
     capa = delMes[INDICES.index("ndvi")]
+    # La natural_key no cambio con el formato: reprocesar pisa las mismas filas.
     assert capa["natural_key"] == f"rancho_mensual_ndvi_{RANCHO}_2025-03"
-    assert capa["storage_key"].endswith("/ndvi/2025-03.tif")
+    assert capa["storage_key"].endswith("/s2-mensual-v1/2025-03.tif")
+    # Las cuatro filas del mes apuntan al mismo archivo, cada una con su banda.
+    assert {c["storage_key"] for c in delMes} == {capa["storage_key"]}
+    assert [c["bandas"] for c in delMes] == [[i + 1] for i in range(len(INDICES))]
+    assert {c["escala"] for c in delMes} == {10_000}
     assert capa["acquired_ts"] == datetime(2025, 3, 1, tzinfo=UTC)
     assert capa["source"] == "mensual"
     assert capa["receta"] == "s2-mensual-v1"
@@ -256,10 +284,10 @@ def test_lo_enmascarado_no_se_sube_como_ndvi_cero(mundo):
     """
     _correr(_Step())
 
-    assert set(mundo["unmask"]) == {(rancho.NODATA_COG, False)}
+    assert set(mundo["unmask"]) == {(raster.NODATA_ENTERO, False)}
     subida = mundo["subidas"][0]
     assert subida["enmascarados"] > 0, "el centinela tiene que quedar como mascara"
-    assert subida["min"] == pytest.approx(0.6), "y ningun pixel valido vale el centinela"
+    assert subida["min"] == 6000, "y ningun pixel valido vale el centinela"
 
 
 def test_la_descarga_va_a_la_escala_de_la_receta_y_por_el_borde(mundo):
@@ -267,10 +295,10 @@ def test_la_descarga_va_a_la_escala_de_la_receta_y_por_el_borde(mundo):
 
     assert {p["scale"] for p in mundo["parametros"]} == {RECETA_VIGENTE.escala_m}
     assert {p["crs"] for p in mundo["parametros"]} == {"EPSG:4326"}
-    # Las estadisticas (una) mas una URL por indice. Las cuenta el borde, y es el
-    # numero que sube al sumar mapas: conviene verlo en un test y no en la factura.
+    # Las estadisticas (una) mas **una** URL: desde M.9.7b los cuatro indices bajan
+    # juntos. Antes eran una por indice; es el ahorro del formato, y se ve aca.
     meses = [l for l in mundo["bitacora"] if l["etapa"].startswith("mes-")]
-    assert {l["detalle"]["llamadas"] for l in meses} == {1 + len(INDICES)}
+    assert {l["detalle"]["llamadas"] for l in meses} == {2}
     assert {l["detalle"]["mapas"] for l in meses} == {len(INDICES)}
 
 
