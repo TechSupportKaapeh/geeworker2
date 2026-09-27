@@ -419,3 +419,82 @@ def test_las_dos_colecciones_fechan_la_misma_escena_con_minutos_de_diferencia(
     # minutos y depende del ROI. Lo que el test fija es el orden de magnitud —son
     # minutos, no milisegundos—, que es lo que rompe una ventana de un segundo.
     assert max(desfases) < 3600, desfases
+
+
+# ---- M.9.7d: todas las ventanas del mes en un pedido --------------------------------
+
+
+def _pasadas(n):
+    from datetime import UTC, datetime
+
+    from pipeline.ventanas import POR_PASADA, agrupamiento
+
+    fechas = [datetime(2026, 8, 3 + 10 * i, 15, 11, tzinfo=UTC) for i in range(n)]
+    return agrupamiento(POR_PASADA).partir(del_mes(Mes(2026, 8)), fechas)
+
+
+def test_reducciones_de_sin_ventanas_no_llama_a_gee(monkeypatch):
+    pedidas = []
+    monkeypatch.setattr(ejecucion, "estadisticas_de_ventanas",
+                        lambda roi, ventanas, receta: pedidas.append(ventanas))
+
+    with ejecucion.contando() as conteo:
+        assert ejecucion.reducciones_de("roi", (), RECETA_VIGENTE) == ()
+
+    assert pedidas == []
+    assert conteo.llamadas == 0
+
+
+def test_reducciones_de_lee_una_por_ventana_en_una_llamada(monkeypatch):
+    """Tres ventanas, una llamada, y cada respuesta leida en su lugar. Una pasada
+    tapada llega como la manda GEE: solo con la cobertura."""
+    from pipeline.estadisticas import claves_de_salida
+
+    claves = claves_de_salida(RECETA_VIGENTE.indices, RECETA_VIGENTE.estadisticas)
+
+    def util(valor):
+        return {**{clave: valor for clave in claves.values()},
+                "cobertura": 0.8, "observaciones": 1.0}
+
+    respuesta = [util(0.2), {"cobertura": 0}, util(0.6)]
+    monkeypatch.setattr(ejecucion, "estadisticas_de_ventanas",
+                        lambda roi, ventanas, receta: _Expresion(resultado=respuesta))
+
+    with ejecucion.contando() as conteo:
+        leidas = ejecucion.reducciones_de("roi", _pasadas(3), RECETA_VIGENTE)
+
+    assert conteo.llamadas == 1
+    assert [r.cobertura for r in leidas] == [0.8, 0.0, 0.8]
+    assert [r.estadisticas["ndvi"]["mediana"] for r in leidas] == [0.2, None, 0.6]
+
+
+@pytest.mark.parametrize("respuesta", [[], [{"cobertura": 0}], {"cobertura": 0}])
+def test_reducciones_de_rechaza_una_respuesta_que_no_trae_una_por_ventana(
+    monkeypatch, respuesta
+):
+    """Una lista corta pegaria los numeros de una pasada en la fecha de otra."""
+    monkeypatch.setattr(ejecucion, "estadisticas_de_ventanas",
+                        lambda roi, ventanas, receta: _Expresion(resultado=respuesta))
+
+    with pytest.raises(ValueError, match="respuestas para 2 ventanas"):
+        ejecucion.reducciones_de("roi", _pasadas(2), RECETA_VIGENTE)
+
+
+@pytest.mark.gee
+def test_pedir_las_pasadas_juntas_da_lo_mismo_que_de_a_una(gee_inicializado):
+    """El control de M.9.7d (`DECISIONS #74`): mismas reducciones, en 1 llamada y no N.
+
+    Es la misma expresion por ventana, asi que tiene que dar identico, no parecido.
+    """
+    import ee
+
+    roi = ee.Geometry.Rectangle(ROI_2KM)
+    ventanas = ejecucion.ventanas_de(roi, del_mes(MES), RECETA_VIGENTE)
+    assert len(ventanas) > 1, "el mes de prueba tiene varias pasadas"
+
+    de_a_una = tuple(ejecucion.reduccion_de(roi, v, RECETA_VIGENTE) for v in ventanas)
+    with ejecucion.contando() as conteo:
+        juntas = ejecucion.reducciones_de(roi, ventanas, RECETA_VIGENTE)
+
+    assert conteo.llamadas == 1
+    assert juntas == de_a_una

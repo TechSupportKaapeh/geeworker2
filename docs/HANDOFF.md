@@ -1,5 +1,19 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-27 · M.9.7d: la parcela pide todas las pasadas del mes en UNA llamada** (`DECISIONS #74`).
+> Un mes cuesta **dos llamadas** —las fechas y los números— en vez de N + 1, con los mismos números.
+>
+> - **Lo que costaba v2 era ir y volver**, no reducir: una pasada tapada costaba lo mismo que una útil.
+>   Medido: el Cauca de 44 s a 5 s, el Yaqui de 18 s a 3,4 s, y una parcela de ~2.500 ha nublada de
+>   **88 s —pasaba la compuerta de 60 s—** a 10 s.
+> - `ejecucion.reducciones_de(roi, ventanas, receta)` es la función; `reduccion_de` queda para una
+>   ventana sola (el rancho y el mapa a demanda, que no cambiaron). **M.9.7e la usa para la cobertura
+>   por pasada del rancho**: cada respuesta trae la suya.
+> - **Si un mes falla con `user memory limit exceeded`**, es este pedido: la salida es partir las
+>   ventanas en lotes dentro de `reducciones_de` (`#74`).
+> - **Los tests `gee` estaban rotos en `main`** (11, anteriores a esto; el CI no los corre).
+> - Reproducir: `scripts/check_pipeline_real.py --costo --parcelas scratch/parcelas_m97d --meses …`.
+
 > **2026-09-26, sesión 17 · El ráster por pasada, en marcha.** M.9.7a y M.9.7b en producción
 > (`DECISIONS #72` y `#73`). Lo que hay que saber para tocar el worker:
 >

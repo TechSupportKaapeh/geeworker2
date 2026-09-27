@@ -403,9 +403,12 @@ Primero los cambios de forma, **sin cambio de comportamiento** y con el control 
    (`DECISIONS #73`, y `#53` de Geocore): misma máscara, diferencia máxima 5e-5, y menos del 1 %
    de los píxeles cambia de color, un paso.
 3. **El listado en el servidor** (M.9.7c): filtros por rancho y fechas, y el panel los usa.
-4. **La cobertura por pasada en una llamada** (M.9.7d): mide todas las pasadas del mes, para todas
-   las parcelas, antes de reducir. Sirve a las estadísticas (baja su costo, `#71`) y al ráster
-   (decide qué pasadas guardar).
+4. **Todas las pasadas del mes en un pedido** (M.9.7d): **hecho el 2026-09-27** (`DECISIONS #74`),
+   y no como estaba escrito. El plan era medir primero la cobertura y reducir sólo lo útil; la
+   medición mostró que una pasada tapada cuesta lo mismo que una útil —el costo era ir y volver—,
+   así que se pide **el mes entero en una llamada**, por entidad: de 5 a 9 veces más barato en
+   cualquier clima, con los mismos números. Cada respuesta trae su cobertura, que es lo que el
+   ráster usa para decidir qué pasadas guardar.
 5. **La receta v3 y el paso del rancho por pasada** (M.9.7e): `agrupamiento_raster: por_pasada`,
    la banda verde, el color real, la etiqueta segura, las descargas en paralelo y la cobertura del
    rancho guardada con la capa.

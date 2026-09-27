@@ -24,7 +24,7 @@ Concentra tres cosas:
 import contextlib
 import logging
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -35,7 +35,7 @@ import ee
 from pipeline.etapas import compuesto as etapa_compuesto
 from pipeline.etapas import fuente
 from pipeline.etapas.reduccion import Reduccion, leer
-from pipeline.productos import estadisticas_de
+from pipeline.productos import estadisticas_de, estadisticas_de_ventanas
 from pipeline.receta import Receta
 from pipeline.ventanas import Ventana, agrupamiento
 
@@ -271,6 +271,51 @@ def reduccion_de(roi: ee.Geometry, ventana: Ventana, receta: Receta) -> Reduccio
     Es una sola llamada a GEE: :func:`estadisticas_de` arma todo junto.
     """
     return leer(traer(estadisticas_de(roi, ventana, receta)), receta)
+
+
+def reducciones_de(
+    roi: ee.Geometry, ventanas: Sequence[Ventana], receta: Receta
+) -> tuple[Reduccion, ...]:
+    """Los números de una parcela en varias ventanas, **en una sola llamada** (M.9.7d).
+
+    Una :class:`Reduccion` por ventana, en el orden de ``ventanas``. Es lo que
+    hacía un :func:`reduccion_de` por ventana, con los mismos números: cada
+    elemento del pedido es la misma expresión (``DECISIONS #74``).
+
+    **Lo que cuesta un mes pasa de N + 1 llamadas a 2** —las fechas y ésta—, en
+    cualquier clima. La otra salida era medir primero la cobertura de todas las
+    pasadas y reducir sólo las que tuvieran píxeles; se midió y se descartó: una
+    pasada tapada cuesta lo mismo que una útil, así que eso ahorraba sólo en zona
+    nublada, y en zona despejada sumaba una llamada.
+
+    **La cobertura de cada pasada viene en la respuesta**, así que no hace falta
+    otro pedido para saber cuáles están tapadas: es lo que M.9.7e usa para decidir
+    qué pasadas del ráster se guardan (``#72``, d37).
+
+    Todo-o-nada, como antes: si el pedido falla, falla el mes entero, y el step
+    se reintenta sin haber escrito nada (las filas se escriben después).
+
+    Raises:
+        ErrorDeGEE: si el pedido falla.
+        ValueError: si la respuesta no trae una por ventana, o si alguna no pasa
+            :func:`leer`. Una lista corta pegaría los números de una pasada en la
+            fecha de otra sin que nadie se entere.
+    """
+    if not ventanas:
+        # Un mes sin pasadas no le pregunta nada a GEE: hoy tampoco lo hacía.
+        return ()
+    respuestas = traer(estadisticas_de_ventanas(roi, ventanas, receta))
+    if not isinstance(respuestas, list) or len(respuestas) != len(ventanas):
+        # El tipo y no el valor: una respuesta inesperada puede ser enorme, y este
+        # mensaje termina en el log y en la bitácora del job.
+        recibidas = (
+            len(respuestas)
+            if isinstance(respuestas, list)
+            else type(respuestas).__name__
+        )
+        msg = f"GEE devolvió {recibidas} respuestas para {len(ventanas)} ventanas"
+        raise ValueError(msg)
+    return tuple(leer(respuesta, receta) for respuesta in respuestas)
 
 
 def fechas_de(
