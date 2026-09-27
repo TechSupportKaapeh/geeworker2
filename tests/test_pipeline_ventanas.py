@@ -96,7 +96,7 @@ def test_por_pasada_da_una_ventana_por_fecha():
         del_mes(AGOSTO), [_instante(18), _instante(3)]
     )
     assert [v.inicio for v in ventanas] == [_instante(3), _instante(18)]
-    assert [v.etiqueta for v in ventanas] == ["2026-08-03T15:11Z", "2026-08-18T15:11Z"]
+    assert [v.etiqueta for v in ventanas] == ["2026-08-03T1511Z", "2026-08-18T1511Z"]
 
 
 def test_la_ventana_de_una_pasada_contiene_su_instante_y_no_el_de_la_siguiente():
@@ -184,7 +184,15 @@ def test_el_ultimo_instante_del_mes_si_entra():
 
 
 def test_la_etiqueta_de_una_pasada_lleva_el_minuto_en_utc():
-    assert etiqueta_de_instante(_instante(3)) == "2026-08-03T15:11Z"
+    assert etiqueta_de_instante(_instante(3)) == "2026-08-03T1511Z"
+
+
+def test_la_etiqueta_de_una_pasada_sirve_para_una_key():
+    """M.9.7e2 (`DECISIONS #77`): va al nombre del COG de la pasada, y la validacion
+    de keys rechaza los dos puntos."""
+    from pipeline.claves import _ETIQUETA
+
+    assert _ETIQUETA.fullmatch(etiqueta_de_instante(_instante(3)))
 
 
 def test_la_etiqueta_se_pasa_a_utc_antes_de_escribirla():
@@ -193,7 +201,7 @@ def test_la_etiqueta_se_pasa_a_utc_antes_de_escribirla():
 
     mexico = timezone(timedelta(hours=-6))
     assert etiqueta_de_instante(datetime(2026, 8, 3, 9, 11, tzinfo=mexico)) == (
-        "2026-08-03T15:11Z"
+        "2026-08-03T1511Z"
     )
 
 

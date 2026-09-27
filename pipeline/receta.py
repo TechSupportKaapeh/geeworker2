@@ -39,6 +39,9 @@ BANDA_CLOUD_SCORE = "cs_cdf"
 # El color real: el nombre de la banda en el compuesto y la banda de `BANDAS` de
 # donde sale, en el orden en que se pinta (R, G, B).
 COLOR_REAL = {"rojo": "RED", "verde": "GREEN", "azul": "BLUE"}
+# El producto de la fila de `layers` que pinta el color real: las tres bandas de
+# arriba, en ese orden (M.9.7e2, `DECISIONS #77`).
+PRODUCTO_COLOR_REAL = "rgb"
 
 # Los campos opcionales de la receta y su valor apagado, que es el de antes de
 # existir. Apagados no entran en la huella (`DECISIONS #76`). **Un campo nuevo se

@@ -106,3 +106,29 @@ def test_el_numero_de_la_parcela_y_el_mapa_salen_de_los_mismos_pixeles(gee_inici
     assert info["mediana_del_mapa"]["ndvi"] == pytest.approx(
         leida.estadisticas["ndvi"]["mediana"], abs=1e-6
     )
+
+
+# ---- M.9.7e2: las bandas y las filas del COG ------------------------------------
+
+
+def test_v2_son_cuatro_filas_de_una_banda():
+    assert productos.productos_del_cog(RECETA_VIGENTE) == RECETA_VIGENTE.indices
+    assert [productos.bandas_de_producto(RECETA_VIGENTE, p) for p in RECETA_VIGENTE.indices] == [
+        [1], [2], [3], [4],
+    ]
+
+
+def test_v3_suma_la_fila_del_color_real_con_sus_tres_bandas():
+    from pipeline.receta import RECETA_PASADA_V3
+
+    assert productos.bandas_del_cog(RECETA_PASADA_V3) == (
+        "ndvi", "evi", "ndre", "ndmi", "rojo", "verde", "azul",
+    )
+    assert productos.productos_del_cog(RECETA_PASADA_V3)[-1] == "rgb"
+    assert productos.bandas_de_producto(RECETA_PASADA_V3, "rgb") == [5, 6, 7]
+    assert productos.bandas_de_producto(RECETA_PASADA_V3, "ndvi") == [1]
+
+
+def test_un_producto_que_la_receta_no_da_se_rechaza():
+    with pytest.raises(ValueError, match="no produce 'rgb'"):
+        productos.bandas_de_producto(RECETA_VIGENTE, "rgb")

@@ -1,5 +1,15 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-27 · M.9.7e2: el rancho sabe escribir por pasada** (`DECISIONS #77`). Sólo con v3, que
+> no es la vigente; con v2 no cambió nada.
+>
+> - Un mes con v3: el compuesto y **cada pasada con algún píxel en el rancho**, un COG de 7 bandas
+>   cada uno, bajados con `raster.en_paralelo` (4 hilos, con el contexto copiado).
+> - **Cinco filas por archivo**: los 4 índices y `rgb` (`bandas = [5, 6, 7]`). `source` es `mensual`
+>   o `pasada`; `acquired_ts`, el instante de la pasada.
+> - **La etiqueta de una pasada es `2025-07-14T1542Z`**, sin los dos puntos.
+> - **⚠️ Antes de M.9.7g:** un rancho de ~2.500 ha nublado tarda ~50 s por mes. Medir con uno real.
+
 > **2026-09-27 · M.9.7e1: `RECETA_PASADA_V3` existe y NO es la vigente** (`DECISIONS #76`). La
 > vigente sigue siendo v2; v3 lo es con M.9.7g, después del panel.
 >

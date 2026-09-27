@@ -395,8 +395,8 @@ def test_un_mes_con_v2_pide_todas_sus_pasadas_en_una_llamada(monkeypatch, mundo)
             mes=Mes(2026, 8), posicion=1, total=1, receta=RECETA_POR_PASADA,
         )
 
-    assert mundo["lotes"] == [["2026-08-03T15:11Z", "2026-08-13T15:11Z",
-                               "2026-08-23T15:11Z"]]
+    assert mundo["lotes"] == [["2026-08-03T1511Z", "2026-08-13T1511Z",
+                               "2026-08-23T1511Z"]]
     (linea,) = [l for l in mundo["bitacora"] if l["etapa"] == "mes-2026-08"]
     assert linea["detalle"]["llamadas"] == 1
 
@@ -411,7 +411,7 @@ def test_cada_pasada_se_escribe_con_su_propia_respuesta(monkeypatch, mundo):
     from pipeline.receta import RECETA_POR_PASADA
 
     pasadas = tuple(datetime(2026, 8, dia, 15, 11, tzinfo=UTC) for dia in (3, 13, 23))
-    medianas = {"2026-08-03T15:11Z": 0.3, "2026-08-13T15:11Z": 0.5, "2026-08-23T15:11Z": 0.7}
+    medianas = {"2026-08-03T1511Z": 0.3, "2026-08-13T1511Z": 0.5, "2026-08-23T1511Z": 0.7}
     monkeypatch.setattr(ejecucion, "fechas_de", lambda roi, pedido, receta: pasadas)
     mundo["gee"] = lambda etiqueta: _respuesta_de_gee(mediana=medianas[etiqueta])
 
@@ -480,7 +480,7 @@ def _mes_v2(monkeypatch, mundo, coberturas):
     from pipeline.receta import RECETA_POR_PASADA
 
     pasadas = tuple(datetime(2025, 7, 1 + i, 15, 32, tzinfo=UTC) for i in range(len(coberturas)))
-    por_etiqueta = {f"2025-07-{1 + i:02d}T15:32Z": c for i, c in enumerate(coberturas)}
+    por_etiqueta = {f"2025-07-{1 + i:02d}T1532Z": c for i, c in enumerate(coberturas)}
     monkeypatch.setattr(ejecucion, "fechas_de", lambda roi, pedido, receta: pasadas)
     mundo["gee"] = lambda etiqueta: (
         {"cobertura": 0} if por_etiqueta[etiqueta] == 0

@@ -210,3 +210,54 @@ def test_una_parcela_y_un_rancho_con_el_mismo_id_no_comparten_capa():
         indice="ndvi", ventana=del_mes(Mes(2025, 9)),
     ).natural_key
     assert del_rancho != de_la_parcela
+
+
+# ---- M.9.7e2: la pasada y el color real (`DECISIONS #77`) ------------------------
+
+
+def _pasada():
+    from datetime import UTC, datetime
+
+    from pipeline.ventanas import POR_PASADA, agrupamiento
+
+    (ventana,) = agrupamiento(POR_PASADA).partir(
+        del_mes(Mes(2025, 7)), [datetime(2025, 7, 14, 15, 42, 7, tzinfo=UTC)]
+    )
+    return ventana
+
+
+def test_la_key_de_una_pasada_lleva_su_etiqueta_segura():
+    from pipeline.claves import claves_cog_pasada
+    from pipeline.receta import RECETA_PASADA_V3
+
+    claves = claves_cog_pasada(
+        tenant_id=TENANT, rancho_id=RANCHO, receta=RECETA_PASADA_V3,
+        producto="ndvi", ventana=_pasada(),
+    )
+    assert claves.storage_key == (
+        f"tenants/{TENANT}/ranchos/{RANCHO}/s2-pasada-v3/2025-07-14T1542Z.tif"
+    )
+    assert claves.natural_key == f"rancho_pasada_ndvi_{RANCHO}_2025-07-14T1542Z"
+
+
+def test_la_pasada_y_el_mensual_no_comparten_natural_key():
+    from pipeline.claves import claves_cog_pasada
+    from pipeline.receta import RECETA_PASADA_V3
+
+    ventana = _pasada()
+    pasada = claves_cog_pasada(tenant_id=TENANT, rancho_id=RANCHO, receta=RECETA_PASADA_V3,
+                               producto="ndvi", ventana=ventana)
+    mensual = claves_cog_mensual(tenant_id=TENANT, rancho_id=RANCHO, receta=RECETA_PASADA_V3,
+                                 indice="ndvi", ventana=ventana)
+    assert pasada.natural_key != mensual.natural_key
+
+
+def test_el_color_real_es_un_producto_solo_si_la_receta_lo_lleva():
+    from pipeline.receta import RECETA_PASADA_V3
+
+    claves = claves_cog_mensual(tenant_id=TENANT, rancho_id=RANCHO, receta=RECETA_PASADA_V3,
+                                indice="rgb", ventana=del_mes(Mes(2025, 7)))
+    assert claves.natural_key.startswith("rancho_mensual_rgb_")
+    with pytest.raises(ValueError, match="no produce 'rgb'"):
+        claves_cog_mensual(tenant_id=TENANT, rancho_id=RANCHO, receta=RECETA_VIGENTE,
+                           indice="rgb", ventana=del_mes(Mes(2025, 7)))

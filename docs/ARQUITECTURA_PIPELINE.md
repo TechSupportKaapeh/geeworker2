@@ -412,8 +412,9 @@ Primero los cambios de forma, **sin cambio de comportamiento** y con el control 
 5. **La receta v3 y el paso del rancho por pasada** (M.9.7e), **partida en dos** el 2026-09-27:
    - **e1, la receta** (**hecha**, `DECISIONS #76`): las dos máscaras, la banda verde y el color
      real en el compuesto. Existe y **no es la vigente**;
-   - **e2, el paso del rancho**: la etiqueta segura, la cobertura del rancho en una llamada, las
-     descargas en paralelo, un COG por pasada con una fila `rgb`, y el mensual al lado.
+   - **e2, el paso del rancho** (**hecho**, `DECISIONS #77`): la etiqueta segura, la cobertura del
+     rancho en una llamada, las descargas en paralelo (4 hilos), un COG por pasada con una fila
+     `rgb`, y el mensual al lado. El Cauca chico, 24 s por mes; uno de ~2.500 ha, 48,6 s.
 
    **v3 pasa a ser la vigente en el paso 7**, no acá: el mapa mensual del panel pide el día 1, y
    una pasada de ese día se mezclaría con el compuesto hasta que el panel las distinga (paso 6).
