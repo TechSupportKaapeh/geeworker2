@@ -11,6 +11,9 @@
 > - **La máscara del ráster por pasada será la receta y Cloud Score+ a la vez** (M.9.7e, receta v3).
 >   Se reproduce con `scripts/check_pipeline_real.py --mascaras`.
 > - **Las credenciales de la base del `.env` están muertas**: `check_schema.py` no conecta.
+> - **El mapa del rancho filtra las capas por `acquired_ts`** desde M.9.7c (Geocore `#54`): el día
+>   1 del mes en el mapa mensual. Cuando el ráster sea por pasada (M.9.7e), `acquired_ts` tiene
+>   que ser el instante de la pasada, o el filtro por fechas del mapa no la encuentra.
 >
 > Crónica: [`SESSION_2026-09-26_sesion_17_el_raster_por_pasada.md`](SESSION_2026-09-26_sesion_17_el_raster_por_pasada.md).
 
