@@ -116,6 +116,46 @@ def test_dos_teselas_de_la_misma_pasada_no_dan_dos_ventanas():
     assert len(ventanas) == 1
 
 
+def test_la_ventana_de_una_pasada_alcanza_a_todas_sus_teselas():
+    """`DECISIONS #75`: las teselas de una toma estan a segundos entre si.
+
+    Sinaloa, 2025-03-08: T13RBH a las 17:57:35,851 y T12RZN a las 17:57:36,385. Con
+    la ventana de un segundo desde la tardia, la temprana quedaba afuera. El
+    instante es ahora el de la mas temprana, y la ventana dura un minuto; ~15 s es
+    lo que separa dos teselas vecinas a lo largo de la orbita.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    temprana = datetime(2025, 3, 8, 17, 57, 35, 851_000, tzinfo=UTC)
+    (ventana,) = agrupamiento(POR_PASADA).partir(del_mes(Mes(2025, 3)), [temprana])
+    for tesela in (temprana, temprana + timedelta(seconds=0.534),
+                   temprana + timedelta(seconds=15)):
+        assert ventana.inicio <= tesela < ventana.fin
+
+
+def test_dos_pasadas_del_mismo_dia_a_diez_minutos_son_dos_ventanas():
+    """El Cauca, 2025-07-06: 15:32 y 15:42, dos orbitas que se solapan. Es la pasada
+    siguiente mas cercana que se midio, y el techo de la ventana."""
+    from datetime import UTC, datetime
+
+    una = datetime(2025, 7, 6, 15, 32, 5, tzinfo=UTC)
+    otra = datetime(2025, 7, 6, 15, 42, 11, tzinfo=UTC)
+    primera, segunda = agrupamiento(POR_PASADA).partir(del_mes(Mes(2025, 7)), [una, otra])
+    assert not primera.inicio <= otra < primera.fin
+    assert primera.fin <= segunda.inicio
+
+
+def test_dos_pasadas_a_menos_de_un_minuto_se_rechazan():
+    """Sus ventanas se pisarian: una tesela entraria en las dos."""
+    from datetime import UTC, datetime, timedelta
+
+    una = datetime(2025, 7, 6, 15, 32, 5, tzinfo=UTC)
+    with pytest.raises(ValueError, match="a menos de"):
+        agrupamiento(POR_PASADA).partir(
+            del_mes(Mes(2025, 7)), [una, una + timedelta(seconds=30)]
+        )
+
+
 def test_sin_pasadas_no_hay_ventanas():
     assert agrupamiento(POR_PASADA).partir(del_mes(AGOSTO), ()) == ()
 

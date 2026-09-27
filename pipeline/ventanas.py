@@ -52,6 +52,7 @@ correcto.
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from types import MappingProxyType
 from typing import Final, NamedTuple
 
@@ -62,11 +63,20 @@ from pipeline.periodos import Mes, rango
 ENTERO: Final = "entero"
 POR_PASADA: Final = "por_pasada"
 
-# Lo que se le suma al último instante de una pasada para cerrar su ventana.
-# El rango de `filterDate` es semiabierto, así que sin esto la última tesela de
-# la pasada quedaría afuera. Un segundo alcanza y sobra: dos pasadas del mismo
-# punto están a días, no a segundos.
-_CIERRE: Final = timedelta(seconds=1)
+# Cuánto dura la ventana de una pasada, desde su tesela más temprana.
+#
+# **Era un segundo, y dejaba teselas afuera** (2026-09-27, `DECISIONS #75`): las
+# teselas de una misma toma no tienen el mismo `system:time_start`. En Sinaloa, las
+# dos de cada pasada —T12RZN y T13RBH, una en cada zona UTM— están a medio
+# segundo, y con el instante de la primera que apareciera y el corte al segundo de
+# `fuente.milisegundos`, 5 de las 7 pasadas de marzo de 2025 entraban con una sola.
+# Dos teselas vecinas a lo largo de la órbita están a ~15 s.
+#
+# **El techo es la pasada siguiente sobre el mismo punto**: no son días, como
+# decía esto antes, sino **10 minutos** cuando dos órbitas se solapan (el Cauca,
+# 2025-07-06, a las 15:32 y a las 15:42). Un minuto entra con holgura entre los
+# dos, y lo fija un test.
+_CIERRE: Final = timedelta(minutes=1)
 
 
 class Ventana(NamedTuple):
@@ -124,34 +134,16 @@ def _por_pasada(pedido: Ventana, fechas: Sequence[datetime]) -> tuple[Ventana, .
     ``DATATAKE_IDENTIFIER`` —o sea, una por pasada y no una por tesela—, que es
     lo que devuelve :func:`pipeline.ejecucion.fechas_de`.
 
-    La ventana de una pasada es ``[instante, instante + 1 s)``. El segundo está
-    sólo para cerrar el rango semiabierto: el instante ya es el de la pasada
-    entera, porque :func:`pipeline.etapas.compuesto.por_pasada` junta sus teselas
-    antes.
+    La ventana de una pasada es ``[instante, instante + 1 min)``, donde el
+    instante es el de **su tesela más temprana**
+    (:func:`pipeline.etapas.compuesto.por_pasada`): así entran todas sus teselas,
+    que están a segundos entre sí, y ninguna de la pasada siguiente, que está a
+    10 minutos como mínimo. Ver :data:`_CIERRE`, y ``DECISIONS #75`` para el error
+    que tenía la de un segundo.
 
-    .. warning::
-
-       **Esta ventana todavía no sirve para seleccionar sus escenas**, y por eso
-       ninguna receta usa este agrupamiento. Lo encontró M.9.0b contra GEE real:
-       ``S2_SR`` y ``S2_CLOUD_PROBABILITY`` comparten el ``system:index`` —que es
-       por donde las une :func:`pipeline.etapas.fuente.coleccion`— pero **no el
-       ``system:time_start``**. El de SR va después, y por minutos: de 129 a 260 s
-       sobre una parcela de los Llanos, y de 668 a 1169 s sobre el cuadrado del
-       Bajío. Depende de dónde caiga el ROI en la pasada, así que **no hay un
-       margen chico que sirva para todos**.
-
-       Con una ventana de un segundo alrededor del instante de SR, la imagen de
-       nubes queda fuera del ``filterDate``, el join no encuentra par y la
-       colección sale vacía.
-
-       **Lo que M.9.0c tiene que hacer**: filtrar la colección de nubes por un
-       superconjunto del pedido y dejar que el join por ``system:index`` —que es
-       exacto— haga el resto. El filtro de fecha sobre las nubes es una
-       optimización, no un criterio. Eso **cambia el borde del mes** —una escena
-       de los primeros minutos tiene su imagen de nubes en el mes anterior, y hoy
-       se descarta—, así que es un cambio de números y no podía entrar en M.9.0b.
-       Está fijado en ``test_las_dos_colecciones_fechan_la_misma_escena_con_
-       minutos_de_diferencia``.
+    La colección de nubes no se filtra por esta ventana sino por un superconjunto
+    (``fuente.MARGEN_DE_NUBES_MS``): las dos colecciones fechan la misma escena
+    con minutos de diferencia (M.9.0b, ``DECISIONS #67``).
 
     Las fechas se ordenan y se sacan los repetidos: dos teselas de la misma
     pasada darían dos ventanas idénticas, y con ellas dos filas iguales para la
@@ -169,9 +161,20 @@ def _por_pasada(pedido: Ventana, fechas: Sequence[datetime]) -> tuple[Ventana, .
             f"[{pedido.inicio}, {pedido.fin}): {sorted(afuera)[:3]}"
         )
         raise ValueError(msg)
+    ordenadas = sorted(set(fechas))
+    # Dos pasadas a menos de `_CIERRE` tendrían ventanas pisadas: una tesela
+    # entraría en las dos y escribiría la misma observación dos veces. No se ha
+    # visto nunca —el mínimo medido son 10 minutos—, y si pasa conviene que falle.
+    juntas = [(a, b) for a, b in pairwise(ordenadas) if b - a < _CIERRE]
+    if juntas:
+        msg = (
+            f"{len(juntas)} par(es) de pasadas a menos de {_CIERRE} en "
+            f"{pedido.etiqueta}: {juntas[:2]}"
+        )
+        raise ValueError(msg)
     return tuple(
         Ventana(etiqueta=etiqueta_de_instante(f), inicio=f, fin=f + _CIERRE)
-        for f in sorted(set(fechas))
+        for f in ordenadas
     )
 
 

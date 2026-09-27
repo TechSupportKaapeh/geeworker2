@@ -505,3 +505,29 @@ def test_pedir_las_pasadas_juntas_da_lo_mismo_que_de_a_una(gee_inicializado):
 
     assert conteo.llamadas == 1
     assert juntas == de_a_una
+
+
+@pytest.mark.gee
+def test_cada_pasada_trae_todas_sus_teselas(gee_inicializado):
+    """`DECISIONS #75`, con el caso real: Sinaloa, marzo de 2025, donde cada toma son
+    dos teselas a medio segundo (T12RZN y T13RBH). Con la ventana de un segundo, 5
+    de las 7 pasadas entraban con una sola."""
+    import ee
+
+    from pipeline.receta import RECETA_POR_PASADA
+
+    roi = ee.Geometry.Rectangle([-107.42398, 24.61775, -107.41902, 24.62225])
+    pedido = del_mes(Mes(2025, 3))
+    ventanas = ejecucion.ventanas_de(roi, pedido, RECETA_POR_PASADA)
+    escenas = ee.ImageCollection(RECETA_POR_PASADA.coleccion).filterBounds(roi)
+    por_toma = ejecucion.traer(ee.Dictionary({
+        v.etiqueta: ee.List([
+            fuente.coleccion(roi, v, RECETA_POR_PASADA).size(),
+            escenas.filterDate(v.inicio.isoformat(), v.fin.isoformat())
+            .aggregate_array("DATATAKE_IDENTIFIER").distinct().size(),
+        ])
+        for v in ventanas
+    }))
+
+    assert len(ventanas) == 7
+    assert all(teselas == 2 and tomas == 1 for teselas, tomas in por_toma.values()), por_toma

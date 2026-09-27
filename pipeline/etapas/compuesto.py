@@ -53,13 +53,21 @@ def por_pasada(coleccion: ee.ImageCollection) -> ee.ImageCollection:
     Donde las teselas se solapan traen los mismos píxeles, así que ``mosaic()``
     elige cualquiera de los dos. Donde una tesela no llega, o quedó enmascarada,
     aporta la otra.
+
+    **El instante de la pasada es el de su tesela más temprana**, no el de la
+    primera que aparezca: las teselas de una toma están a segundos entre sí, y la
+    ventana de la pasada arranca en ese instante (``DECISIONS #75``). Con la
+    primera cualquiera, la ventana podía empezar después de otra tesela de la
+    misma toma y dejarla afuera.
     """
     pasadas = coleccion.aggregate_array(PROPIEDAD_PASADA).distinct()
 
     def juntar(identificador: ee.String) -> ee.Image:
         tesela = coleccion.filter(ee.Filter.eq(PROPIEDAD_PASADA, identificador))
         return ee.Image(
-            tesela.mosaic().copyProperties(tesela.first(), _PROPIEDADES_DE_LA_PASADA)
+            tesela.mosaic()
+            .copyProperties(tesela.first(), _PROPIEDADES_DE_LA_PASADA)
+            .set("system:time_start", tesela.aggregate_min("system:time_start"))
         )
 
     return ee.ImageCollection(pasadas.map(juntar))
