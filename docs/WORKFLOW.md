@@ -181,6 +181,7 @@ Si la auditoría encuentra algo → **volver a la etapa 2** y corregir antes de 
 > | `scripts/check_prod.py` | tileserver | La cadena de tiles contra el deploy real, en 7 escalones |
 > | `scripts/check_pipeline_real.py --pasadas` | worker | **M.9.0**: cuántas pasadas limpias hay por mes y qué cobertura tiene cada una sobre la parcela |
 > | `scripts/check_pipeline_real.py --costo` | worker | **M.9.7d**: cuánto cuesta un mes por pasada, de a una contra todas juntas, y que las dos den lo mismo |
+> | `scripts/check_rancho_por_pasada.py` | worker | **M.9.7g**: el mes de un rancho con la receta v3 —descarga y COG reales, sin subir ni escribir—, contra la compuerta de 60 s |
 > | `scripts/check_pipeline_real.py --mascaras` | worker | **M.9.7a**: la máscara de la receta contra Cloud Score+ y las dos a la vez, pasada por pasada, contra las pasadas despejadas cercanas |
 > | `GET /health/ready` | tileserver | Config y MinIO alcanzable, sin token |
 > | `check_schema.py` | worker | Que el SQL case contra el esquema real |
