@@ -1,5 +1,12 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-27, sesión 18 · M.9.7d, e y f, cerradas.** Lo único que cambió en producción: el mes de
+> una parcela cuesta dos llamadas a GEE en vez de una por pasada (`#74`), y la ventana de una pasada
+> ya no deja teselas afuera (`#75`). v3 existe y **no es la vigente**; lo es con M.9.7g, que arranca
+> midiendo un rancho grande real. Crónica:
+> [`SESSION_2026-09-27_sesion_18_el_mes_en_una_llamada_y_v3.md`](SESSION_2026-09-27_sesion_18_el_mes_en_una_llamada_y_v3.md).
+> Suite: **737 verdes**, 29 omitidos; con `--gee`, 29 verdes.
+
 > **2026-09-27 · M.9.7e2: el rancho sabe escribir por pasada** (`DECISIONS #77`). Sólo con v3, que
 > no es la vigente; con v2 no cambió nada.
 >
