@@ -49,11 +49,11 @@ const sprints = salida['sprints'] ?? ''
 
 // Lo estructural, que es lo que rompe una llave mal puesta: si un sprint se come al
 // siguiente, esta cuenta baja y nada más se entera.
-esperar('los sprints se dibujan (M.0 a M.9, son 10)',
-  (sprints.match(/class="sprint"/g) || []).length === 10)
+esperar('los sprints se dibujan (M.0 a M.9 y C, son 11)',
+  (sprints.match(/class="sprint"/g) || []).length === 11)
 esperar('cada tarea del tablero aparece una vez',
   Number(salida['st-total']) === (sprints.match(/class="tid"/g) || []).length)
-esperar('hay una "siguiente tarea"', /M\.\d/.test(salida['siguiente'] ?? ''))
+esperar('hay una "siguiente tarea"', /\b(M|C)\.\d/.test(salida['siguiente'] ?? ''))
 esperar('la ruta marca una sesión como próxima', (salida['ruta'] ?? '').includes('· próxima'))
 esperar('la tabla de decisiones no queda vacía', (salida['decisiones'] ?? '').includes('<tr>'))
 esperar('las hechas no pasan al total',

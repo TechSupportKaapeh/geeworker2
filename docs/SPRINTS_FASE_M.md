@@ -64,6 +64,7 @@
 | **M.7** Panel | Ver series y mapas mensuales; editor de geometría | 2–3 | panel |
 | **M.8** Seguridad | Cerrar A01, A04 y A09, y tests de la API | 2 | Geocore, tileserver |
 | **M.9** Analítica y futuro | Cultivo, anomalías, más índices, radar | abierto | todos |
+| **C** Cuenta del cliente | La app del cliente funciona sin que TerraStaff intervenga en el día a día | 1–2 | Geocore |
 
 **Orden sugerido de sesiones, unas 16:**
 
@@ -776,6 +777,53 @@ fechas disponibles, y si el RGB entra en el bloque.
 
 ---
 
+## C — Cuenta del cliente (pedido del usuario, 2026-09-29)
+
+> **Fuera de la FASE M, y va antes que M.9.7g.** El equipo externo que hace el front de la app
+> web del cliente —no el panel admin— no puede entrar con un usuario normal: recibe 403 "no tiene
+> credenciales suficientes". El objetivo es **lo mínimo que la cuenta de un cliente necesita en un
+> SaaS B2B multi-tenant**, para que la app funcione sin que TerraStaff intervenga en el día a día.
+> El prompt entero está en `geocore/docs/PROXIMA_SESION.md`.
+
+**El diagnóstico, verificado en el código el 2026-09-29** (C.0):
+
+- `/api/tenants` y `/api/users` son enteros de TerraStaff: un `Client` recibe **403 con cuerpo
+  vacío** —el único 403 sin `code` de la API—, y **no hay ningún endpoint** para que sepa quién es
+  ni a qué tenants pertenece.
+- El rol del tenant (`Admin` / `Member`) **no se lee en ningún lado**.
+- **Un tenant suspendido o desactivado no corta a sus miembros**: `IsActiveMemberAsync` no mira el
+  estado del tenant (A01).
+- **`MaxUsers` sí se aplica** (`Tenant.AddMember`), pero cuenta también las membresías `Left` y
+  `Suspended`: quien se fue ocupa un lugar para siempre. Y un `Left` no se puede volver a sumar.
+- Quitar un miembro **borra** la fila de membresía, contra el soft delete de `DECISIONS #12`.
+
+**Las decisiones del usuario, el 2026-09-29:**
+
+| | Decisión |
+|---|---|
+| d-C1 | **Un `Member` lee, crea y edita** ranchos y parcelas (altas, KML, nombres, geometrías). **Sólo el `Admin`**: los miembros, activar y desactivar, y los datos del tenant. TerraStaff sigue con su bypass |
+| d-C2 | **Los usuarios y sus contraseñas los sigue creando TerraStaff** (`create-user`). El Admin del tenant **no invita**: la C.6 original (invitar) sale del sprint |
+| d-C3 | El Admin del tenant edita **sólo el contacto** (teléfono y email). El nombre y los fiscales (EIN, país, dirección) quedan para TerraStaff |
+| d-C4 | **Mínimo 1 Admin activo** por tenant: no se puede degradar, suspender ni quitar al último, y el último no puede salirse (409) |
+
+| | Tarea | T | Aceptación | Estado |
+|---|---|---|---|---|
+| C.0 | PLAN: confirmar el diagnóstico en el código, las decisiones d-C1 a d-C4, y el sprint en el tablero | S | decisiones escritas | ✅ 2026-09-29 |
+| C.1 | `GET /api/me`, para cualquier usuario autenticado y **sin** `X-Tenant-ID`: el perfil y sus tenants activos con su rol. **Desbloquea el login**: va sola y se despliega apenas esté en verde | S | tests de API: un Client ve sólo lo suyo; un suspendido o un `Left` no ve ese tenant; un usuario no aprovisionado sigue en 403 `USER_INACTIVE` | ⬜ |
+| C.2 | `PATCH /api/me/profile`: nombre y apellido propios (el email y la contraseña son de Supabase) | S | tests; la validación de `UpdateProfile` | ⬜ |
+| C.3 | El tenant actual: `GET /api/tenant` con `X-Tenant-ID` para cualquier miembro, y `PATCH /api/tenant/contact` sólo para su Admin (d-C3). **Un tenant suspendido o desactivado corta a sus miembros con 403 `TENANT_INACTIVE`** | M | tests, también del corte | ⬜ |
+| C.4 | Los permisos por rol del tenant **como una regla y no un atributo por endpoint** (`#44`): un endpoint nuevo queda cubierto por existir. Qué es de Admin sale de d-C1 | M | un test recorre los endpoints registrados; un Member recibe 403 `TENANT_ADMIN_REQUIRED` en lo de Admin | ⬜ |
+| C.5 | Los miembros, gestionados por el Admin de **su** tenant: listar, cambiar el rol, suspender, quitar (pasa a `Left`) y salir uno mismo. Nunca un tenant sin Admin activo (d-C4); auditado (`#45`) | M | un test por cada intento de cruzar a otro tenant o a un rol global (A01) | ⬜ |
+| C.6 | **Redefinida por d-C2**: sumar miembros sigue siendo de TerraStaff, pero `MaxUsers` cuenta **sólo los activos** y un `Left` **vuelve** a sumarse reactivando su fila | S | tests de dominio y de API | ⬜ |
+| C.7 | La doc para el front: "Cuenta y tenant" en `api-frontend.html`, arriba en "Cambios recientes": el flujo de entrada, la tabla de errores, qué hace cada rol y lo que queda fuera de alcance | S | la doc | ⬜ |
+| 👥 C.7b | El dominio de la app del cliente en `Cors__Origins` del Geocore de Railway: sin eso el navegador corta antes de llegar a Geocore | S | un preflight desde ese dominio da 204 con el header | ⬜ |
+
+**Fuera de alcance, a propósito:** facturación y planes, alta de un tenant por el propio cliente,
+SSO, 2FA (es de Supabase), borrar la cuenta propia, notificaciones, y —por d-C2— que el Admin del
+tenant invite o cree usuarios. Si alguna hace falta para la demo, se decide aparte.
+
+---
+
 ## Decisiones que el backlog necesita, y cuándo
 
 | Decisión | Antes de | Estado |
@@ -794,3 +842,4 @@ fechas disponibles, y si el RGB entra en el bloque.
 | **Qué tan frescas son las fechas disponibles**: lo guardado, hasta el último mes cerrado (recomendado), o una consulta a GEE en el momento | M.9.6d | ⬜ |
 | **¿El RGB entra en M.9.6?** Y si entra, ¿receta nueva o producto que se suma sin cambiar la versión? | M.9.6f | ⬜ |
 | Qué hacer con el hallazgo T-3 del tileserver | — | ✅ 2026-09-25 · se borra el router `/mosaic` (`DECISIONS #64`). **Hecho el 2026-09-24**, terra-tileserver#4: con él se fueron `titiler.mosaic`, `boto3` y `scripts/check_mosaic_median.py` |
+| **d-C1 a d-C4**: la cuenta del cliente (qué puede un Member, quién invita, qué datos edita el Admin, cuántos Admin como mínimo) | C.1 | ✅ 2026-09-29 · ver el sprint C |
