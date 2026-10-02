@@ -265,7 +265,7 @@
 
   <footer>
     <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
-    <span class="mono">Actualizado 2026-09-29</span>
+    <span class="mono">Actualizado 2026-10-02</span>
   </footer>
 </div>
 
@@ -373,9 +373,9 @@ const SPRINTS = [
       { id: "C.0", t: "PLAN: el diagnóstico verificado en el código, las decisiones d-C1 a d-C4 y el sprint en el tablero", repo: "Geocore", T: "S", ok: "Decisiones escritas" },
       { id: "C.1", t: "GET /api/me sin X-Tenant-ID: el perfil y los tenants activos con su rol. Desbloquea el login", repo: "Geocore", T: "S", ok: "Un Client ve sólo lo suyo; suspendido o Left no ve el tenant; sin aprovisionar, 403 USER_INACTIVE" },
       { id: "C.2", t: "PATCH /api/me/profile: nombre y apellido propios", repo: "Geocore", T: "S", ok: "Tests; la validación de UpdateProfile" },
-      { id: "C.3", t: "El tenant actual: GET /api/tenant y PATCH /api/tenant/contact (Admin); un tenant suspendido corta con TENANT_INACTIVE", repo: "Geocore", T: "M", ok: "Tests, también del corte" },
-      { id: "C.4", t: "Los permisos por rol del tenant como una regla, no un atributo por endpoint", repo: "Geocore", T: "M", ok: "Un test recorre los endpoints registrados; un Member recibe 403 en lo de Admin" },
-      { id: "C.5", t: "Los miembros, por el Admin de su tenant: listar, rol, suspender, quitar y salir; nunca sin Admin activo", repo: "Geocore", T: "M", ok: "Un test por cada intento de cruzar a otro tenant o a un rol global (A01); auditado" },
+      { id: "C.3", t: "El tenant actual: GET /api/tenant; un tenant suspendido corta con TENANT_INACTIVE (el PATCH del contacto pasó a C.4)", repo: "Geocore", T: "M", ok: "Tests, también del corte. Geocore#78" },
+      { id: "C.4", t: "Los permisos por rol del tenant como una regla, no un atributo por endpoint", repo: "Geocore", T: "M", ok: "Cerrada por defecto; la foto de lo de Member contra los endpoints. Y PATCH /api/tenant/contact. Geocore#79" },
+      { id: "C.5", t: "Los miembros, por el Admin de su tenant: listar, rol, suspender, quitar y salir; nunca sin Admin activo", repo: "Geocore", T: "M", ok: "Un test por cada cruce (A01); 422 LAST_TENANT_ADMIN; suma reactivar. Geocore#80" },
       { id: "C.6", t: "Redefinida por d-C2: MaxUsers cuenta sólo los activos y un Left vuelve a sumarse", repo: "Geocore", T: "S", ok: "Tests de dominio y de API" },
       { id: "C.7", t: "La doc para el front: «Cuenta y tenant», el flujo de entrada, los errores y los roles", repo: "Geocore", T: "S", ok: "api-frontend.html, arriba en Cambios recientes" },
       { id: "C.7b", t: "El dominio de la app del cliente en Cors__Origins del Geocore de Railway", repo: "Railway", T: "S", ok: "Un preflight desde ese dominio da 204", equipo: true }
@@ -410,6 +410,10 @@ const SPRINTS = [
     ] }
 ];
 
+// Sesión 19 (2026-09-29 a 10-02): fuera de la FASE M, el sprint C · la cuenta del cliente, entero
+// (Geocore#76 a #82): /api/me, el tenant actual, TENANT_INACTIVE, el rol como regla cerrada por
+// defecto, los miembros por su Admin y MaxUsers por plazas. Queda 👥 C.7b, el CORS de la app.
+//
 // Al 2026-09-20, cerrando la sesión 10: M.0.1 a M.0.5, M.1, M.2, M.3, M.4, M.5 y **M.6
 // entero salvo M.6.3, que quedó sin objeto**, más M.8.2. El cierre de mes corre en producción desde el 2026-09-19.
 //
@@ -489,7 +493,8 @@ const ESTADO = {
   "M.9.0": "hecho", "M.9.0b": "hecho", "M.9.0c": "hecho", "M.9.0d": "hecho",
   "M.9.7a": "hecho", "M.9.7b": "hecho", "M.9.7c": "hecho", "M.9.7d": "hecho",
   "M.9.7e1": "hecho", "M.9.7e2": "hecho", "M.9.7f": "hecho",
-  "C.0": "hecho", "C.1": "curso"
+  "C.0": "hecho", "C.1": "hecho", "C.2": "hecho", "C.3": "hecho", "C.4": "hecho",
+  "C.5": "hecho", "C.6": "hecho", "C.7": "hecho"
 };
 
 const RUTA = [
@@ -566,7 +571,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 22;
+const sesionProxima = 23;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

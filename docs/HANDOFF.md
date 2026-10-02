@@ -1,5 +1,10 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-09-29 a 10-02, sesión 19 · la cuenta del cliente, en Geocore.** El worker no cambió: sólo
+> el tablero, que suma el sprint C (cerrado salvo 👥 C.7b) y espera ahora 11 sprints
+> (`check_tablero.js`). La que sigue vuelve a **M.9.7g**. Crónica:
+> `geocore/docs/SESSION_2026-09-29_sesion_19_la_cuenta_del_cliente.md`.
+
 > **2026-09-27, sesión 18 · M.9.7d, e y f, cerradas.** Lo único que cambió en producción: el mes de
 > una parcela cuesta dos llamadas a GEE en vez de una por pasada (`#74`), y la ventana de una pasada
 > ya no deja teselas afuera (`#75`). v3 existe y **no es la vigente**; lo es con M.9.7g, que arranca
