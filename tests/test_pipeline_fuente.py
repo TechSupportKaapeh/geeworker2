@@ -172,3 +172,56 @@ def test_un_mes_sin_escenas_da_una_coleccion_vacia(gee_inicializado):
     roi = ee.Geometry.Polygon([ROI_DE_PRUEBA])
 
     assert fuente.coleccion(roi, del_mes(Mes(2035, 1)), RECETA_VIGENTE).size().getInfo() == 0
+
+
+# El tándem de Sentinel-2C (`DECISIONS #79`): un rancho del Valle del Yaqui, de los
+# que se usaron para medir v3, y el día en que el 2C sacó su toma de prueba 27 s
+# después de la del 2A sobre la tesela 12RWR.
+ROI_YAQUI = [
+    [-110.0076, 27.293215],
+    [-109.9924, 27.293215],
+    [-109.9924, 27.306785],
+    [-110.0076, 27.306785],
+    [-110.0076, 27.293215],
+]
+
+
+@pytest.mark.gee
+def test_el_producto_de_prueba_de_s2c_no_entra(gee_inicializado):
+    import ee
+
+    from pipeline.ventanas import Ventana
+
+    roi = ee.Geometry.Polygon([ROI_YAQUI])
+    dia = Ventana(
+        "2024-12-11",
+        datetime(2024, 12, 11, tzinfo=UTC),
+        datetime(2024, 12, 12, tzinfo=UTC),
+    )
+    crudas = ee.ImageCollection(RECETA_VIGENTE.coleccion).filterBounds(roi).filterDate(
+        "2024-12-11", "2024-12-12"
+    )
+    info = ee.Dictionary({
+        # Control: GEE sigue publicando las dos, la del 2A y la de prueba del 2C.
+        "bases_crudas": crudas.aggregate_array("PROCESSING_BASELINE"),
+        "bases": fuente.coleccion(roi, dia, RECETA_VIGENTE).aggregate_array(
+            "PROCESSING_BASELINE"
+        ),
+    }).getInfo()
+
+    assert sorted(info["bases_crudas"]) == ["05.11", "99.05"], "cambió el caso de prueba"
+    assert info["bases"] == ["05.11"]
+
+
+@pytest.mark.gee
+def test_diciembre_de_2024_se_parte_en_pasadas_sin_error(gee_inicializado):
+    """Lo que fallaba en producción: «1 par de pasadas a menos de 0:01:00»."""
+    import ee
+
+    from pipeline.ejecucion import ventanas_de
+
+    roi = ee.Geometry.Polygon([ROI_YAQUI])
+    # Las estadisticas de v2 ya van por pasada: es el camino que parte el mes.
+    ventanas = ventanas_de(roi, del_mes(Mes(2024, 12)), RECETA_VIGENTE)
+
+    assert ventanas, "diciembre en el Yaqui sin pasadas"

@@ -48,6 +48,16 @@ _MS_POR_SEGUNDO: Final = 1000
 # `coleccion`, que es donde importa.
 MARGEN_DE_NUBES_MS: Final = 24 * 60 * 60 * _MS_POR_SEGUNDO
 
+# **Los productos de prueba de ESA no entran** (`DECISIONS #79`). Su línea de base de
+# procesamiento empieza con 99 (`N99.05`): son los de la puesta en marcha de un
+# satélite, que ESA publica marcados como no aptos para uso operativo. El caso que lo
+# trajo: en diciembre de 2024 Sentinel-2C voló en tándem 30 s detrás del 2A, y su
+# toma de prueba del mismo lugar caía a menos de un minuto de la del 2A —dos
+# pasadas imposibles para `ventanas.por_pasada`, que las rechaza—, así que **toda
+# alta nueva fallaba en 2024-12**. Hay una por lugar (Yaqui, Zapotlan y el Cauca,
+# del 11 al 13 de diciembre), y la escena es la misma que la del 2A.
+PREFIJO_BASE_DE_PRUEBA: Final = "99"
+
 
 def bandas_espectrales(receta: Receta) -> tuple[str, ...]:
     """Las bandas de S2 que la receta necesita: las de sus índices, más el NIR.
@@ -103,7 +113,8 @@ def coleccion(roi: ee.Geometry, ventana: Ventana, receta: Receta) -> ee.ImageCol
     escena sin máscara mete nubes en la mediana. Es lo que hace
     ``ee.Join.saveFirst`` sin ``outer``, y lo que hacía la capa vieja.
 
-    No descarta escenas por nubosidad ni por cobertura del ROI. En un compuesto,
+    Descarta los productos de prueba de ESA (``PREFIJO_BASE_DE_PRUEBA``), y nada
+    más: no descarta escenas por nubosidad ni por cobertura del ROI. En un compuesto,
     una escena casi toda nublada aporta los píxeles que sí están limpios
     (§8.2 y §8.3). La calidad se mide al final, con la cobertura de la ventana.
 
@@ -114,7 +125,16 @@ def coleccion(roi: ee.Geometry, ventana: Ventana, receta: Receta) -> ee.ImageCol
     remuestreo = metodo_de_remuestreo(receta)
 
     escenas = (
-        ee.ImageCollection(receta.coleccion).filterBounds(roi).filterDate(inicio, fin)
+        ee.ImageCollection(receta.coleccion)
+        .filterBounds(roi)
+        .filterDate(inicio, fin)
+        # Sin los productos de prueba de ESA (ver `PREFIJO_BASE_DE_PRUEBA`). Con
+        # `Not`, una escena sin la propiedad entra: el filtro saca, no exige.
+        .filter(
+            ee.Filter.stringStartsWith(
+                "PROCESSING_BASELINE", PREFIJO_BASE_DE_PRUEBA
+            ).Not()
+        )
     )
     # **El filtro de fecha de las nubes es un superconjunto, no un criterio.** Quien
     # decide qué escena entra es el join por `system:index`, que es exacto; la
