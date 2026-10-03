@@ -1,5 +1,11 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-10-03, sesión 21 · M.9.7g cerrada de nuestro lado, y K.1 en Geocore.** El worker no cambió:
+> sólo el tablero. El rancho del Yaqui con v3 se ve bien en el panel y el borrado está aplicado; queda
+> 👥 **M.9.7g2**, reprocesar el resto con el botón (Zapotlan va a fallar: M.9.7h). La que sigue es
+> **K.2**, el clasificador. Crónica:
+> [`SESSION_2026-10-03_sesion_21_k1_lectores.md`](SESSION_2026-10-03_sesion_21_k1_lectores.md).
+
 > **2026-10-02, sesión 20 · `s2-pasada-v3` ES LA RECETA VIGENTE** (`DECISIONS #78`, geeworker2#97),
 > y las tomas de prueba de ESA ya no entran (`#79`, #98). Crónica:
 > [`SESSION_2026-10-02_sesion_20_v3_vigente.md`](SESSION_2026-10-02_sesion_20_v3_vigente.md).
