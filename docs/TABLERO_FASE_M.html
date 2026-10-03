@@ -265,7 +265,7 @@
 
   <footer>
     <span>Fuente: <span class="mono">geework 2.0/docs/SPRINTS_FASE_M.md</span>. Esta página se regenera desde ese archivo.</span>
-    <span class="mono">Actualizado 2026-10-02</span>
+    <span class="mono">Actualizado 2026-10-03</span>
   </footer>
 </div>
 
@@ -382,10 +382,10 @@ const SPRINTS = [
     ] },
   { id: "K", nombre: "Crear extensión y subgrupos", objetivo: "Cargar ranchos y parcelas en masa desde KML, GeoJSON o WKT: el sistema propone la estructura, el operador la corrige en una vista previa con el mapa al lado y confirma. Va antes que el resto de M.9 (urgente).", sesiones: "3–4",
     aviso: { tipo: "compuerta", texto: "<b>Pedido del usuario el 2026-10-02</b>: un archivo puede traer <b>varios ranchos con sus parcelas</b> (caso 1), sólo ranchos (2), un rancho y sus parcelas (3) o sólo parcelas (4). Hoy el KML se importa entero como ranchos o entero como parcelas de un rancho que ya existe, y el panel no tiene pantalla. <b>Se hace por fases</b>, cada una con su PR y sus tests, para reducir errores." },
-    aviso2: { tipo: "equipo", texto: "<b>Decisiones del 2026-10-02</b> (<code>DECISIONS #66</code> de Geocore): <b>el sistema propone por contención y el operador confirma</b> (d-K1); <b>caso 4, un rancho por parcela</b> (d-K2); un polígono fuera de todo rancho se propone como caso 4 (d-K3); los casos 2 y 4 los decide el operador (d-K4); <b>tres formatos, una sola lógica</b> (d-K5); y en el panel, el botón «Crear extensión y subgrupos» con el mapa al lado y cada polígono activable (d-K6). Pedido: uno o dos KML reales." },
+    aviso2: { tipo: "equipo", texto: "<b>Decisiones del 2026-10-02</b> (<code>DECISIONS #66</code> de Geocore): <b>el sistema propone por contención y el operador confirma</b> (d-K1); <b>caso 4, un rancho por parcela</b> (d-K2); un polígono fuera de todo rancho se propone como caso 4 (d-K3); los casos 2 y 4 los decide el operador (d-K4); <b>tres formatos, una sola lógica</b> (d-K5); y en el panel, el botón «Crear extensión y subgrupos» con el mapa al lado y cada polígono activable (d-K6). <b>Y el 2026-10-03</b> (<code>#67</code>): un multiparte es <b>un polígono por parte</b> (d-K7) y los huecos <b>se descartan pero se cuentan</b> (d-K8). Los KML reales mostraron que <b>un export de QGIS no trae &lt;name&gt;</b>: el lector lo deja sin nombre y lee el ExtendedData." },
     tareas: [
       { id: "K.0", t: "PLAN: las decisiones d-K1 a d-K6 y el sprint en el tablero", repo: "docs", T: "S", ok: "Decisiones escritas" },
-      { id: "K.1", t: "Lectores por formato a una lista común de polígonos: KML, GeoJSON y WKT", repo: "Geocore", T: "M", ok: "Un test por formato; el KML da exactamente lo mismo que hoy" },
+      { id: "K.1", t: "Lectores por formato a una lista común de polígonos: KML, GeoJSON y WKT", repo: "Geocore", T: "M", ok: "Geocore#94: el parser de hoy da lo mismo que main byte a byte en 3 KML reales y 13 sintéticos; 879 tests. DECISIONS #67" },
       { id: "K.2", t: "El clasificador, puro: los 4 casos y los huérfanos, por contención, con carpetas y propiedades como pista", repo: "Geocore", T: "M", ok: "Un test por caso; polígonos que se tocan, se solapan o se anidan" },
       { id: "K.3", t: "La vista previa en la API: el árbol propuesto y los datos de cada polígono, sin crear nada", repo: "Geocore", T: "S", ok: "Tests de API; reemplaza al preview de hoy sin romperlo" },
       { id: "K.4", t: "Importar el plan confirmado: todo validado antes de escribir, los desactivados no se crean, tope y estimación", repo: "Geocore", T: "M", ok: "Un plan inválido no escribe nada; los 4 casos crean lo que dicen" },
@@ -408,7 +408,8 @@ const SPRINTS = [
       { id: "M.9.7e1", t: "La receta v3 en el código, sin ser la vigente: las dos máscaras y el color real", repo: "worker", T: "M", ok: "42 de 42 pasadas iguales a la «ambas» de M.9.7a. DECISIONS #76" },
       { id: "M.9.7e2", t: "El rancho por pasada, sin ser la vigente: un COG por pasada, en paralelo, con la fila rgb", repo: "worker", T: "M", ok: "El Cauca chico en 24 s por mes; uno de 2.500 ha en 48,6 s. DECISIONS #77" },
       { id: "M.9.7f", t: "El mapa del rancho por fechas, con la calidad a la vista", repo: "Geocore · panel", T: "M", ok: "La última imagen buena y la dudosa marcada. Geocore DECISIONS #55 y #56" },
-      { id: "M.9.7g", t: "v3 vigente, borrar lo de prueba y reprocesar con v3 (medir antes un rancho grande; el borrado en la base lo aplica el equipo)", repo: "worker", T: "M", ok: "v3 VIGENTE desde el 2026-10-02 (#78) y el arreglo de Sentinel-2C (#79). Falta ver el primer rancho reprocesado, el borrado y el reproceso del resto" },
+      { id: "M.9.7g", t: "v3 vigente, borrar lo de prueba y reprocesar con v3 (medir antes un rancho grande; el borrado en la base lo aplica el equipo)", repo: "worker", T: "M", ok: "v3 VIGENTE desde el 2026-10-02 (#78) y el arreglo de Sentinel-2C (#79). El rancho del Yaqui con v3 se ve bien en el panel y el borrado está aplicado (2026-10-03)" },
+      { id: "M.9.7g2", t: "Reprocesar el resto con el botón Reprocesar, tenant por tenant (Zapotlan va a fallar: es M.9.7h)", repo: "panel", T: "S", ok: "Cada tenant reprocesado con v3; la confirmación nombra lo que va a fallar", equipo: true },
       { id: "M.9.7h", t: "Los ranchos grandes: la descarga en teselas, la cobertura en lotes y el mes en más de un step (decisión del usuario)", repo: "worker", T: "M", ok: "Zapotlan (27.349 ha) procesa un mes; hoy falla con v2 y con v3 (#78)" },
       { id: "M.9.1", t: "Cultivo en la parcela, y la métrica del rancho por cultivo", repo: "Geocore · panel", T: "—", ok: "—" },
       { id: "M.9.2", t: "Anomalía contra la mediana histórica del mes, tendencia y alerta de caída", repo: "worker · Geocore", T: "—", ok: "—" },
@@ -424,6 +425,11 @@ const SPRINTS = [
     ] }
 ];
 
+// Sesión 21 (2026-10-03): M.9.7g, lo nuestro hecho: el rancho del Yaqui con v3 se ve bien en el
+// panel y el equipo aplicó el borrado. Queda 👥 M.9.7g2, reprocesar el resto con el botón. Y K.1:
+// los lectores de KML, GeoJSON y WKT (Geocore#94, DECISIONS #67); el KML de hoy da lo mismo que
+// main, y un export real de QGIS (Zapotlan.kml) mostró que el <name> puede faltar.
+//
 // Sesión 20 (2026-10-02): M.9.7g a medias. v3 VIGENTE (#78), medida con un rancho real
 // (Rombito entra; Zapotlan no entra ni con v2 → M.9.7h); el arreglo de Sentinel-2C (#79); el SQL
 // del borrado; Reprocesar con la estimación de lo que ocupa; exportar la serie a CSV; la tabla de
@@ -514,8 +520,8 @@ const ESTADO = {
   "M.9.7e1": "hecho", "M.9.7e2": "hecho", "M.9.7f": "hecho",
   "C.0": "hecho", "C.1": "hecho", "C.2": "hecho", "C.3": "hecho", "C.4": "hecho",
   "C.5": "hecho", "C.6": "hecho", "C.7": "hecho",
-  "M.9.7g": "curso",
-  "K.0": "hecho"
+  "M.9.7g": "hecho",
+  "K.0": "hecho", "K.1": "hecho"
 };
 
 const RUTA = [
@@ -579,7 +585,8 @@ const DECISIONES = [
   ["Partir el mes de un rancho grande en más de un step", "M.9.7h", "pendiente", "pendiente"],
   ["Reprocesar desde el panel, con la estimación de lo que ocupa (#64 de Geocore)", "M.9.7g", "hecho", "decidida"],
   ["La serie a CSV: la misma consulta, Excel o estándar, todas las métricas o una dicha (#65 de Geocore)", "—", "hecho", "decidida"],
-  ["Importar: propone el sistema y confirma el operador; caso 4, un rancho por parcela (d-K1 a d-K6, #66 de Geocore)", "K.0", "hecho", "decidida"]
+  ["Importar: propone el sistema y confirma el operador; caso 4, un rancho por parcela (d-K1 a d-K6, #66 de Geocore)", "K.0", "hecho", "decidida"],
+  ["Un multiparte es un polígono por parte; los huecos se descartan pero se cuentan (d-K7, d-K8, #67 de Geocore)", "K.1", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
@@ -603,7 +610,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 24;
+const sesionProxima = 25;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>
