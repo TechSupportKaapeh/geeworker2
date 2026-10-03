@@ -4127,3 +4127,41 @@ Partir el mes en steps es decisión del usuario.
 `geocore/docs/sql/2026-10-02_borrado_de_prueba_v3.sql` —lo de v1 y v2, filas y objetos—; (3) el
 reproceso por tenant (`POST /api/admin/procesos/reprocesar`). Borrar antes del deploy deja que el
 cierre de mes vuelva a escribir con v2; reprocesar antes de borrar deja convivir las dos.
+
+## 79. Los productos de prueba de ESA no entran: el tándem de Sentinel-2C (2026-10-02)
+
+> M.9.7g. **Cambia producción**, y es un arreglo: el primer rancho de prueba con v3 falló en
+> `mes-2024-12` los 4 intentos con «1 par(es) de pasadas a menos de 0:01:00». Decisión del usuario
+> del 2026-10-02: excluirlos para todas las recetas, sin subir la versión, como `#75`.
+
+**La causa no era del worker sino del dato.** El 11 de diciembre de 2024, sobre la tesela 12RWR,
+GEE tiene dos escenas a 27 s: la de **Sentinel-2A** (`N05.11`, operativa) y la de **Sentinel-2C**
+(`N99.05`). El 2C, lanzado en septiembre de 2024, voló en su puesta en marcha **en tándem 30 s
+detrás del 2A**, y esas tomas salen con la línea de base 99.xx, que ESA publica como de prueba.
+Tienen `DATATAKE_IDENTIFIER` distinto —son dos satélites—, así que `compuesto.por_pasada` no las
+junta, y `ventanas.por_pasada` rechaza dos pasadas a menos de un minuto (`#75`).
+
+**A quién le pega:** a **toda alta nueva**, en cualquier lugar, desde `#75` (2026-09-27): hay **una**
+escena 99.xx por lugar, del 11 al 13 de diciembre de 2024 (medido en el Yaqui, Zapotlan y el
+Cauca), y diciembre de 2024 está en los 24 meses del histórico. Con v2 también: sus estadísticas
+ya iban por pasada. El cierre de mes no, porque procesa sólo el último mes.
+
+**El arreglo**: `fuente.coleccion` saca las escenas con `PROCESSING_BASELINE` que empieza con `99`
+(`PREFIJO_BASE_DE_PRUEBA`). Con `Not`, una escena sin la propiedad entra.
+
+**Por qué excluir y no juntar las dos tomas en una ventana:** la del 2C es la misma escena que la
+del 2A de 30 s antes, y no está validada; juntar habría mezclado un producto de prueba con uno
+operativo y aflojado una regla de `ventanas` que protege contra errores reales en cualquier mes.
+
+**Por qué sin subir la versión:** es lo de `#75`, un error del código —dejar entrar productos que ESA
+marca como no operativos—, no un parámetro decidido. Los números cambian sólo en diciembre de 2024,
+y lo escrito con v1 y v2 se borra igual (d40). El filtro no entra en la huella: vive en la fuente,
+no en la receta.
+
+**Verificado contra GEE:** dos tests `gee` nuevos —la escena 99.05 ya no entra; diciembre de 2024 en
+el Yaqui se parte en pasadas sin error— que **salen en rojo sin el filtro** (control negativo). Y el
+mes que fallaba, con v3 de punta a punta (`check_rancho_por_pasada.py`): **37,7 s, 7 archivos (el
+compuesto y 6 pasadas)**. Suite: 738 verdes, 31 omitidos; `--gee`: 31 verdes.
+
+**Lo que queda por hacer en producción:** reprocesar las altas que hayan fallado por esto desde el
+2026-09-27 —el rancho y la parcela de prueba del Yaqui seguro—.
