@@ -4068,3 +4068,62 @@ mes". Esa decisión es del usuario, y no se toma antes de tener el número.
   vuelve a subir a las mismas keys; lo que quedó subido sin fila se pisa.
 - **Corrección:** con v2, una ventana, cuatro filas, `source="mensual"` y la misma línea de
   bitácora. Los 20 tests del rancho de antes pasan sin tocarlos (salvo el doble del pedido en lista).
+
+## 78. v3 es la vigente, y un rancho grande no entra ni con v2 (2026-10-02)
+
+> M.9.7g. **Cambia producción**: desde el deploy, las altas y el cierre escriben con
+> `s2-pasada-v3` (`RECETA_VIGENTE = RECETA_PASADA_V3`). Decisión del usuario del 2026-10-02,
+> después de la medición de abajo: poner v3 vigente igual y abrir aparte la tarea de los ranchos
+> grandes (M.9.7h).
+
+**La medición de antes** (`scripts/check_rancho_por_pasada.py`, contra GEE, sin subir nada). El
+rancho grande real salió de GeoData con un SELECT de sólo lectura que corrió el usuario: el más
+grande es **Zapotlan, 27.349 ha y 1.239 vértices**, en Jalisco, con una caja de ~47.700 ha.
+
+| Rancho | Mes | v3 |
+|---|---|---|
+| Rombito, 2.623 ha | 2025-07 | **42,0 s**, 12 archivos (11 pasadas) |
+| Rombito, 2.623 ha | 2026-01 | **32,7 s**, 9 archivos, el mayor de 4,4 MB |
+| Buga, ~2.500 ha (control) | 2025-07 | bajo 60 s, 8 archivos |
+| **Zapotlan, 27.349 ha** | 2026-01 | **no se puede hacer** |
+
+**Zapotlan choca con dos límites de GEE**, los dos deterministas (3 de 3 intentos):
+
+1. **la cobertura del mes en una llamada** (`reducciones_de`, `#74`) da `Too many concurrent
+   aggregations`. No es la geometría: con 63 vértices pasa igual. En lotes de 4 ventanas entra,
+   en **50,6 s sólo los números**, con las mismas coberturas (de a 2, 100 s; de a una, 182 s);
+2. **la descarga pasa el tope de `getDownloadURL`** (50.331.648 bytes): **106,7 MB con v3** (7
+   bandas) y **61,0 MB con v2** (4 bandas). El worker lo trata como `NonRetriableError`.
+
+**Lo que eso corrige de §3.6**: «alcanza hasta del orden de 40.000 ha» salía del tamaño del COG
+**comprimido**. El tope es del pedido **sin comprimir y sobre la caja** del rancho, no sobre su
+superficie. Escalando los dos números, el techo es una caja de **~22.000 ha con v3** y **~39.000
+ha con v2**.
+
+**Por qué v3 va igual:** no empeora nada. Zapotlan ya falla con v2 —su alta o su cierre con el
+COG multibanda tuvo que terminar en error, y eso no se pudo ver desde acá porque las credenciales
+de la base del worker siguen muertas—, y un rancho de ~2.600 ha entra con 18 s de margen.
+
+**M.9.7h, aparte**: la descarga en teselas unidas en un COG, la cobertura en lotes, y **el mes
+partido en más de un step**, porque aun bajando en teselas un mes de Zapotlan no entra en 60 s.
+Partir el mes en steps es decisión del usuario.
+
+**Lo que cambió en los tests:**
+
+- `test_la_vigente_es_v3` reemplaza a `test_la_vigente_es_v2_por_pasada` y a
+  `test_v3_no_es_la_vigente_todavia`; v2 sigue fijada con su huella (son las filas de prueba
+  mientras existan).
+- **Los tests que fijaban propiedades de v2 a través de `RECETA_VIGENTE` claván v2** —las bandas
+  que se piden, las de salida, una fila por índice, la máscara de la receta sola—, con el alias
+  que ya usaban `test_pipeline_claves.py` y `test_escritura_mensual.py` y un comentario. Es la
+  lección de `#70` al revés: un test que sigue a la vigente y afirma un literal cambia de sentido
+  el día que la vigente cambia. Lo de v3 ya tenía sus tests.
+- En el control negativo de la huella, `agrupamiento_raster` y `color_real` pasan a valores
+  distintos de los de v3.
+- Suite: **738 verdes**, 29 omitidos; con `--gee`, **29 verdes** (uno de nubes se clavó a v2 por
+  lo mismo).
+
+**El orden de M.9.7g, que no se negocia**: (1) este deploy; (2) el equipo aplica
+`geocore/docs/sql/2026-10-02_borrado_de_prueba_v3.sql` —lo de v1 y v2, filas y objetos—; (3) el
+reproceso por tenant (`POST /api/admin/procesos/reprocesar`). Borrar antes del deploy deja que el
+cierre de mes vuelva a escribir con v2; reprocesar antes de borrar deja convivir las dos.

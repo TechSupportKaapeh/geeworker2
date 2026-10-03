@@ -19,7 +19,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 from pipeline.periodos import Mes, rango
-from pipeline.receta import RECETA_MENSUAL_V1, RECETA_VIGENTE
+from pipeline.receta import RECETA_MENSUAL_V1, RECETA_POR_PASADA, RECETA_VIGENTE
 from pipeline.ventanas import (
     AGRUPAMIENTOS,
     ENTERO,
@@ -225,14 +225,20 @@ def test_el_registro_no_se_puede_mutar():
 # --- La receta ------------------------------------------------------------
 
 
-def test_la_vigente_agrupa_por_pasada_las_estadisticas_y_entero_el_raster():
-    """Desde `DECISIONS #70`, el 2026-09-25.
+def test_la_vigente_agrupa_por_pasada_las_estadisticas_y_el_raster():
+    """Desde M.9.7g (`DECISIONS #78`), el 2026-10-02: v3, el raster por pasada.
 
-    Es el caso que justifica que la receta lleve DOS campos y no uno: el ráster y
-    los números tienen costos distintos, y `#63` dejó el ráster mensual.
+    Es el caso que justifico que la receta lleve DOS campos y no uno: el raster y
+    los numeros tienen costos distintos, y v2 los separo (`#63`).
     """
     assert RECETA_VIGENTE.agrupamiento_estadisticas == POR_PASADA
-    assert RECETA_VIGENTE.agrupamiento_raster == ENTERO
+    assert RECETA_VIGENTE.agrupamiento_raster == POR_PASADA
+
+
+def test_v2_agrupaba_por_pasada_los_numeros_y_entero_el_raster():
+    """La vigente del 2026-09-25 al 10-02 (`DECISIONS #70`)."""
+    assert RECETA_POR_PASADA.agrupamiento_estadisticas == POR_PASADA
+    assert RECETA_POR_PASADA.agrupamiento_raster == ENTERO
 
 
 def test_v1_agrupaba_entero_en_los_dos():

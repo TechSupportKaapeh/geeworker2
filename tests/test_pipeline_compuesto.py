@@ -14,7 +14,12 @@ from pipeline.etapas import compuesto, fuente, nubes
 from pipeline.formulas import evaluar
 from pipeline.indices import BANDAS, INDICES
 from pipeline.periodos import Mes
-from pipeline.receta import RECETA_VIGENTE
+# Clava v2: estos tests fijan lo que da una receta SIN el color real ni Cloud
+# Score+ (las bandas que se piden, las de salida, una fila por indice), y eso
+# se fija contra una receta concreta. Hasta M.9.7g la vigente era v2; con v3
+# vigente, seguir a `RECETA_VIGENTE` les cambiaria el sentido sin tocarlos. Lo
+# propio de v3 tiene sus tests aparte.
+from pipeline.receta import RECETA_POR_PASADA as RECETA_VIGENTE
 from pipeline.ventanas import del_mes
 
 

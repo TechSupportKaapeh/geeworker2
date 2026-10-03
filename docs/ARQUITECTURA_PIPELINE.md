@@ -336,8 +336,11 @@ pasada con los 4 índices y el color real, en enteros ×10.000.
   cada dos años; uno de 2.500 ha, del orden de 0,3–0,5 GB.
 - **Tiempo:** el Cauca chico, en serie, son ~46 s por mes, pegado a la compuerta de 60 s. **Las
   descargas tienen que ir en paralelo** dentro del paso del mes.
-- **Tope de `getDownloadURL`** (~48 MB): una pasada de 2.500 ha pesa ~3 MB, así que alcanza hasta
-  del orden de 40.000 ha. Por encima, exportación por lotes.
+- **Tope de `getDownloadURL`** (~48 MB). ~~Una pasada de 2.500 ha pesa ~3 MB, así que alcanza
+  hasta del orden de 40.000 ha~~: **estaba mal** (`DECISIONS #78`, 2026-10-02). El tope es del
+  pedido **sin comprimir y sobre la caja** del rancho, no del COG comprimido: Zapotlan (27.349 ha,
+  caja de ~47.700) pide 106,7 MB con v3 y 61,0 MB con v2. El techo es una caja de **~22.000 ha
+  con v3** (~39.000 con v2). Por encima, la descarga en teselas (M.9.7h).
 - **Cuántas pasadas hay depende de la ubicación, no del tamaño:** el Cauca chico cae donde se
   solapan dos órbitas (19 por mes); el grande, a 10 km, queda fuera de una (9 por mes).
 - **El color real necesita una banda que hoy no se baja**, el verde (B3): la fuente trae sólo las

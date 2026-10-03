@@ -14,7 +14,11 @@ import pytest
 from pipeline.etapas import fuente, nubes
 from pipeline.indices import INDICES
 from pipeline.periodos import Mes
-from pipeline.receta import RECETA_VIGENTE
+# Clava v2: estos tests fijan la mascara de la receta sola (s2cloudless y las
+# sombras) y las bandas que trae, sin Cloud Score+ ni el verde del color real.
+# Con v3 vigente (M.9.7g) seguir a `RECETA_VIGENTE` les cambiaria el sentido; la
+# mascara de v3 tiene su test en `test_pipeline_compuesto.py`.
+from pipeline.receta import RECETA_POR_PASADA as RECETA_VIGENTE
 from pipeline.ventanas import del_mes
 
 
