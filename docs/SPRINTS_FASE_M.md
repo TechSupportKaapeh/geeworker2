@@ -65,6 +65,7 @@
 | **M.8** Seguridad | Cerrar A01, A04 y A09, y tests de la API | 2 | Geocore, tileserver |
 | **M.9** Analítica y futuro | Cultivo, anomalías, más índices, radar | abierto | todos |
 | **C** Cuenta del cliente | La app del cliente funciona sin que TerraStaff intervenga en el día a día | 1–2 | Geocore |
+| **K** Crear extensión y subgrupos | Cargar ranchos y parcelas en masa desde KML, GeoJSON o WKT, con vista previa y corrección antes de crear | 3–4 | Geocore, panel |
 
 **Orden sugerido de sesiones, unas 16:**
 
@@ -532,7 +533,8 @@ un objeto daba 500. Está arreglado. M.3.2 y M.8.3 suman sus tests sobre esa fá
 | M.9.7e1 | **La receta v3 en el código, sin ser la vigente**: las dos máscaras (d36), la banda verde y el color real en el compuesto, `agrupamiento_raster: por_pasada` | worker | ✅ 2026-09-27 · `DECISIONS #76`. v3 coincide con la "ambas" de M.9.7a en 42 de 42 pasadas, y no cuesta más que v2. **Los opcionales apagados no entran en la huella**: v1 y v2 conservan la suya. De paso, `#75`: la ventana de una pasada dejaba teselas afuera (geeworker2#89) |
 | M.9.7e2 | **El paso del rancho por pasada, sin ser la vigente**: la etiqueta segura para la key, la cobertura del rancho en todas las pasadas en una llamada, descargas en paralelo, un COG por pasada con los 4 índices y el color real, una fila `rgb` (bandas 5-7), `acquired_ts` en el instante de la pasada, y el compuesto mensual al lado (d39), también con el color real | worker | ✅ 2026-09-27 · `DECISIONS #77`. Contra GEE: el Cauca de 226 ha, 24 s por mes con 11 archivos (en serie eran ~46 s); el Yaqui, 19,9 s. **⚠️ Un rancho de ~2.500 ha nublado, 48,6 s**: medirlo con uno real antes de M.9.7g. Con v2 todo sigue igual |
 | M.9.7f | **El mapa del rancho por fechas**: el deslizador pasa de meses a fechas, con la calidad a la vista y "la última imagen buena" | Geocore, panel | ✅ 2026-09-27 · Geocore#73 y Terra-admin#27, `DECISIONS #55` y `#56` de Geocore. El listado trae `cobertura` y `mediana`; el mapa tiene «Mensual / Por pasada», arranca en la última imagen buena y marca la dudosa. **Se ve recién con M.9.7g**: hasta que v3 sea la vigente no hay capas `pasada` |
-| M.9.7g | **El histórico**: v3 pasa a ser la vigente, se borra lo de prueba y se reprocesa con v3. Va después de M.9.7f (hecha): sin eso el mapa mensual del panel mezclaba la pasada del día 1 con el compuesto (`#76`). **Antes, medir un rancho grande real con v3**: uno de ~2.500 ha nublado da 48,6 s por mes (`#77`). El borrado en la base lo aplica el equipo (👥); lo demás es nuestro | worker | ⬜ |
+| M.9.7g | **El histórico**: v3 pasa a ser la vigente, se borra lo de prueba y se reprocesa con v3. **Antes, medir un rancho grande real con v3**. El borrado en la base lo aplica el equipo (👥); lo demás es nuestro | worker | 🟡 2026-10-02 · **v3 VIGENTE** (geeworker2#97, `DECISIONS #78`). Medido: Rombito, 2.623 ha, 42,0 y 32,7 s por mes; **Zapotlan, 27.349 ha, no entra ni con v2** (la descarga pasa el tope de `getDownloadURL`), y va a M.9.7h. El primer rancho con v3 destapó un bug: **toda alta nueva fallaba en 2024-12** por la toma de prueba de Sentinel-2C (geeworker2#98, `#79`). El SQL del borrado está escrito (Geocore#87) y el botón Reprocesar con su estimación, en el panel (Geocore#88, Terra-admin#28). **Falta**: ver en el panel el primer rancho reprocesado, 👥 aplicar el SQL del borrado (con el paso 5, los `.tif`) y reprocesar el resto |
+| M.9.7h | **Los ranchos grandes**: la descarga en teselas unidas en un COG, la cobertura en lotes (de a 4 entra) y **el mes en más de un step** (decisión del usuario) | worker | ⬜ · `DECISIONS #78`. Hoy le pega sólo a Zapotlan; el techo es una caja de ~22.000 ha con v3. La confirmación del reproceso ya nombra los ranchos que van a fallar |
 
 > **Las seis decisiones de diseño de este bloque están tomadas** (2026-09-25, `DECISIONS #63`):
 > se mide antes de decidir, el agrupamiento es un dato de la receta, **por pasada puro** —sin
@@ -827,6 +829,57 @@ tenant invite o cree usuarios. Si alguna hace falta para la demo, se decide apar
 
 ---
 
+## K — Crear extensión y subgrupos (pedido del usuario, 2026-10-02)
+
+> **Fuera de la FASE M, y va antes que el resto de M.9** (el usuario lo marcó urgente). Hoy
+> Geocore importa un KML entero como ranchos (`POST /api/kml/ranchos`) o entero como parcelas
+> de un rancho que ya existe (`…/ranchos/{id}/parcelas`): **el operador decide el nivel eligiendo
+> el endpoint** (`DECISIONS #17` de Geocore), y el panel no tiene pantalla de importación. Un
+> archivo real puede traer **varias extensiones con sus subgrupos**, y lo mismo pasa con GeoJSON y
+> WKT. **Se hace por fases**, cada una con su PR y sus tests, para que una pieza grande no salga
+> con errores que nadie ve.
+
+**Los cuatro casos** (del usuario):
+
+1. varios ranchos, cada uno con varias parcelas adentro;
+2. sólo ranchos;
+3. un rancho y varias parcelas;
+4. sólo parcelas → **un rancho por parcela, con la misma geometría** (autocontenido).
+
+**Las decisiones del usuario, el 2026-10-02** (`DECISIONS #66` de Geocore):
+
+| | Decisión |
+|---|---|
+| d-K1 | **El sistema propone y el operador confirma.** Geocore propone la estructura por **contención** —un polígono que contiene a otros es un rancho, y los de adentro sus parcelas, la misma regla de `#33`—, con las carpetas (KML) o las propiedades (GeoJSON) **como pista**. El panel muestra el árbol, el operador lo corrige, y **se importa el plan confirmado**, no la inferencia |
+| d-K2 | **Caso 4: un rancho por parcela**, con la misma geometría. La envolvente se descartó: con parcelas dispersas pasa el techo de descarga de GEE (M.9.7h) y mete tierra ajena en el mapa y la métrica |
+| d-K3 | **Un polígono que no cae adentro de ningún rancho** en un archivo mixto **se propone como caso 4**, marcado para que se vea |
+| d-K4 | **Los casos 2 y 4 son geométricamente iguales** (polígonos sueltos): los decide el operador en el árbol; por defecto «ranchos», salvo que la carpeta o una propiedad digan otra cosa |
+| d-K5 | **Los tres formatos, una sola lógica**: cada formato se traduce a una lista común de polígonos (geometría, nombre, pista) y el clasificador no sabe de formatos. WKT no trae nombres: se nombran en la vista previa |
+| d-K6 | **En el panel**: un botón «Crear extensión y subgrupos»; la vista previa con **el mapa al lado** y los datos de cada polígono; se corrige y **se puede activar o desactivar cada polígono** antes de crear |
+
+**Lo que hay que cubrir, y no es opcional:** un **tope por archivo** y **la estimación antes de
+confirmar** (cada alta son ~27 ejecuciones de Inngest; se reusa `EstimadorDeReproceso`, `#64`); el
+caso 4 **cuesta el doble por polígono** y la estimación lo tiene que decir; **todo validado antes de
+escribir lo primero** —la importación de hoy no es una transacción, y con dos niveles un fallo a
+mitad deja ranchos sin parcelas—; y los archivos reales: hoy se rechazan los polígonos con huecos y
+los `MultiGeometry`. **Pedidos al usuario: uno o dos KML reales** (casos 1 y 4).
+
+| | Tarea | Repo | T | Aceptación | Estado |
+|---|---|---|---|---|---|
+| K.0 | PLAN: las decisiones d-K1 a d-K6 escritas y el sprint en el tablero | docs | S | decisiones escritas | ✅ 2026-10-02 |
+| K.1 | **Lectores por formato** a una lista común de polígonos: el KML de hoy, GeoJSON (`FeatureCollection`, `Feature`, `Polygon`/`MultiPolygon`) y WKT (`POLYGON`, `MULTIPOLYGON`, `GEOMETRYCOLLECTION`). Input no confiable: tamaño máximo, sin XXE (el KML ya lo tiene) | Geocore | M | un test por formato y por forma; **el KML sigue dando exactamente lo mismo** que hoy (control contra `main`) | ⬜ |
+| K.2 | **El clasificador, puro**: los 4 casos y los huérfanos, por contención con tolerancia (`FraccionFueraDe`, `#33`), carpetas y propiedades como pista, nombres repetidos | Geocore | M | un test por caso, también polígonos que se tocan, se solapan o están anidados en tres niveles | ⬜ |
+| K.3 | **La vista previa en la API**: el árbol propuesto con los datos de cada polígono (nombre, área, vértices, validez, qué se propone y por qué), sin crear nada | Geocore | S | tests de API; reemplaza a `POST /api/kml/preview` sin romperlo | ⬜ |
+| K.4 | **Importar el plan confirmado**: todo validado antes de escribir (geometría, contención, nombres, tope), los desactivados no se crean, la estimación antes, y la atomicidad (cerrar la deuda del UnitOfWork o, si no entra, decirlo) | Geocore | M | un plan inválido no escribe nada; los 4 casos crean lo que dicen; auditado (`#45`) | ⬜ |
+| K.5 | **Panel, la vista previa**: el botón «Crear extensión y subgrupos», subir el archivo, **el árbol y el mapa al lado**, con los datos de cada polígono. Sólo mirar | panel | M | lo que se ve es lo que devolvió K.3; tests de `src/lib` | ⬜ |
+| K.6 | **Panel, corregir y confirmar**: rancho o parcela, a qué rancho pertenece, el nombre, **activar o desactivar** cada polígono, y confirmar viendo la estimación | panel | M | lo que se manda es lo que se ve; un desactivado no viaja | ⬜ |
+| K.7 | La doc del front (`api-frontend.html`) y `KML_CASOS_Y_REDUNDANCIA.md` pasa a ser los casos de importación de los tres formatos | Geocore | S | la doc; republicada | ⬜ |
+
+**Cuándo se borran los endpoints viejos** (`/api/kml/ranchos` y `…/parcelas`): cuando el panel use
+K.4 y la app del cliente no los llame. Se decide al cerrar el sprint, no antes.
+
+---
+
 ## Decisiones que el backlog necesita, y cuándo
 
 | Decisión | Antes de | Estado |
@@ -841,6 +894,8 @@ tenant invite o cree usuarios. Si alguna hace falta para la demo, se decide apar
 | **¿La ventana de observación sigue siendo el mes?** (`PREGUNTAS_ABIERTAS` B-3) | M.9.0c | ✅ 2026-09-25 · **por pasada puro** (`DECISIONS #63`), y **confirmado con el número el 2026-09-24** (`#66`): la fila mensual del compuesto no hace falta. B-3 **cerrada** |
 | Retención de los objetos de MinIO (`PREGUNTAS_ABIERTAS` C-5) | — | ✅ 2026-09-25 · sistemático para siempre, a demanda 90 días (`DECISIONS #65`) |
 | **El ráster por pasada**: máscara, qué pasadas, formato, el mensual, los datos de prueba (d36 a d40) | M.9.7 | ✅ 2026-09-26 · `DECISIONS #72`: las dos máscaras a la vez; toda pasada con algún píxel despejado; un archivo multibanda en enteros ×10.000; el mensual se queda; se borra lo de prueba y se reprocesa con v3 |
+| **Partir el mes de un rancho grande en más de un step** (M.9.7h) | M.9.7h | ⬜ · decisión del usuario |
+| **La estructura de un archivo importado** (d-K1 a d-K6) | K | ✅ 2026-10-02 · `DECISIONS #66` de Geocore: propone el sistema y confirma el operador; caso 4, un rancho por parcela; huérfanos como caso 4 |
 | **El rango máximo de un compuesto a demanda** (recomendado: 1 año) | M.9.6c | ⬜ |
 | **Qué tan frescas son las fechas disponibles**: lo guardado, hasta el último mes cerrado (recomendado), o una consulta a GEE en el momento | M.9.6d | ⬜ |
 | **¿El RGB entra en M.9.6?** Y si entra, ¿receta nueva o producto que se suma sin cambiar la versión? | M.9.6f | ⬜ |

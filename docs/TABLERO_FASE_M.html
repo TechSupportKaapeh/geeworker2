@@ -105,7 +105,7 @@
   .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; margin-bottom: 14px; }
   .section-head h2 { font-size: 24px; font-weight: 720; }
   .section-head p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
-  .ruta { display: grid; grid-template-columns: repeat(23, minmax(0, 1fr)); gap: 4px; }
+  .ruta { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
   .sesion {
     display: grid; gap: 4px; align-content: start; min-height: 92px; padding: 8px 8px 10px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
@@ -212,7 +212,7 @@
     <div class="stats" aria-label="Resumen">
       <div class="stat"><span class="label">Tareas</span><b id="st-total">—</b></div>
       <div class="stat"><span class="label">Hechas</span><b id="st-hechas">—</b></div>
-      <div class="stat"><span class="label">Sesiones</span><b>~23</b></div>
+      <div class="stat"><span class="label">Sesiones</span><b>~28</b></div>
     </div>
     <div class="next" id="siguiente"></div>
   </header>
@@ -380,6 +380,19 @@ const SPRINTS = [
       { id: "C.7", t: "La doc para el front: «Cuenta y tenant», el flujo de entrada, los errores y los roles", repo: "Geocore", T: "S", ok: "api-frontend.html, arriba en Cambios recientes" },
       { id: "C.7b", t: "El dominio de la app del cliente en Cors__Origins del Geocore de Railway", repo: "Railway", T: "S", ok: "Un preflight desde ese dominio da 204", equipo: true }
     ] },
+  { id: "K", nombre: "Crear extensión y subgrupos", objetivo: "Cargar ranchos y parcelas en masa desde KML, GeoJSON o WKT: el sistema propone la estructura, el operador la corrige en una vista previa con el mapa al lado y confirma. Va antes que el resto de M.9 (urgente).", sesiones: "3–4",
+    aviso: { tipo: "compuerta", texto: "<b>Pedido del usuario el 2026-10-02</b>: un archivo puede traer <b>varios ranchos con sus parcelas</b> (caso 1), sólo ranchos (2), un rancho y sus parcelas (3) o sólo parcelas (4). Hoy el KML se importa entero como ranchos o entero como parcelas de un rancho que ya existe, y el panel no tiene pantalla. <b>Se hace por fases</b>, cada una con su PR y sus tests, para reducir errores." },
+    aviso2: { tipo: "equipo", texto: "<b>Decisiones del 2026-10-02</b> (<code>DECISIONS #66</code> de Geocore): <b>el sistema propone por contención y el operador confirma</b> (d-K1); <b>caso 4, un rancho por parcela</b> (d-K2); un polígono fuera de todo rancho se propone como caso 4 (d-K3); los casos 2 y 4 los decide el operador (d-K4); <b>tres formatos, una sola lógica</b> (d-K5); y en el panel, el botón «Crear extensión y subgrupos» con el mapa al lado y cada polígono activable (d-K6). Pedido: uno o dos KML reales." },
+    tareas: [
+      { id: "K.0", t: "PLAN: las decisiones d-K1 a d-K6 y el sprint en el tablero", repo: "docs", T: "S", ok: "Decisiones escritas" },
+      { id: "K.1", t: "Lectores por formato a una lista común de polígonos: KML, GeoJSON y WKT", repo: "Geocore", T: "M", ok: "Un test por formato; el KML da exactamente lo mismo que hoy" },
+      { id: "K.2", t: "El clasificador, puro: los 4 casos y los huérfanos, por contención, con carpetas y propiedades como pista", repo: "Geocore", T: "M", ok: "Un test por caso; polígonos que se tocan, se solapan o se anidan" },
+      { id: "K.3", t: "La vista previa en la API: el árbol propuesto y los datos de cada polígono, sin crear nada", repo: "Geocore", T: "S", ok: "Tests de API; reemplaza al preview de hoy sin romperlo" },
+      { id: "K.4", t: "Importar el plan confirmado: todo validado antes de escribir, los desactivados no se crean, tope y estimación", repo: "Geocore", T: "M", ok: "Un plan inválido no escribe nada; los 4 casos crean lo que dicen" },
+      { id: "K.5", t: "Panel: el botón «Crear extensión y subgrupos», el árbol y el mapa al lado, con los datos de cada polígono", repo: "panel", T: "M", ok: "Lo que se ve es lo que devolvió K.3" },
+      { id: "K.6", t: "Panel: corregir (rancho o parcela, a cuál, nombre), activar o desactivar cada polígono y confirmar con la estimación", repo: "panel", T: "M", ok: "Lo que se manda es lo que se ve; un desactivado no viaja" },
+      { id: "K.7", t: "La doc del front y los casos de importación de los tres formatos", repo: "Geocore", T: "S", ok: "api-frontend.html, republicada" }
+    ] },
   { id: "M.9", nombre: "Analítica y futuro", objetivo: "Sin orden fijo, salvo el bloque M.9.0: se toma cuando el pipeline esté en producción.", sesiones: "abierto",
     aviso2: { tipo: "equipo", texto: "<b>Las seis decisiones de diseño del bloque estan tomadas</b> (2026-09-25, <code>DECISIONS #63</code> del worker): se mide antes de decidir, el agrupamiento es un dato de la receta, <b>por pasada puro</b> —sin columna <code>ventana</code> y sin migracion—, el raster sigue mensual, y <b>el umbral de cobertura se aplica al leer</b>. La cobertura se mide <b>sobre la parcela, nunca sobre el rancho</b>: una pasada que tapa medio rancho puede ser perfecta para una parcela. <b>Y el numero ya esta</b> (2026-09-24, <code>#66</code>): mediana de <b>3 pasadas limpias por mes</b>, y <b>0 de 72 meses</b> en que el compuesto llegue al umbral y ninguna pasada sola llegue. <b>El bloque M.9.0 se cerró el 2026-09-25</b> con M.9.0d: el panel ya muestra la serie por pasada, sobre un eje de fechas. Lo que sigue de M.9 no tiene orden fijo." },
     aviso: { tipo: "compuerta", texto: "<b>M.9.0 va primero, y empieza midiendo.</b> Hoy la ventana de observación es el mes y las pasadas sueltas no se guardan (<code>DECISIONS #31</code>, que reemplazó a <code>#19</code>). La decisión se tomó con la cuenta del <b>ráster</b> —146 descargas contra 24, TiTiler abriendo 3 a 6 COG por tile— y <b>se llevó a los números, que tienen otra cuenta</b>: para una estadística no hay descargas ni MosaicJSON. Lo que la mediana del mes se lleva puesto: los <b>eventos</b> (una caída de diez días la absorbe), la <b>comparabilidad</b> entre un mes de seis pasadas limpias y uno de dos, y los meses que la cobertura mínima descarta enteros. <b>Cuánto importa depende de qué hay en las parcelas y de cuántas pasadas limpias hay</b>, y eso lo midió M.9.0 antes de tocar nada. <b>La compuerta pasó el 2026-09-24</b> (<code>DECISIONS #66</code>): sobre 3 parcelas reales × 24 meses hay una <b>mediana de 3 pasadas limpias</b> —no «1 o 2»—, y entre ellas el índice se mueve una mediana de 0,065 con un máximo de 0,336. <b>El bloque sigue.</b> La estacionalidad: 3,2 a 5,5 en seca contra 1,0 a 1,5 en el pico de lluvias." },
@@ -395,7 +408,8 @@ const SPRINTS = [
       { id: "M.9.7e1", t: "La receta v3 en el código, sin ser la vigente: las dos máscaras y el color real", repo: "worker", T: "M", ok: "42 de 42 pasadas iguales a la «ambas» de M.9.7a. DECISIONS #76" },
       { id: "M.9.7e2", t: "El rancho por pasada, sin ser la vigente: un COG por pasada, en paralelo, con la fila rgb", repo: "worker", T: "M", ok: "El Cauca chico en 24 s por mes; uno de 2.500 ha en 48,6 s. DECISIONS #77" },
       { id: "M.9.7f", t: "El mapa del rancho por fechas, con la calidad a la vista", repo: "Geocore · panel", T: "M", ok: "La última imagen buena y la dudosa marcada. Geocore DECISIONS #55 y #56" },
-      { id: "M.9.7g", t: "v3 vigente, borrar lo de prueba y reprocesar con v3 (medir antes un rancho grande; el borrado en la base lo aplica el equipo)", repo: "worker", T: "M", ok: "Un rancho grande real bajo 60 s por mes; una sola receta en la base" },
+      { id: "M.9.7g", t: "v3 vigente, borrar lo de prueba y reprocesar con v3 (medir antes un rancho grande; el borrado en la base lo aplica el equipo)", repo: "worker", T: "M", ok: "v3 VIGENTE desde el 2026-10-02 (#78) y el arreglo de Sentinel-2C (#79). Falta ver el primer rancho reprocesado, el borrado y el reproceso del resto" },
+      { id: "M.9.7h", t: "Los ranchos grandes: la descarga en teselas, la cobertura en lotes y el mes en más de un step (decisión del usuario)", repo: "worker", T: "M", ok: "Zapotlan (27.349 ha) procesa un mes; hoy falla con v2 y con v3 (#78)" },
       { id: "M.9.1", t: "Cultivo en la parcela, y la métrica del rancho por cultivo", repo: "Geocore · panel", T: "—", ok: "—" },
       { id: "M.9.2", t: "Anomalía contra la mediana histórica del mes, tendencia y alerta de caída", repo: "worker · Geocore", T: "—", ok: "—" },
       { id: "M.9.3", t: "Más índices, una entrada cada uno: SAVI, GNDVI o CIre, MSI, NDWI", repo: "worker", T: "—", ok: "—" },
@@ -410,6 +424,11 @@ const SPRINTS = [
     ] }
 ];
 
+// Sesión 20 (2026-10-02): M.9.7g a medias. v3 VIGENTE (#78), medida con un rancho real
+// (Rombito entra; Zapotlan no entra ni con v2 → M.9.7h); el arreglo de Sentinel-2C (#79); el SQL
+// del borrado; Reprocesar con la estimación de lo que ocupa; exportar la serie a CSV; la tabla de
+// las recetas en la doc del front. Y el sprint K, planificado: crear extensión y subgrupos.
+//
 // Sesión 19 (2026-09-29 a 10-02): fuera de la FASE M, el sprint C · la cuenta del cliente, entero
 // (Geocore#76 a #82): /api/me, el tenant actual, TENANT_INACTIVE, el rol como regla cerrada por
 // defecto, los miembros por su Admin y MaxUsers por plazas. Queda 👥 C.7b, el CORS de la app.
@@ -494,7 +513,9 @@ const ESTADO = {
   "M.9.7a": "hecho", "M.9.7b": "hecho", "M.9.7c": "hecho", "M.9.7d": "hecho",
   "M.9.7e1": "hecho", "M.9.7e2": "hecho", "M.9.7f": "hecho",
   "C.0": "hecho", "C.1": "hecho", "C.2": "hecho", "C.3": "hecho", "C.4": "hecho",
-  "C.5": "hecho", "C.6": "hecho", "C.7": "hecho"
+  "C.5": "hecho", "C.6": "hecho", "C.7": "hecho",
+  "M.9.7g": "curso",
+  "K.0": "hecho"
 };
 
 const RUTA = [
@@ -507,7 +528,12 @@ const RUTA = [
   ["M.9.7a·b·c", "La máscara, el COG multibanda y las capas por rancho"],
   ["M.9.7d·e·f", "El mes en una llamada, la receta v3 y el mapa por fechas"],
   ["C", "La cuenta del cliente: /api/me, el tenant, los roles y los miembros"],
-  ["M.9.7g", "v3 vigente y el reproceso · después, M.9"]
+  ["M.9.7g", "v3 vigente, Sentinel-2C, Reprocesar, el CSV · y el sprint K planificado"],
+  ["M.9.7g·K.1", "Ver el rancho con v3 y reprocesar · los lectores KML, GeoJSON y WKT"],
+  ["K.2·K.3", "El clasificador de los 4 casos y la vista previa en la API"],
+  ["K.4", "Importar el plan confirmado"],
+  ["K.5·K.6", "El panel: crear extensión y subgrupos, con el mapa al lado"],
+  ["K.7·M.9", "La doc · y lo que sigue de M.9"]
 ];
 
 const DECISIONES = [
@@ -547,7 +573,13 @@ const DECISIONES = [
   ["La cuenta del cliente: un Member lee, crea y edita; el Admin, además, miembros, activar y los datos (d-C1)", "C.4", "hecho", "decidida"],
   ["Los usuarios y sus contraseñas los crea TerraStaff; el Admin del tenant no invita (d-C2)", "C.6", "hecho", "decidida"],
   ["El Admin del tenant edita sólo el contacto; nombre y fiscales, TerraStaff (d-C3)", "C.3", "hecho", "decidida"],
-  ["Mínimo 1 Admin activo por tenant, y el último no se degrada, suspende, quita ni sale (d-C4)", "C.5", "hecho", "decidida"]
+  ["Mínimo 1 Admin activo por tenant, y el último no se degrada, suspende, quita ni sale (d-C4)", "C.5", "hecho", "decidida"],
+  ["v3 vigente aunque Zapotlan no entre: ya fallaba con v2 (#78)", "M.9.7g", "hecho", "decidida"],
+  ["Las tomas de prueba de ESA (base 99.xx) no entran, sin subir la versión (#79)", "M.9.7g", "hecho", "decidida"],
+  ["Partir el mes de un rancho grande en más de un step", "M.9.7h", "pendiente", "pendiente"],
+  ["Reprocesar desde el panel, con la estimación de lo que ocupa (#64 de Geocore)", "M.9.7g", "hecho", "decidida"],
+  ["La serie a CSV: la misma consulta, Excel o estándar, todas las métricas o una dicha (#65 de Geocore)", "—", "hecho", "decidida"],
+  ["Importar: propone el sistema y confirma el operador; caso 4, un rancho por parcela (d-K1 a d-K6, #66 de Geocore)", "K.0", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
@@ -571,7 +603,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 23;
+const sesionProxima = 24;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>

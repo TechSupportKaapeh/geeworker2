@@ -1,5 +1,20 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-10-02, sesión 20 · `s2-pasada-v3` ES LA RECETA VIGENTE** (`DECISIONS #78`, geeworker2#97),
+> y las tomas de prueba de ESA ya no entran (`#79`, #98). Crónica:
+> [`SESSION_2026-10-02_sesion_20_v3_vigente.md`](SESSION_2026-10-02_sesion_20_v3_vigente.md).
+>
+> - **Un rancho cuya caja pase de ~22.000 ha no entra** con v3 (~39.000 con v2): la descarga pasa el
+>   tope de `getDownloadURL`, y la cobertura del mes en una llamada da `Too many concurrent
+>   aggregations`. Hoy le pega a Zapotlan (27.349 ha). Es **M.9.7h**.
+> - **`fuente.coleccion` saca las escenas con `PROCESSING_BASELINE` 99.xx**: el tándem de Sentinel-2C
+>   (diciembre de 2024) hacía fallar toda alta nueva en `2024-12`.
+> - Los tests que fijan propiedades de **v2** la clavan con un alias (`RECETA_POR_PASADA as
+>   RECETA_VIGENTE`): las bandas, la máscara de la receta sola, una fila por índice.
+> - Suite: **738 verdes**, 31 omitidos; con `--gee`, **31 verdes**.
+> - Medir un rancho: `scripts/check_rancho_por_pasada.py`; las geometrías de Zapotlan, Rombito y el
+>   Yaqui quedaron en `scratch/ranchos_prueba/` (ignorado por git).
+
 > **2026-09-29 a 10-02, sesión 19 · la cuenta del cliente, en Geocore.** El worker no cambió: sólo
 > el tablero, que suma el sprint C (cerrado salvo 👥 C.7b) y espera ahora 11 sprints
 > (`check_tablero.js`). La que sigue vuelve a **M.9.7g**. Crónica:
