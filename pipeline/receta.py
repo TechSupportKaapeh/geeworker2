@@ -388,17 +388,22 @@ RECETA_PASADA_V3 = dataclasses.replace(
     color_real=True,
 )
 
-# **La vigente, desde el 2026-09-25** (`DECISIONS #70`). Lo que sigue lo escribe
-# v2: una fila por pasada, el umbral al leer, y el ráster mensual como siempre.
+# **La vigente, desde el 2026-10-02** (M.9.7g, `DECISIONS #78`): v3. Las altas y
+# el cierre escriben una fila por pasada —como v2, con las dos máscaras—, y el
+# rancho, el compuesto del mes y un COG por cada pasada con algún píxel.
 #
-# El orden de despliegue se respetó: `/api/measurements` ya sabe agregar —con
-# `cadencia=mensual` por defecto— desde Geocore#60, así que el panel pide lo mismo
-# y recibe puntos mensuales sin tocar una línea. Es la regla de M.8.1 con el que
-# lee en el lugar del que exige.
+# El orden de despliegue se respetó: el panel ya distingue la pasada del compuesto
+# por `source` (M.9.7f, Geocore#73 y Terra-admin#27), así que el mapa mensual no
+# mezcla la pasada del día 1 con el compuesto. Es la regla de M.8.1 con el que lee
+# en el lugar del que exige.
 #
-# **Lo que ya está escrito no cambia**: las filas de v1 se quedan con su versión y
-# su fecha —el día 1 del mes—, y las nuevas conviven al lado con la fecha de
-# adquisición. Un mes que tenga las dos sale de `/api/measurements` con
-# `receta: "s2-mensual-v1,s2-pasada-v2"`, a la vista y no en silencio
-# (`DECISIONS #48` de Geocore).
-RECETA_VIGENTE = RECETA_POR_PASADA
+# **Lo guardado con v1 y v2 es de prueba** (d40): se borra con
+# `geocore/docs/sql/2026-10-02_borrado_de_prueba_v3.sql` DESPUÉS de desplegar
+# esto y ANTES de reprocesar, o el cierre de mes vuelve a escribir con v2. v1 y v2
+# no se borran del código: son las recetas que nombran las filas viejas mientras
+# existan, y sus huellas siguen fijadas.
+#
+# **Un rancho cuya caja pase de ~22.000 ha no entra** (`DECISIONS #78`): la
+# descarga de 7 bandas pasa el tope de `getDownloadURL`. Con v2 el techo era
+# ~39.000 ha, y Zapotlan (27.349 ha, caja de ~47.700) ya fallaba con las dos.
+RECETA_VIGENTE = RECETA_PASADA_V3

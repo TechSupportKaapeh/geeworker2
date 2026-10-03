@@ -80,8 +80,8 @@ from pipeline.ventanas import ENTERO, POR_PASADA
 # escribiendo con v1. Su huella se fija igual, porque el dia que se use va a
 # escribir filas y ahi si queda congelada.
 #
-# Desde M.9.7e1 (2026-09-27) hay una TERCERA, `s2-pasada-v3`, que tampoco es la
-# vigente (lo es con M.9.7g). Trae dos campos nuevos, `cloud_score_minimo` y
+# Desde M.9.7e1 (2026-09-27) hay una TERCERA, `s2-pasada-v3`, que es la vigente
+# desde M.9.7g (2026-10-02, `DECISIONS #78`). Trae dos campos nuevos, `cloud_score_minimo` y
 # `color_real`, y **v1 y v2 NO se re-fijaron**: un campo opcional apagado no
 # entra en la huella (`DECISIONS #76`, decision del usuario). Las dos lineas de
 # arriba son las mismas de antes de M.9.7e1, y eso es lo que prueba la regla.
@@ -101,10 +101,10 @@ CAMBIOS = {
     "cobertura_minima": 0.31,
     "umbral_al_escribir": True,
     "meses_historico": 25,
-    # Distintos de los de la vigente, que desde `DECISIONS #70` es v2: sus
-    # estadisticas ya se agrupan `por_pasada`.
+    # Distintos de los de la vigente, que desde M.9.7g (`DECISIONS #78`) es v3:
+    # agrupa `por_pasada` los numeros y el raster.
     "agrupamiento_estadisticas": "entero",
-    "agrupamiento_raster": "por_pasada",
+    "agrupamiento_raster": "entero",
     "escala_m": 20,
     "remuestreo": "bilinear",
     "nubes_max_prob": 50,
@@ -114,9 +114,10 @@ CAMBIOS = {
     # Distintos de los de v1, que desde DECISIONS #45 son 2 y True.
     "nubes_erosion_px": 3,
     "acotar_indices": False,
-    # Los opcionales (`DECISIONS #76`): la vigente los tiene apagados.
+    # Los opcionales (`DECISIONS #76`): la vigente, v3, los tiene prendidos.
+    # Apagar el color real tambien cambia la huella: deja de entrar.
     "cloud_score_minimo": 0.5,
-    "color_real": True,
+    "color_real": False,
 }
 
 
@@ -163,12 +164,6 @@ def test_v3_es_v2_con_tres_cambios_y_todos_del_raster():
     assert RECETA_PASADA_V3.color_real is True
 
 
-def test_v3_no_es_la_vigente_todavia():
-    """Pasa a serlo con M.9.7g, despues de que el panel distinga la pasada del
-    compuesto (M.9.7f): si no, el mapa mensual mezclaria la pasada del dia 1."""
-    assert RECETA_VIGENTE is not RECETA_PASADA_V3
-
-
 def test_los_opcionales_apagados_valen_lo_de_antes_de_existir():
     """La regla de `DECISIONS #76`: el valor apagado es el default del campo, y en
     v1 y v2 esta apagado. Si no, sumar un campo re-fijaria sus huellas."""
@@ -202,17 +197,24 @@ def test_v2_deja_el_raster_mensual():
     assert RECETA_POR_PASADA.agrupamiento_raster == RECETA_MENSUAL_V1.agrupamiento_raster
 
 
-def test_la_vigente_es_v2_por_pasada():
-    """Desde el 2026-09-25 (`DECISIONS #70`).
+def test_la_vigente_es_v3():
+    """Desde el 2026-10-02 (M.9.7g, `DECISIONS #78`).
 
-    El orden de despliegue se respeto: `/api/measurements` ya sabe agregar, con
-    `cadencia=mensual` por defecto, asi que el panel pide lo mismo y recibe puntos
-    mensuales. Es la regla de M.8.1 con el que LEE en el lugar del que exige.
+    El orden de despliegue se respeto: el panel ya distingue la pasada del
+    compuesto por `source` (M.9.7f), asi que el mapa mensual no mezcla la pasada
+    del dia 1. Es la regla de M.8.1 con el que LEE en el lugar del que exige.
     """
-    assert RECETA_VIGENTE is RECETA_POR_PASADA
-    assert RECETA_VIGENTE.version == "s2-pasada-v2"
+    assert RECETA_VIGENTE is RECETA_PASADA_V3
+    assert RECETA_VIGENTE.version == "s2-pasada-v3"
     assert RECETA_VIGENTE.umbral_al_escribir is False, "el umbral se aplica al leer"
-    assert RECETA_VIGENTE.agrupamiento_raster == ENTERO, "el raster sigue mensual"
+    assert RECETA_VIGENTE.agrupamiento_raster == POR_PASADA, "el raster es por pasada"
+
+
+def test_v2_sigue_existiendo_aunque_no_sea_la_vigente():
+    """Fue la vigente del 2026-09-25 al 10-02 (`DECISIONS #70`). Sus filas son de
+    prueba y se borran (d40), pero mientras existan la nombran por su version."""
+    assert RECETA_POR_PASADA.version == "s2-pasada-v2"
+    assert RECETA_POR_PASADA.version in HUELLAS
 
 
 def test_v1_sigue_existiendo_aunque_no_sea_la_vigente():
