@@ -390,8 +390,9 @@ const SPRINTS = [
       { id: "K.3", t: "La vista previa en la API: el árbol propuesto y los datos de cada polígono, sin crear nada", repo: "Geocore", T: "S", ok: "Geocore#98: POST /api/importacion/vista-previa, sin crear nada; /api/kml/preview sigue. DECISIONS #69" },
       { id: "K.4", t: "Importar el plan confirmado: todo validado antes de escribir, los desactivados no se crean, tope y estimación", repo: "Geocore", T: "M", ok: "Geocore#102: un plan inválido no escribe nada (un solo SaveChanges, probado con una FK rota en PostgreSQL); los 4 casos crean lo que dicen; auditado; tope de 200 altas; lo de otro tenant sólo a TerraStaff. 984 tests. DECISIONS #70" },
       { id: "K.5", t: "Panel: el botón «Crear extensión y subgrupos», el árbol y el mapa al lado, con los datos de cada polígono", repo: "panel", T: "M", ok: "Terra-admin#31: el árbol y el mapa al lado, lo desactivado punteado; adelantada por pedido del usuario" },
-      { id: "K.6", t: "Panel: corregir (rancho o parcela, a cuál, nombre), activar o desactivar cada polígono y confirmar con la estimación", repo: "panel", T: "M", ok: "Lo que se manda es lo que se ve; un desactivado no viaja" },
-      { id: "K.7", t: "La doc del front y los casos de importación de los tres formatos", repo: "Geocore", T: "S", ok: "api-frontend.html, republicada" }
+      { id: "K.6", t: "Panel: corregir (rancho o parcela, a cuál, nombre), activar o desactivar cada polígono y confirmar con la estimación", repo: "panel", T: "M", ok: "Terra-admin#34: las correcciones aparte, por índice, y el plan sale de la vista corregida; «Revisar» y «Crear» sólo con lo revisado en pantalla. 198 tests. Geocore DECISIONS #72" },
+      { id: "K.7", t: "La doc del front y los casos de importación de los tres formatos", repo: "Geocore", T: "S", ok: "Geocore#105: «Importar» en api-frontend.html, republicada; IMPORTACION_CASOS.md (era KML_CASOS_Y_REDUNDANCIA.md)" },
+      { id: "K.8", t: "Borrar /api/kml/* (con KmlParser y KmlImportService) cuando la app del cliente confirme que no los llama: el panel ya no los usa", repo: "Geocore", T: "S", ok: "La app del cliente confirmó; los endpoints, el parser y sus tests, fuera", equipo: true }
     ] },
   { id: "M.9", nombre: "Analítica y futuro", objetivo: "Sin orden fijo, salvo el bloque M.9.0: se toma cuando el pipeline esté en producción.", sesiones: "abierto",
     aviso2: { tipo: "equipo", texto: "<b>Las seis decisiones de diseño del bloque estan tomadas</b> (2026-09-25, <code>DECISIONS #63</code> del worker): se mide antes de decidir, el agrupamiento es un dato de la receta, <b>por pasada puro</b> —sin columna <code>ventana</code> y sin migracion—, el raster sigue mensual, y <b>el umbral de cobertura se aplica al leer</b>. La cobertura se mide <b>sobre la parcela, nunca sobre el rancho</b>: una pasada que tapa medio rancho puede ser perfecta para una parcela. <b>Y el numero ya esta</b> (2026-09-24, <code>#66</code>): mediana de <b>3 pasadas limpias por mes</b>, y <b>0 de 72 meses</b> en que el compuesto llegue al umbral y ninguna pasada sola llegue. <b>El bloque M.9.0 se cerró el 2026-09-25</b> con M.9.0d: el panel ya muestra la serie por pasada, sobre un eje de fechas. Lo que sigue de M.9 no tiene orden fijo." },
@@ -425,6 +426,10 @@ const SPRINTS = [
     ] }
 ];
 
+// Sesión 22 (2026-10-04): el sprint K entero, salvo 👥 K.8. K.4, importar el plan confirmado
+// (Geocore#102, DECISIONS #70), y el NaN de GeoPolygon (#103, #71); K.6, corregir y confirmar en el
+// panel (Terra-admin#34), y K.7, la doc (Geocore#105, #72). Sigue M.9.7h.
+//
 // Sesión 21 (2026-10-03): M.9.7g, lo nuestro hecho: el rancho del Yaqui con v3 se ve bien en el
 // panel y el equipo aplicó el borrado. Queda 👥 M.9.7g2, reprocesar el resto con el botón. Y K.1:
 // los lectores de KML, GeoJSON y WKT (Geocore#94, DECISIONS #67); el KML de hoy da lo mismo que
@@ -521,7 +526,7 @@ const ESTADO = {
   "C.0": "hecho", "C.1": "hecho", "C.2": "hecho", "C.3": "hecho", "C.4": "hecho",
   "C.5": "hecho", "C.6": "hecho", "C.7": "hecho",
   "M.9.7g": "hecho",
-  "K.0": "hecho", "K.1": "hecho", "K.2": "hecho", "K.3": "hecho", "K.4": "hecho", "K.5": "hecho"
+  "K.0": "hecho", "K.1": "hecho", "K.2": "hecho", "K.3": "hecho", "K.4": "hecho", "K.5": "hecho", "K.6": "hecho", "K.7": "hecho"
 };
 
 const RUTA = [
@@ -588,7 +593,8 @@ const DECISIONES = [
   ["Importar: propone el sistema y confirma el operador; caso 4, un rancho por parcela (d-K1 a d-K6, #66 de Geocore)", "K.0", "hecho", "decidida"],
   ["Un multiparte es un polígono por parte; los huecos se descartan pero se cuentan (d-K7, d-K8, #67 de Geocore)", "K.1", "hecho", "decidida"],
   ["Tres niveles: el que contiene ranchos se propone desactivado (d-K9, #68 de Geocore)", "K.2", "hecho", "decidida"],
-  ["Importar: un solo SaveChanges, auditado, bloquean nombre repetido y solape > 1 % entre hermanos, otro tenant sólo a TerraStaff, 200 altas (d-K10 a d-K14, #70 de Geocore)", "K.4", "hecho", "decidida"]
+  ["Importar: un solo SaveChanges, auditado, bloquean nombre repetido y solape > 1 % entre hermanos, otro tenant sólo a TerraStaff, 200 altas (d-K10 a d-K14, #70 de Geocore)", "K.4", "hecho", "decidida"],
+  ["El panel: «Revisar» con botón, «Crear» sólo con lo revisado; un rancho desactivado no arrastra a sus parcelas; /api/kml/* se borra con la app del cliente (d-K15 a d-K18, #72 de Geocore)", "K.6", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };
@@ -612,7 +618,7 @@ document.getElementById("siguiente").innerHTML = siguiente
   : `<strong>Todas las tareas están hechas.</strong>`;
 
 // Se cambia al cerrar cada sesión, junto con ESTADO: es la sesión que sigue en RUTA.
-const sesionProxima = 27;
+const sesionProxima = 28;
 document.getElementById("ruta").innerHTML = RUTA.map(([s, d], i) => `
   <div class="sesion${i + 1 === sesionProxima ? " proxima" : ""}">
     <span class="n">sesión ${i + 1}${i + 1 === sesionProxima ? " · próxima" : ""}</span>
