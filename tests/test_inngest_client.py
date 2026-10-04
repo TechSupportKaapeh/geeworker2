@@ -214,3 +214,76 @@ def test_en_modo_dev_la_misma_invocacion_no_se_rechaza():
     )
     assert respuesta.status_code != 401
     assert "signature" not in respuesta.text.lower()
+
+
+# --- Inngest autohospedado (2026-10-04) ----------------------------------
+
+
+def test_produccion_con_servidor_propio_fija_sus_urls():
+    kwargs, problemas = _config(self_hosted_url="http://inngest.railway.internal:8288/")
+    assert kwargs["api_base_url"] == "http://inngest.railway.internal:8288"
+    assert kwargs["event_api_base_url"] == "http://inngest.railway.internal:8288"
+    assert problemas == []
+
+
+def test_el_servidor_propio_no_apaga_la_firma():
+    """Lo que protege /api/inngest es el modo, y con servidor propio sigue en produccion."""
+    kwargs, _ = _config(self_hosted_url="http://inngest.railway.internal:8288")
+    assert kwargs["is_production"] is True
+    assert kwargs["signing_key"] == "signkey-prod-abc123"
+
+
+def test_el_servidor_propio_sin_signing_key_sigue_avisando():
+    _, problemas = _config(self_hosted_url="http://inngest.railway.internal:8288", signing_key=None)
+    assert any("INNGEST_SIGNING_KEY" in p for p in problemas)
+
+
+@pytest.mark.parametrize("url", [
+    "inngest.railway.internal:8288",          # sin esquema
+    "https://inn.gs",                         # es Cloud: se borra la variable
+    "https://api.inngest.com",
+    "http://localhost:8288",                  # el propio contenedor
+])
+def test_una_url_propia_que_no_sirve_no_se_pasa_y_avisa(url):
+    """Pasarla a medias mandaria el sync a cualquier lado: se sigue con Cloud y se dice."""
+    kwargs, problemas = _config(self_hosted_url=url)
+    assert "api_base_url" not in kwargs
+    assert "event_api_base_url" not in kwargs
+    assert any("INNGEST_SELF_HOSTED_URL" in p for p in problemas)
+
+
+def test_en_desarrollo_la_url_propia_no_cambia_nada():
+    """En dev manda INNGEST_BASE_URL, el dev server de siempre."""
+    kwargs, _ = _config(is_production=False, base_url="http://localhost:8288",
+                        self_hosted_url="http://inngest.railway.internal:8288")
+    assert kwargs["api_base_url"] == "http://localhost:8288"
+
+
+def test_con_servidor_propio_una_invocacion_sin_firma_se_rechaza():
+    """La consecuencia, no la config: el endpoint con api_base_url propio sigue cerrado."""
+    import fastapi
+    import inngest
+    from fastapi.testclient import TestClient
+
+    from services import inngest_serve
+
+    cliente = inngest.Inngest(
+        app_id="test-firma-propio",
+        is_production=True,
+        signing_key="signkey-prod-" + "a" * 32,
+        event_key="de-mentira",
+        api_base_url="http://inngest.railway.internal:8288",
+        event_api_base_url="http://inngest.railway.internal:8288",
+    )
+
+    @cliente.create_function(fn_id="noop", trigger=inngest.TriggerEvent(event="test/x"))
+    def noop(ctx):
+        return "no deberia ejecutarse"
+
+    app = fastapi.FastAPI()
+    inngest_serve.serve(app, cliente, [noop])
+    respuesta = TestClient(app, raise_server_exceptions=False).post(
+        "/api/inngest?fnId=test-firma-propio-noop&stepId=step",
+        json={"event": {"name": "test/x", "data": {}}, "ctx": {}, "steps": {}},
+    )
+    assert respuesta.status_code == 401

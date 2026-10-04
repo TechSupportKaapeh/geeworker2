@@ -31,6 +31,7 @@ import inngest
 from config import (
     INNGEST_BASE_URL,
     INNGEST_EVENT_KEY,
+    INNGEST_SELF_HOSTED_URL,
     INNGEST_SIGNING_KEY,
     IS_PRODUCTION,
 )
@@ -44,7 +45,7 @@ APP_ID = "geeworker"
 DEV_EVENT_KEY = "dev-local-key"
 
 
-def resolve_client_config(*, is_production, base_url, event_key, signing_key):
+def resolve_client_config(*, is_production, base_url, event_key, signing_key, self_hosted_url=""):
     """Arma los kwargs del cliente y lista los problemas de configuracion.
 
     Funcion pura: recibe los valores en vez de leer la config al importarse,
@@ -94,12 +95,49 @@ def resolve_client_config(*, is_production, base_url, event_key, signing_key):
                 "pasar por terra/raster.ingested), pero un handler que lo haga "
                 "va a fallar"
             )
+
+        # Inngest autohospedado (2026-10-04). El modo sigue siendo CLOUD
+        # (`is_production`), y eso es lo que importa: la verificacion de firma
+        # depende del modo, no de la URL (`client.py::_get_mode`). El servidor
+        # propio firma con la misma INNGEST_SIGNING_KEY que se le configura.
+        # Se pasa explicita, y no por las variables que el SDK lee solo, para
+        # que apuntar a otro servidor sea una decision a la vista y no un
+        # resto de configuracion (el caso de inn.gs del 2026-09-18).
+        if self_hosted_url:
+            problema = _problema_de_url_propia(self_hosted_url)
+            if problema:
+                problemas.append(problema)
+            else:
+                url = self_hosted_url.rstrip("/")
+                kwargs["api_base_url"] = url
+                kwargs["event_api_base_url"] = url
     else:
         kwargs["api_base_url"] = base_url
         kwargs["event_api_base_url"] = base_url
         kwargs["event_key"] = event_key or DEV_EVENT_KEY
 
     return kwargs, problemas
+
+
+def _problema_de_url_propia(url):
+    """Por que `INNGEST_SELF_HOSTED_URL` no sirve, o `None` si sirve.
+
+    Una URL que no se puede usar **no se pasa**: el worker sigue con Inngest
+    Cloud y el reporte de arranque lo dice. Pasarla a medias haria que el sync
+    fuera a parar a cualquier lado.
+    """
+    if not url.startswith(("http://", "https://")):
+        return (f"INNGEST_SELF_HOSTED_URL no es una URL http(s): {url[:80]!r}. Se "
+                "sigue con Inngest Cloud")
+    host = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0].lower()
+    if host in ("inn.gs", "api.inngest.com") or host.endswith(".inngest.com"):
+        return (f"INNGEST_SELF_HOSTED_URL apunta a Inngest Cloud ({host}): para "
+                "Cloud se borra la variable. Se sigue con Inngest Cloud")
+    if host in ("localhost", "127.0.0.1"):
+        return (f"INNGEST_SELF_HOSTED_URL apunta al propio contenedor ({host}): en "
+                "Railway es el nombre del servicio, *.railway.internal. Se sigue "
+                "con Inngest Cloud")
+    return None
 
 
 _kwargs, _problemas = resolve_client_config(
@@ -110,6 +148,7 @@ _kwargs, _problemas = resolve_client_config(
     # pasa explicita: asi el valor sale de la misma config que el resto y no
     # depende de que `load_dotenv()` haya corrido antes de este import.
     signing_key=INNGEST_SIGNING_KEY or None,
+    self_hosted_url=INNGEST_SELF_HOSTED_URL,
 )
 
 for _problema in _problemas:

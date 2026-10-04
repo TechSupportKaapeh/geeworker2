@@ -908,6 +908,8 @@ tipo de pregunta que no duele hasta que duele mucho.
 
 ## C-6 · Inngest: Cloud o self-hosted
 
+**Estado:** ✅ decidido el 2026-10-04: **autohospedado en Railway** (`DECISIONS #80`, `INNGEST_AUTOHOSPEDADO.md`). La espera entre steps de Cloud (`#55`) hizo que el problema existiera.
+
 **Bloquea:** F.1 y el despliegue del worker · **Se vuelve caro:** después de
 desplegar el worker
 
