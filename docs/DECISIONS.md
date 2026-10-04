@@ -4165,3 +4165,38 @@ compuesto y 6 pasadas)**. Suite: 738 verdes, 31 omitidos; `--gee`: 31 verdes.
 
 **Lo que queda por hacer en producción:** reprocesar las altas que hayan fallado por esto desde el
 2026-09-27 —el rancho y la parcela de prueba del Yaqui seguro—.
+
+## 80. Inngest autohospedado en Railway, en vez de Inngest Cloud (2026-10-04)
+
+> Decisión del usuario, con una plantilla de Inngest ya desplegada en el mismo proyecto de Railway.
+> Cierra `PREGUNTAS_ABIERTAS` C-6, que recomendaba Cloud para la demo cuando el problema «todavía no
+> existía»: ahora existe. El procedimiento, en [`INNGEST_AUTOHOSPEDADO.md`](INNGEST_AUTOHOSPEDADO.md).
+
+**Por qué ahora.** La espera de 38 a 75 s entre steps es de Inngest Cloud (`#55`): con ~27 steps por
+alta, un alta pasa más de 20 minutos esperando, y con la importación del sprint K se crean decenas de
+una vez. El soporte de Inngest no contestó desde el 2026-09-19. Y la cuota del plan (50.000
+ejecuciones por mes, ~27 por alta) deja de existir.
+
+**El código: una variable explícita, `INNGEST_SELF_HOSTED_URL`.** En producción el worker se la pasa al
+SDK como `api_base_url` y `event_api_base_url`, **sin salir del modo producción**: la verificación de
+firma depende del modo y no de la URL (`client.py::_get_mode`, verificado en el paquete instalado), y
+un test monta `/api/inngest` con la URL propia y comprueba que un pedido sin firma sigue dando 401. Las
+cuatro variables que el SDK lee solo siguen prohibidas en producción (`INNGEST_DEV` apagaría la firma);
+una URL propia que no sirve —sin esquema, de Cloud, `localhost`— no se pasa, y el reporte de arranque
+lo dice. **Geocore no cambia código**: ya publica en `{Inngest:BaseUrl}/e/{EventKey}`, que es la ruta
+del servidor propio.
+
+**Cómo se conectan.** Inngest llama al worker por su URL pública, como Cloud, para no tocar el arranque
+del worker (escucha en `0.0.0.0`, y la red privada de Railway puede ser sólo IPv6). Geocore y el worker
+le hablan a Inngest por la red privada. **El dashboard de Inngest no tiene login** y muestra los
+payloads —ids de tenant, geometrías— y deja re-ejecutar funciones: **sin dominio público**. Cómo se lo
+mira (túnel o proxy con contraseña) quedó abierto.
+
+**Qué no cambia, a propósito:** un step por mes en las altas, que es decisión del usuario. Con la espera
+de Cloud fuera, deja de costar tiempo; juntar meses ahorraría ejecuciones que autohospedado ya no cobra.
+
+**Lo que hay que verificar después del cambio**, porque sólo se probó en el dev server o en Cloud: la
+deduplicación por id de evento (`#30`), la cola de 5 de GEE con `scope="account"`, y cuánto tarda un
+alta de verdad.
+
+Tests: **747 verdes**, 31 omitidos (8 nuevos en `test_inngest_client.py`).

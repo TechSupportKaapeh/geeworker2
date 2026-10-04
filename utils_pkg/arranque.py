@@ -132,6 +132,13 @@ INVENTARIO = (
         Variable("INNGEST_EVENT_KEY", SECRETO, solo_produccion=True,
                  consecuencia="no se puede emitir eventos. Desde M.4.5 el "
                               "worker no emite ninguno"),
+        # Inngest autohospedado (2026-10-04). Sin ella, Inngest Cloud. Es la
+        # unica URL de Inngest permitida en produccion: el worker se la pasa
+        # al SDK a la vista, en vez de que el SDK la lea sola.
+        Variable("INNGEST_SELF_HOSTED_URL", PUBLICO, opcional=True,
+                 consecuencia="sin ella el worker usa Inngest Cloud; con ella, "
+                              "el servidor propio (en Railway, por la red "
+                              "privada: http://<servicio>.railway.internal:8288)"),
         # Las cuatro de abajo, en produccion, **no tienen que existir**. El
         # worker no se las pasa al SDK, pero el SDK las lee solo
         # (`inngest/_internal/client_lib/utils.py`), y con cualquiera de las

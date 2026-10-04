@@ -1,5 +1,11 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-10-04 · Inngest autohospedado, listo para el cambio** (`DECISIONS #80`). El worker acepta
+> `INNGEST_SELF_HOSTED_URL`: con ella, en producción, le habla al Inngest propio sin salir del modo
+> producción (la firma sigue prendida; un test lo fija). Las otras URL de Inngest siguen prohibidas. El
+> cambio, la verificación y la vuelta atrás, en [`INNGEST_AUTOHOSPEDADO.md`](INNGEST_AUTOHOSPEDADO.md).
+> **El dashboard de Inngest no tiene login: sin dominio público.** Suite: 747 verdes.
+
 > **2026-10-04, sesión 22 · el sprint K cerrado (K.4, K.6, K.7), y el NaN de GeoPolygon.** El worker no
 > cambió: sólo el tablero (84 de 101; queda 👥 K.8, borrar `/api/kml/*`). Geocore importa el plan confirmado (`POST /api/importacion`, `DECISIONS #70` de
 > Geocore): **cada alta importada publica los mismos `terra/rancho.created` y `terra/parcela.created` de

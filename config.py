@@ -131,6 +131,10 @@ EE_SERVICE_ACCOUNT_KEY_JSON = os.getenv("EE_SERVICE_ACCOUNT_KEY_JSON")
 INNGEST_EVENT_KEY = os.getenv("INNGEST_EVENT_KEY", "dev-local-key")
 INNGEST_BASE_URL = os.getenv("INNGEST_BASE_URL", "http://localhost:8288")
 INNGEST_SIGNING_KEY = os.getenv("INNGEST_SIGNING_KEY", "")
+# Inngest autohospedado (2026-10-04): la URL del servidor propio, en vez de Inngest Cloud. Es la
+# única forma de apuntar a otro servidor en producción: las variables que el SDK lee solo
+# (INNGEST_BASE_URL, INNGEST_API_BASE_URL, …) siguen prohibidas ahí. Ver services/inngest_client.py.
+INNGEST_SELF_HOSTED_URL = os.getenv("INNGEST_SELF_HOSTED_URL", "")
 
 # `SUPPORTED_INDICES` se borro en M.6.1 (`DECISIONS #59`). Nadie la consultaba,
 # asi que se leia como un contrato sin serlo: un indice de afuera se procesaba
