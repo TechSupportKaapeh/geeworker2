@@ -387,9 +387,9 @@ const SPRINTS = [
       { id: "K.0", t: "PLAN: las decisiones d-K1 a d-K6 y el sprint en el tablero", repo: "docs", T: "S", ok: "Decisiones escritas" },
       { id: "K.1", t: "Lectores por formato a una lista común de polígonos: KML, GeoJSON y WKT", repo: "Geocore", T: "M", ok: "Geocore#94: el parser de hoy da lo mismo que main byte a byte en 3 KML reales y 13 sintéticos; 879 tests. DECISIONS #67" },
       { id: "K.2", t: "El clasificador, puro: los 4 casos y los huérfanos, por contención, con carpetas y propiedades como pista", repo: "Geocore", T: "M", ok: "Geocore#96: un test por caso, también que se tocan, se solapan y tres niveles; techo de 20.000 pares contra un DoS. DECISIONS #68" },
-      { id: "K.3", t: "La vista previa en la API: el árbol propuesto y los datos de cada polígono, sin crear nada", repo: "Geocore", T: "S", ok: "Tests de API; reemplaza al preview de hoy sin romperlo" },
+      { id: "K.3", t: "La vista previa en la API: el árbol propuesto y los datos de cada polígono, sin crear nada", repo: "Geocore", T: "S", ok: "Geocore#98: POST /api/importacion/vista-previa, sin crear nada; /api/kml/preview sigue. DECISIONS #69" },
       { id: "K.4", t: "Importar el plan confirmado: todo validado antes de escribir, los desactivados no se crean, tope y estimación", repo: "Geocore", T: "M", ok: "Un plan inválido no escribe nada; los 4 casos crean lo que dicen" },
-      { id: "K.5", t: "Panel: el botón «Crear extensión y subgrupos», el árbol y el mapa al lado, con los datos de cada polígono", repo: "panel", T: "M", ok: "Lo que se ve es lo que devolvió K.3" },
+      { id: "K.5", t: "Panel: el botón «Crear extensión y subgrupos», el árbol y el mapa al lado, con los datos de cada polígono", repo: "panel", T: "M", ok: "Terra-admin#31: el árbol y el mapa al lado, lo desactivado punteado; adelantada por pedido del usuario" },
       { id: "K.6", t: "Panel: corregir (rancho o parcela, a cuál, nombre), activar o desactivar cada polígono y confirmar con la estimación", repo: "panel", T: "M", ok: "Lo que se manda es lo que se ve; un desactivado no viaja" },
       { id: "K.7", t: "La doc del front y los casos de importación de los tres formatos", repo: "Geocore", T: "S", ok: "api-frontend.html, republicada" }
     ] },
@@ -521,7 +521,7 @@ const ESTADO = {
   "C.0": "hecho", "C.1": "hecho", "C.2": "hecho", "C.3": "hecho", "C.4": "hecho",
   "C.5": "hecho", "C.6": "hecho", "C.7": "hecho",
   "M.9.7g": "hecho",
-  "K.0": "hecho", "K.1": "hecho", "K.2": "hecho"
+  "K.0": "hecho", "K.1": "hecho", "K.2": "hecho", "K.3": "hecho", "K.5": "hecho"
 };
 
 const RUTA = [
