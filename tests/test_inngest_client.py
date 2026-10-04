@@ -287,3 +287,25 @@ def test_con_servidor_propio_una_invocacion_sin_firma_se_rechaza():
         json={"event": {"name": "test/x", "data": {}}, "ctx": {}, "steps": {}},
     )
     assert respuesta.status_code == 401
+
+
+# --- La URL con la que se registra el worker (2026-10-04) -----------------
+
+
+def test_un_serve_origin_http_en_produccion_avisa():
+    """Detras de Railway, http da 301 y ningun step se ejecuta: paso con el servidor propio."""
+    _, problemas = _config(serve_origin="http://geeworker2-production.up.railway.app")
+    assert any("INNGEST_SERVE_ORIGIN" in p for p in problemas)
+
+
+@pytest.mark.parametrize("origen", ["", "https://geeworker2-production.up.railway.app"])
+def test_sin_serve_origin_o_con_https_no_avisa(origen):
+    _, problemas = _config(serve_origin=origen)
+    assert not any("INNGEST_SERVE_ORIGIN" in p for p in problemas)
+
+
+def test_el_serve_origin_no_toca_las_urls_ni_el_modo():
+    """Sólo se avisa: la URL la lee el SDK solo, y la firma depende del modo."""
+    kwargs, _ = _config(serve_origin="https://geeworker2-production.up.railway.app")
+    assert kwargs["is_production"] is True
+    assert "api_base_url" not in kwargs

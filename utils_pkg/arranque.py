@@ -139,6 +139,13 @@ INVENTARIO = (
                  consecuencia="sin ella el worker usa Inngest Cloud; con ella, "
                               "el servidor propio (en Railway, por la red "
                               "privada: http://<servicio>.railway.internal:8288)"),
+        # Con Inngest autohospedado (2026-10-04): la URL publica con la que el
+        # worker se registra. Sin ella registra la del pedido de sync, que detras
+        # del proxy de Railway es http y da 301.
+        Variable("INNGEST_SERVE_ORIGIN", PUBLICO, opcional=True,
+                 consecuencia="sin ella el worker se registra con la URL del pedido "
+                              "de sync, que en Railway llega como http: 301 y ningun "
+                              "step se ejecuta. Va https://<dominio-del-worker>"),
         # Las cuatro de abajo, en produccion, **no tienen que existir**. El
         # worker no se las pasa al SDK, pero el SDK las lee solo
         # (`inngest/_internal/client_lib/utils.py`), y con cualquiera de las
