@@ -4,6 +4,18 @@
 > desplegada en el **mismo proyecto de Railway** que Geocore y el worker. Reemplaza a Inngest Cloud.
 > Cierra `PREGUNTAS_ABIERTAS` C-6.
 
+## Estado (2026-10-04)
+
+La plantilla está desplegada (con Postgres y Redis) en `https://inngestapp-production-29a7.up.railway.app`.
+**Ese dominio público está abierto y sin login**, verificado ese día sólo con pedidos de lectura: `/` sirve
+el dashboard y `/v0/gql` —el API del dashboard— contesta consultas sin credenciales. `/dev` pide
+autenticación (la signing key está puesta). La lista de apps volvía **vacía**: el worker no se sincronizó
+todavía, así que no había eventos expuestos. **Antes del paso 3 de abajo, ese dominio se saca.**
+
+El nombre privado del servicio sale de Railway → el servicio → Settings → Networking → Private
+Networking (si el servicio se llama `inngestapp`, es `inngestapp.railway.internal`), y el puerto es el
+que escucha Inngest (8288 salvo que la plantilla lo cambie: es al que apunta el dominio público).
+
 ## Por qué
 
 - **La espera entre steps es de Inngest Cloud**: de 38 a 75 s entre un step y el siguiente (`#55`),
