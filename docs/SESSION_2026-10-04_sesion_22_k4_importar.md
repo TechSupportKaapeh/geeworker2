@@ -1,7 +1,7 @@
-# Sesión 22 — K.4, importar el plan confirmado, y el NaN de GeoPolygon (2026-10-04)
+# Sesión 22 — el sprint K cerrado: K.4, K.6 y K.7, y el NaN de GeoPolygon (2026-10-04)
 
-> Dos tareas: K.4, la fase del sprint K que crea de verdad, y el arreglo de `GeoPolygon` que esperaba la
-> consulta del equipo. Las dos, hechas y por PR con el CI en verde.
+> K.4, la fase del sprint K que crea de verdad, el arreglo de `GeoPolygon` que esperaba la consulta del
+> equipo, y después K.6 y K.7: el sprint K cerrado, salvo 👥 K.8. Todo por PR con el CI en verde.
 
 ## Lo que quedó
 
@@ -9,6 +9,8 @@
 |---|---|---|
 | Geocore | #102 | **K.4**: `POST /api/importacion` y `…/estimacion`, `DECISIONS #70` |
 | Geocore | #103 | `GeoPolygon` rechaza las coordenadas que no son finitas, `DECISIONS #71` |
+| terra-admin | #34 | **K.6**: corregir y confirmar en el panel, Geocore `DECISIONS #72` |
+| Geocore | #105 | **K.7**: «Importar» en `api-frontend.html` y `IMPORTACION_CASOS.md` |
 | Geocore, worker | el cierre | Este archivo, el tablero, los HANDOFF y `PROXIMA_SESION.md` |
 
 Tests de Geocore: **990 verdes** con PostgreSQL local (eran 932). El worker, el panel y el tileserver
@@ -64,7 +66,25 @@ terminar.
 `GeoConverter` lee `parcelas.centroide` con él, y eso no se miró. La consulta para el equipo está en
 `DECISIONS #71`.
 
+## Después: K.6 y K.7 (el usuario pidió terminar todo el sprint K)
+
+**K.6, en el panel** (Terra-admin#34). Tres preguntas antes de codear, las tres con la recomendación:
+**«Revisar» es un botón** y no una estimación automática (el techo de 20 por minuto se tocaba corrigiendo
+rápido), y «Crear» sólo con una revisión del plan que está en pantalla; **desactivar un rancho no
+arrastra a sus parcelas**, que quedan en «Parcelas sin rancho», marcadas; y **el resultado en el panel**,
+con lo que quedó sin encolar. La forma: las correcciones viven aparte, por índice, y el plan sale de la
+vista corregida, así lo que se manda es lo que se ve. La auditoría frenó activar un no importable y un
+rechazo tardío sobre otro archivo. 198 tests (eran 173). **No se vio en un navegador**: pide login.
+
+**K.7, la doc** (Geocore#105). «Importar» en `api-frontend.html` (republicada; **la página es privada**:
+el equipo del front no la ve hasta que se comparta), y `KML_CASOS_Y_REDUNDANCIA.md` pasó a ser
+`IMPORTACION_CASOS.md`.
+
+**Al cerrar el sprint, la decisión pendiente**: `/api/kml/*` se borra cuando el equipo de la app del
+cliente confirme que no los llama (👥 K.8). El panel ya no los usa.
+
 ## Lo que sigue
 
-**K.6**, en el panel: corregir el árbol, activar y desactivar, y confirmar viendo la estimación de K.4.
-Después K.7, la doc del front.
+**M.9.7h**, los ranchos grandes (Zapotlan). Antes, que el usuario mire «Crear extensión y subgrupos» en el
+navegador con el caso 1 armado: desactivando «Lote del borde» y uno de los lotes solapados, tiene que
+entrar.
