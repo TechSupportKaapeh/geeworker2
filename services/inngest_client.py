@@ -45,7 +45,8 @@ APP_ID = "geeworker"
 DEV_EVENT_KEY = "dev-local-key"
 
 
-def resolve_client_config(*, is_production, base_url, event_key, signing_key, self_hosted_url=""):
+def resolve_client_config(*, is_production, base_url, event_key, signing_key, self_hosted_url="",
+                          serve_origin=""):
     """Arma los kwargs del cliente y lista los problemas de configuracion.
 
     Funcion pura: recibe los valores en vez de leer la config al importarse,
@@ -111,6 +112,18 @@ def resolve_client_config(*, is_production, base_url, event_key, signing_key, se
                 url = self_hosted_url.rstrip("/")
                 kwargs["api_base_url"] = url
                 kwargs["event_api_base_url"] = url
+
+        # La URL con la que el worker se registra (2026-10-04). Detras del proxy
+        # de Railway el pedido de sync llega como http, y el SDK registra esa
+        # URL: Inngest le pega a http://, Railway contesta 301 a https y el step
+        # no se ejecuta, sin error a la vista. INNGEST_SERVE_ORIGIN la fija (el
+        # SDK la lee solo, `config_lib.get_serve_origin`); aca solo se avisa si
+        # es http. No cambia que acepta el worker: la firma se verifica igual.
+        if serve_origin.startswith("http://"):
+            problemas.append(
+                "INNGEST_SERVE_ORIGIN es http: Railway contesta 301 a https y "
+                "Inngest no ejecuta ningun step. Tiene que ser https://<dominio>"
+            )
     else:
         kwargs["api_base_url"] = base_url
         kwargs["event_api_base_url"] = base_url
@@ -149,6 +162,7 @@ _kwargs, _problemas = resolve_client_config(
     # depende de que `load_dotenv()` haya corrido antes de este import.
     signing_key=INNGEST_SIGNING_KEY or None,
     self_hosted_url=INNGEST_SELF_HOSTED_URL,
+    serve_origin=os.getenv("INNGEST_SERVE_ORIGIN", ""),
 )
 
 for _problema in _problemas:

@@ -52,6 +52,7 @@ worker  ──(red privada)──▶ Inngest   (el sync y, si hiciera falta, emi
 | worker | `INNGEST_SELF_HOSTED_URL` | `http://<servicio-inngest>.railway.internal:8288` |
 | worker | `INNGEST_SIGNING_KEY` | **la misma** que la de Inngest |
 | worker | `INNGEST_EVENT_KEY` | **la misma** que la de Inngest |
+| worker | `INNGEST_SERVE_ORIGIN` | `https://geeworker2-production.up.railway.app`: **con https**. Sin ella el worker se registra con la URL del pedido de sync, que detrás del proxy de Railway llega como `http://`; Railway contesta 301 y **ningún step se ejecuta** (pasó el 2026-10-04). Si es `http://`, el arranque lo avisa |
 | Geocore | `Inngest__BaseUrl` | `http://<servicio-inngest>.railway.internal:8288` |
 | Geocore | `Inngest__EventKey` | **la misma** `INNGEST_EVENT_KEY` |
 
@@ -69,7 +70,7 @@ con Cloud.
 2. **Inngest**: las dos claves y la persistencia; **sacarle el dominio público** si la plantilla lo trae.
 3. **El worker**: las tres variables, y desplegar. En los logs de arranque, `INNGEST_SELF_HOSTED_URL`
    tiene que aparecer con su valor y **sin** ninguna línea de problema de Inngest.
-4. **El sync**: `curl -X PUT https://<worker-público>/api/inngest`. El SDK se registra contra el
+4. **El sync**: `curl -X PUT https://<worker-público>/api/inngest`. **Antes del paso 5**: si Geocore manda eventos antes de que el worker esté sincronizado, Inngest los marca `NO_FUNCTIONS` y se pierden. Y mirar que cada step diga `https://`. El SDK se registra contra el
    servidor propio con la URL por la que llegó el pedido, que es la pública. En el dashboard (por el
    túnel) tienen que aparecer **las 7 funciones** del worker, más las compañeras que Inngest crea
    para cada `on_failure` (con Cloud, 11 funciones se veían como 15).
@@ -103,3 +104,21 @@ Lo que haya quedado en vuelo en el servidor propio se pierde igual: volver tambi
   Mientras no se decida, sin dominio público.
 - **Los backups de la base de Inngest**: con Postgres, el historial de corridas vive ahí. No es dato
   del negocio (eso está en Geocore y GeoData), así que perderlo no pierde nada que no se pueda reprocesar.
+
+## Lo que pasó en el cambio del 2026-10-04, y cómo se arregló
+
+1. **La app quedaba `unreachable`**: el worker todavía tenía la configuración de Cloud, así que respondía
+   el sync con la signing key de Cloud y se registraba allá. Se arregló con las variables del worker.
+2. **Una importación (2 ranchos, 6 parcelas) llegó antes del sync**: Inngest la marcó `NO_FUNCTIONS` y
+   no la ejecuta nunca. Como el id del evento es el JobId y Inngest descarta 24 h un id que ya vio, esos
+   jobs no se republican: se dan por fallidos y se reprocesan.
+3. **Las funciones quedaron registradas con `http://`**: Railway contesta 301 a https y no se ejecuta
+   ningún step. Se arregla con `INNGEST_SERVE_ORIGIN` (arriba) y un resync. **No cambia qué acepta el
+   worker**: la firma se sigue verificando, y un pedido sin firma por https da 401.
+4. **Los jobs que quedaron colgados en Procesos** (lo que estaba en vuelo en Cloud, y la importación del
+   punto 2) se destraban con `geocore/docs/sql/2026-10-04_jobs_perdidos_en_el_cambio_de_inngest.sql`:
+   las altas a `failed` para reprocesarlas, y el cierre de mes a `pending`, que se republica solo. **Recién
+   después de comprobar que un alta de prueba termina en `completed`.**
+
+**Lo que se aprende para un cambio así**: el sync va **antes** de mover Geocore (si no, los eventos llegan
+sin funciones y se pierden), y después del sync se mira en el dashboard que cada step diga `https://`.
