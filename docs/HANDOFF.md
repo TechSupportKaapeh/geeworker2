@@ -1,5 +1,12 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-10-04, sesión 22 · K.4 en Geocore, y el NaN de GeoPolygon.** El worker no cambió: sólo el
+> tablero (82 de 100). Geocore importa el plan confirmado (`POST /api/importacion`, `DECISIONS #70` de
+> Geocore): **cada alta importada publica los mismos `terra/rancho.created` y `terra/parcela.created` de
+> siempre**, con su job, así que el worker no distingue un alta importada de una suelta. Hasta 200 altas
+> por importación. La que sigue es **K.6**, en el panel. Crónica:
+> [`SESSION_2026-10-04_sesion_22_k4_importar.md`](SESSION_2026-10-04_sesion_22_k4_importar.md).
+
 > **2026-10-03, sesión 21 · M.9.7g cerrada de nuestro lado, y K.1 en Geocore.** El worker no cambió:
 > sólo el tablero. El rancho del Yaqui con v3 se ve bien en el panel y el borrado está aplicado; queda
 > 👥 **M.9.7g2**, reprocesar el resto con el botón (Zapotlan va a fallar: M.9.7h). La que sigue es
