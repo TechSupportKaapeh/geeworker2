@@ -96,8 +96,8 @@ def test_rechaza_un_id_que_no_es_texto():
 
 
 def test_rechaza_un_indice_que_la_receta_no_calcula():
-    with pytest.raises(ValueError, match="savi"):
-        _claves(indice="savi")
+    with pytest.raises(ValueError, match="gndvi"):
+        _claves(indice="gndvi")
 
 
 def test_los_ids_van_por_nombre():

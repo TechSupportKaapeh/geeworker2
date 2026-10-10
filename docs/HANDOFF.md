@@ -1,5 +1,17 @@
 # HANDOFF.md — Estado permanente de GeeWorker
 
+> **2026-10-09 · M.9.3: SAVI y LAI, y `s2-pasada-v4` VIGENTE** (`DECISIONS #81`). Lo que hay que saber:
+>
+> - **v4 = v3 + `savi` + `lai`**, detrás de los cuatro de siempre: el COG del rancho tiene 9 bandas y el color
+>   real pasó a 7-9. NDVI, EVI, NDRE y NDMI dan lo mismo que con v3.
+> - **El LAI es empírico desde el EVI** (Boegh 2002) y **satura en 3,5**. Va por **1.000** en el COG, no por 10.000:
+>   **cada índice tiene su escala** (`Indice.escala_cog`), y la fila de `layers` guarda la suya. Un índice nuevo
+>   que no viva en [-1, 1] tiene que traer la suya, o el registro lo rechaza al importar.
+> - **Un rancho de ~2.600 ha tarda 50-75 s por mes con v4** (v3: 34-68 s, el mismo día): pasa la compuerta de
+>   60 s, aceptado por el usuario. El techo de la caja baja a ~17.000 ha. Medir: `check_rancho_por_pasada.py --receta v4`.
+> - **Los tests de orquestación clavan v1** con un alias (`RECETA_MENSUAL_V1 as RECETA_VIGENTE`): hasta v4 la lista
+>   de índices coincidía con la vigente por casualidad.
+
 > **2026-10-04 · Inngest autohospedado, listo para el cambio** (`DECISIONS #80`). El worker acepta
 > `INNGEST_SELF_HOSTED_URL`: con ella, en producción, le habla al Inngest propio sin salir del modo
 > producción (la firma sigue prendida; un test lo fija). Las otras URL de Inngest siguen prohibidas. El

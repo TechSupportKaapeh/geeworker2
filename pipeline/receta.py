@@ -28,7 +28,7 @@ import re
 from dataclasses import dataclass
 
 from pipeline.estadisticas import ESTADISTICAS, claves_de_salida
-from pipeline.indices import BANDAS, INDICES
+from pipeline.indices import BANDAS, ESCALA_COG_NORMALIZADO, INDICES
 from pipeline.ventanas import AGRUPAMIENTOS, ENTERO, POR_PASADA
 
 # Cloud Score+ (M.9.7e1, `DECISIONS #72`): comparte el `system:index` con
@@ -284,6 +284,15 @@ class Receta:
                 "bandas": {
                     banda: BANDAS[banda] for banda in sorted(INDICES[nombre].bandas)
                 },
+                # La escala del COG (M.9.3) entra sólo si no es la de siempre: la de
+                # los índices normalizados es lo que el código hizo desde M.9.7b, y
+                # así v1, v2 y v3 conservan su huella. Cambiarla cambia el entero
+                # guardado, así que cuenta.
+                **(
+                    {"escala_cog": INDICES[nombre].escala_cog}
+                    if INDICES[nombre].escala_cog != ESCALA_COG_NORMALIZADO
+                    else {}
+                ),
             }
             for nombre in self.indices
         }
@@ -406,4 +415,28 @@ RECETA_PASADA_V3 = dataclasses.replace(
 # **Un rancho cuya caja pase de ~22.000 ha no entra** (`DECISIONS #78`): la
 # descarga de 7 bandas pasa el tope de `getDownloadURL`. Con v2 el techo era
 # ~39.000 ha, y Zapotlan (27.349 ha, caja de ~47.700) ya fallaba con las dos.
-RECETA_VIGENTE = RECETA_PASADA_V3
+#
+# **Dejó de ser la vigente el 2026-10-09** (M.9.3): ver v4, abajo. Sigue acá: es
+# la receta de las filas y los COG que escribió.
+
+
+# Receta v4 (M.9.3, `DECISIONS #81`): **v3 + SAVI + LAI**, pedido del equipo el
+# 2026-10-09. Nada más cambia: la máscara, los agrupamientos y el color real son
+# los de v3, así que NDVI, EVI, NDRE y NDMI dan los mismos números que con v3.
+#
+# Lo que sí cambia, y por eso es otra versión: dos índices más en las filas y
+# **dos bandas más en el COG del rancho** (9 en vez de 7). Los dos van detrás de
+# los cuatro de siempre y delante del color real, así que la banda de cada índice
+# viejo es la misma; las del color real se corren de 5-7 a 7-9, y lo dice cada
+# fila de `layers` (`bandas`). Con 9 bandas la descarga pesa ~9/7, y el techo de
+# la caja del rancho baja de ~22.000 a ~17.000 ha (`DECISIONS #78`).
+RECETA_PASADA_V4 = dataclasses.replace(
+    RECETA_PASADA_V3,
+    version="s2-pasada-v4",
+    indices=(*RECETA_PASADA_V3.indices, "savi", "lai"),
+)
+
+# **La vigente, desde el 2026-10-09** (M.9.3): v4. Decisión del usuario, después de
+# medir un rancho real con v4 contra la compuerta de 60 s (`DECISIONS #81`). Lo
+# guardado con v3 no tiene SAVI ni LAI hasta reprocesarlo.
+RECETA_VIGENTE = RECETA_PASADA_V4

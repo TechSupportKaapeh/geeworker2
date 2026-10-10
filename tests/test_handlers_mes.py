@@ -29,7 +29,10 @@ from handlers import altas, parcela, rancho
 from handlers import mes as handlers_mes
 from pipeline import ejecucion
 from pipeline.estadisticas import claves_de_salida
-from pipeline.receta import RECETA_VIGENTE
+# Estos tests fijan la orquestacion MENSUAL y clavan v1 (ver `mundo`): la lista de
+# indices tiene que ser la de v1, no la de la vigente. Hasta M.9.3 coincidian por
+# casualidad (cuatro y cuatro); desde v4 la vigente tiene seis.
+from pipeline.receta import RECETA_MENSUAL_V1 as RECETA_VIGENTE
 from repositories import db_repository
 from services import avance_job
 

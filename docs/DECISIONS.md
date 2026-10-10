@@ -4200,3 +4200,56 @@ deduplicación por id de evento (`#30`), la cola de 5 de GEE con `scope="account
 alta de verdad.
 
 Tests: **747 verdes**, 31 omitidos (8 nuevos en `test_inngest_client.py`).
+
+## 81. M.9.3: SAVI y LAI, la receta v4 y una escala del COG por índice (2026-10-09)
+
+> Pedido del equipo, decisiones del usuario. **Cambia producción** al desplegar: las altas y el cierre
+> escriben con `s2-pasada-v4`. Lo guardado con v3 no tiene SAVI ni LAI hasta reprocesarlo.
+
+**Los dos índices** (`pipeline/indices.py`, con su definición publicada escrita aparte en los tests):
+
+| | Fórmula | Rango | Escala del COG |
+|---|---|---|---|
+| SAVI | `1,5·(NIR − RED)/(NIR + RED + 0,5)`, Huete (1988), L = 0,5 | [−1, 1] | 10.000 |
+| LAI | `3,618·EVI − 0,118`, Boegh et al. (2002) | **[0, 3,5]** | **1.000** |
+
+**El LAI es una estimación empírica**, elegida por el usuario frente a dos alternativas: desde SAVI con
+logaritmo (habría que sumar logaritmos al lenguaje de fórmulas) y la red neuronal biofísica de SNAP (la
+más precisa, una fase propia). Es lineal en el EVI, así que **satura en 3,5**: acotarlo ahí es lo mismo que
+calcularlo desde el EVI acotado a 1. Donde no hay hojas da negativo (el agua, −0,34), y se acota a 0; un test
+lo deja dicho. La fórmula repite la del EVI porque el lenguaje no deja citar otro índice.
+
+**Una escala del COG por índice** (`Indice.escala_cog`). Hasta M.9.3 era una sola, ×10.000 en int16: el LAI
+de 3,5 daba 35.000 y el COG lo habría recortado al tope (32.767) **sin ningún error**. Ahora cada banda se
+multiplica por la suya (una constante por banda en GEE), la fila de `layers` guarda la escala de su índice
+(`escala_de_producto`) y el panel ya pinta con esa. El registro rechaza al importar un índice cuyo rango por su
+escala no entra en un int16. La escala entra en la huella **sólo si no es la de siempre**: las huellas de v1,
+v2 y v3 no se movieron (comprobado).
+
+**La receta v4** = v3 + `savi` + `lai`, detrás de los cuatro de siempre: la banda de cada índice viejo es la
+misma, y el color real pasa de 5-7 a 7-9 (lo dice `bandas` en cada fila). NDVI, EVI, NDRE y NDMI dan los mismos
+números que con v3. **Vigente al desplegar**, decisión del usuario.
+
+**Medido contra GEE el 2026-10-09** (`check_rancho_por_pasada.py`, que suma `--receta`), Rombito, 2.623 ha,
+dos corridas de cada una:
+
+| Mes | v3 | v4 |
+|---|---|---|
+| 2025-07 (11 pasadas) | 68,2 · 47,3 s | 66,7 · 74,9 s |
+| 2026-01 (8 pasadas) | 34,3 · 44,4 s | 49,1 · 66,7 s |
+
+- **v4 es un 30-45 % más lenta** y **pasa la compuerta de 60 s** con un rancho de 2.600 ha. La compuerta es un
+  margen de diseño; el límite duro es el plazo de 2 minutos por pedido a GEE, y cada archivo es un pedido. **El
+  usuario eligió los mapas con las 9 bandas igual** frente a dos alternativas: SAVI y LAI sólo en los números, o
+  pintar el LAI desde la banda del EVI (lineal) con sólo SAVI como banda nueva. GEE estaba lento ese día: v3, que
+  la semana anterior dio 42,0 s, dio 68,2.
+- **Pesa 9/7**: 0,0078 MB por hectárea y por mes contra 0,0060 de v3 (que coincide con `#64`). Los coeficientes
+  de la estimación de Geocore se escalan por 1,29, y **el techo de la caja del rancho baja de ~22.000 a ~17.000
+  ha** (`#78`).
+- **Los COG reales** tienen 9 bandas int16 sin nada en el tope; el LAI va de 0 a 3.500 y su mediana de julio
+  (1.628) es exactamente 3,618 por la del EVI (4.826) menos 0,118: GEE evalúa la fórmula igual que Python.
+
+**Lo que hay que hacer después**: reprocesar para tener SAVI y LAI en el histórico (va con 👥 M.9.7g2), y el panel y
+la doc del front (Geocore y Terra-admin, sus PR).
+
+Tests: **761 verdes**, 31 omitidos; con `--gee`, **31 verdes**.

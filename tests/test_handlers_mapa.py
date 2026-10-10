@@ -260,8 +260,8 @@ def test_un_periodo_que_no_es_un_mes_no_se_reintenta(mundo, periodo):
 
 def test_un_indice_que_la_receta_no_calcula_no_se_reintenta(mundo):
     """Y falla **antes** de pedirle nada a GEE, que es lo que cuesta plata."""
-    with pytest.raises(inngest.NonRetriableError, match="savi"):
-        _correr(_Step(), {**DE_UNA_PARCELA, "Indice": "savi"})
+    with pytest.raises(inngest.NonRetriableError, match="gndvi"):
+        _correr(_Step(), {**DE_UNA_PARCELA, "Indice": "gndvi"})
 
     assert mundo["pedidos"] == []
     assert mundo["capas"] == []
