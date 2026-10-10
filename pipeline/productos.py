@@ -209,4 +209,3 @@ def mapa_multibanda_de(
         .toInt16()
         .clip(roi)
     )
-

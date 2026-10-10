@@ -87,8 +87,10 @@ class Indice:
         # el COG lo recortaría al tope sin ningún error: el LAI de 3,5 por 10.000
         # daba 35.000 (M.9.3, 2026-10-09).
         if max(abs(minimo), abs(maximo)) * self.escala_cog > TOPE_INT16:
-            msg = (f"{self.nombre}: su rango {self.rango} por {self.escala_cog} no "
-                   f"entra en un int16 (±{TOPE_INT16}): bajar escala_cog")
+            msg = (
+                f"{self.nombre}: su rango {self.rango} por {self.escala_cog} no "
+                f"entra en un int16 (±{TOPE_INT16}): bajar escala_cog"
+            )
             raise ValueError(msg)
 
     @property
