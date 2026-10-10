@@ -42,9 +42,9 @@ from pipeline.ejecucion import reducciones_de, url_de_descarga, ventanas_de
 from pipeline.etapas.reduccion import Reduccion
 from pipeline.periodos import Mes
 from pipeline.productos import (
-    ESCALA_DEL_COG,
     bandas_de_producto,
     bandas_del_cog,
+    escala_de_producto,
     mapa_multibanda_de,
     productos_del_cog,
 )
@@ -269,7 +269,7 @@ def procesar_mes(  # noqa: PLR0913 - lo que necesita un mes, por nombre
                 receta=receta.version,
                 estadisticas=_estadisticas_de_la_capa(subido.cog.reduccion, producto),
                 bandas=bandas_de_producto(receta, producto),
-                escala=ESCALA_DEL_COG,
+                escala=escala_de_producto(producto),
             )
 
     mapas = len(subidos) * len(productos)

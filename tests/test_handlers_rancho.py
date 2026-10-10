@@ -34,7 +34,10 @@ from pipeline.receta import RECETA_MENSUAL_V1
 from handlers import altas, rancho, raster
 from pipeline import ejecucion
 from pipeline.estadisticas import claves_de_salida
-from pipeline.receta import RECETA_VIGENTE
+# Estos tests fijan la orquestacion MENSUAL y clavan v1 (ver `mundo`): la lista de
+# indices tiene que ser la de v1, no la de la vigente. Hasta M.9.3 coincidian por
+# casualidad (cuatro y cuatro); desde v4 la vigente tiene seis.
+from pipeline.receta import RECETA_MENSUAL_V1 as RECETA_VIGENTE
 
 INDICES = list(RECETA_VIGENTE.indices)
 from handlers import registro as inngest_handlers
@@ -74,7 +77,11 @@ class _Ctx:
 
 
 def _respuesta_de_gee(cobertura=0.8):
-    claves = claves_de_salida(RECETA_VIGENTE.indices, RECETA_VIGENTE.estadisticas)
+    # Las claves de los seis indices del registro, y no las de la receta clavada (v1):
+    # el test de v4 pide tambien las de SAVI y LAI, y las de mas no molestan.
+    from pipeline.indices import INDICES as REGISTRO
+
+    claves = claves_de_salida(list(REGISTRO), RECETA_VIGENTE.estadisticas)
     respuesta = {clave: (0.55 if est == "mediana" else 0.1) for (_, est), clave in claves.items()}
     respuesta.update(cobertura=cobertura, observaciones=3.0)
     return respuesta
@@ -214,6 +221,14 @@ def test_el_mapa_es_de_todos_los_indices_de_la_receta(mundo):
 
     assert indices_del_mapa(RECETA_VIGENTE) == RECETA_VIGENTE.indices
     assert len(RECETA_VIGENTE.indices) == 4
+
+
+def test_con_la_vigente_el_mapa_lleva_los_seis_indices():
+    """La vigente de verdad (v4, M.9.3): los seis indices, SAVI y LAI detras."""
+    from handlers.rancho import indices_del_mapa
+    from pipeline import receta
+
+    assert indices_del_mapa(receta.RECETA_VIGENTE) == ("ndvi", "evi", "ndre", "ndmi", "savi", "lai")
 
 
 def test_cada_capa_lleva_las_estadisticas_de_SU_indice(mundo):
@@ -429,7 +444,7 @@ def test_el_handler_no_importa_la_capa_vieja_ni_abre_conexiones():
 # --- M.9.7e2: el rancho por pasada con v3 (`DECISIONS #77`) ----------------------
 
 
-def _mes_v3(monkeypatch, mundo, coberturas, *, cobertura_del_mes=0.8):
+def _mes_v3(monkeypatch, mundo, coberturas, *, cobertura_del_mes=0.8, receta=None):
     """Un mes de v3 con una pasada por cobertura; una cobertura 0 contesta como una
     pasada tapada. Devuelve el resultado del step y las fechas de las pasadas."""
     from pipeline.periodos import Mes
@@ -447,7 +462,7 @@ def _mes_v3(monkeypatch, mundo, coberturas, *, cobertura_del_mes=0.8):
     with avance_job.seguimiento("job-r", 0, 3):
         resultado = rancho.procesar_mes(
             rancho_id=RANCHO, tenant_id=TENANT, coordenadas=PAYLOAD["Coordinates"],
-            mes=Mes(2026, 8), posicion=1, total=1, receta=RECETA_PASADA_V3,
+            mes=Mes(2026, 8), posicion=1, total=1, receta=receta or RECETA_PASADA_V3,
         )
     return resultado, pasadas
 
@@ -541,3 +556,24 @@ def test_v2_sigue_siendo_un_archivo_por_mes_sin_pasadas(monkeypatch, mundo):
     assert {c["source"] for c in mundo["capas"]} == {"mensual"}
     (linea,) = [l for l in mundo["bitacora"] if l["etapa"] == "mes-2026-08"]
     assert "pasadas" not in linea["mensaje"]
+
+
+# --- M.9.3: v4, con SAVI y LAI (`DECISIONS #81`) --------------------------------
+
+
+def test_v4_cada_fila_lleva_la_escala_de_su_indice(monkeypatch, mundo):
+    """El LAI va por 1.000 en el COG, y su fila lo dice: el panel pinta con eso.
+
+    Con una sola escala para todo, el LAI de 3,5 por 10.000 se recortaba al tope del
+    int16 sin error, y el panel lo pintaba con la escala equivocada.
+    """
+    from pipeline.receta import RECETA_PASADA_V4
+
+    _mes_v3(monkeypatch, mundo, [0.9], receta=RECETA_PASADA_V4)
+
+    pasada = [c for c in mundo["capas"] if c["source"] == "pasada"]
+    assert [c["product"] for c in pasada] == ["ndvi", "evi", "ndre", "ndmi", "savi", "lai", "rgb"]
+    # Los cuatro de siempre en su banda de v3; el color real se corre detras de los dos nuevos.
+    assert [c["bandas"] for c in pasada] == [[1], [2], [3], [4], [5], [6], [7, 8, 9]]
+    assert [c["escala"] for c in pasada] == [10_000] * 5 + [1_000, 10_000]
+    assert {c["receta"] for c in pasada} == {"s2-pasada-v4"}

@@ -25,8 +25,8 @@ from pipeline.ventanas import del_mes
 def test_un_indice_fuera_de_la_receta_se_rechaza():
     # Sin este chequeo, `select` devolvería una imagen sin bandas y el error
     # aparecería recién al descargar el COG.
-    with pytest.raises(ValueError, match="savi"):
-        productos.mapa_de(None, del_mes(Mes(2026, 7)), RECETA_VIGENTE, "savi")
+    with pytest.raises(ValueError, match="gndvi"):
+        productos.mapa_de(None, del_mes(Mes(2026, 7)), RECETA_VIGENTE, "gndvi")
 
 
 def test_se_puede_pedir_cualquier_indice_de_la_receta():
@@ -39,8 +39,8 @@ def test_se_puede_pedir_cualquier_indice_de_la_receta():
 
 def test_el_mapa_multibanda_rechaza_un_indice_fuera_de_la_receta():
     """M.9.7b: sin el chequeo, la banda faltaria y el `bidx` de las filas apuntaria mal."""
-    with pytest.raises(ValueError, match="savi"):
-        productos.mapa_multibanda_de(None, del_mes(Mes(2026, 7)), RECETA_VIGENTE, ["ndvi", "savi"])
+    with pytest.raises(ValueError, match="gndvi"):
+        productos.mapa_multibanda_de(None, del_mes(Mes(2026, 7)), RECETA_VIGENTE, ["ndvi", "gndvi"])
 
 
 def test_el_mapa_multibanda_sin_indices_se_rechaza():
@@ -54,6 +54,20 @@ def test_la_escala_del_cog_es_la_que_lee_el_panel():
     Si cambia, cambia el color de cada mapa en silencio: tiene que cambiar en los dos lados.
     """
     assert productos.ESCALA_DEL_COG == 10_000
+
+
+def test_cada_banda_del_cog_va_por_la_escala_de_su_indice():
+    """M.9.3: el LAI por 1.000; los normalizados y el color real, por 10.000."""
+    assert productos.escala_de_banda("ndvi") == 10_000
+    assert productos.escala_de_banda("savi") == 10_000
+    assert productos.escala_de_banda("lai") == 1_000
+    assert productos.escala_de_banda("red") == 10_000  # el color real: reflectancia S2 tal cual
+
+
+def test_la_escala_de_la_fila_es_la_de_su_banda():
+    assert productos.escala_de_producto("lai") == 1_000
+    assert productos.escala_de_producto("ndmi") == 10_000
+    assert productos.escala_de_producto("rgb") == 10_000
 
 # ---- Contra GEE de verdad (pytest --gee) -------------------------------------------
 

@@ -23,6 +23,7 @@ from typing import Final
 import ee
 
 from pipeline.etapas import compuesto, fuente, nubes, reduccion
+from pipeline.indices import ESCALA_COG_NORMALIZADO, INDICES, TOPE_INT16
 from pipeline.receta import COLOR_REAL, PRODUCTO_COLOR_REAL, Receta
 from pipeline.ventanas import Ventana
 
@@ -95,12 +96,32 @@ def mapa_de(
     return compuesto_de(roi, ventana, receta).select([indice]).clip(roi)
 
 
-# Por cuánto se multiplica cada índice para guardarlo como entero (M.9.7b,
+# Por cuánto se multiplica una banda para guardarla como entero (M.9.7b,
 # `DECISIONS #73`). Cuatro decimales es más de lo que el sensor sostiene, y un
 # índice acotado a [-1, 1] cabe de sobra en un int16 (±32.767). Es lo habitual en
 # Sentinel-2, y el mismo número va en la fila de `layers` (`escala`) para que quien
-# pinta multiplique su rango.
-ESCALA_DEL_COG: Final = 10_000
+# pinta multiplique su rango. **Desde M.9.3 es la de las bandas normalizadas y del
+# color real**: un índice que no vive en [-1, 1] —el LAI— trae la suya en el
+# registro (`Indice.escala_cog`), y `escala_de_banda` es quien decide.
+ESCALA_DEL_COG: Final = ESCALA_COG_NORMALIZADO
+
+
+def escala_de_banda(nombre: str) -> int:
+    """Por cuánto se multiplica una banda del COG: la del índice, o la de siempre.
+
+    El color real es reflectancia por 10.000, el número de S2 tal cual.
+    """
+    return INDICES[nombre].escala_cog if nombre in INDICES else ESCALA_DEL_COG
+
+
+def escala_de_producto(producto: str) -> int:
+    """La ``escala`` de la fila de ``layers`` de un producto: la de su banda.
+
+    El color real son tres bandas con la misma escala, la de la reflectancia.
+    """
+    if producto == PRODUCTO_COLOR_REAL:
+        return ESCALA_DEL_COG
+    return escala_de_banda(producto)
 
 
 def productos_del_cog(receta: Receta) -> tuple[str, ...]:
@@ -152,7 +173,8 @@ def mapa_multibanda_de(
     Las bandas salen **en el orden de** ``indices``, y ese orden es el ``bidx`` de
     cada capa: la banda 1 es ``indices[0]``.
 
-    Los valores van **por** ``ESCALA_DEL_COG`` **y redondeados**, en int16: la
+    Los valores van **por su escala** (``escala_de_banda``) **y redondeados**, en
+    int16: la
     mitad de tamaño que en float32, y el color real (M.9.7e) entra en el mismo
     archivo. Lo enmascarado sigue enmascarado: quien descarga lo rellena con su
     centinela.
@@ -174,18 +196,16 @@ def mapa_multibanda_de(
     return (
         compuesto_de(roi, ventana, receta)
         .select(list(indices))
-        .multiply(ESCALA_DEL_COG)
+        # Una constante por banda, en el orden de `indices`: GEE multiplica banda a
+        # banda. Con una sola escala para todo, el LAI se recortaba al tope.
+        .multiply(ee.Image.constant([escala_de_banda(nombre) for nombre in indices]))
         .round()
         # **El tope del int16, sin el mínimo.** Con \`acotar_indices\` un índice ya
         # vive en [-1, 1] y esto no hace nada. Sin él —una receta futura— un EVI de 4
         # daría 40.000, que en int16 se corrompe sin error; y un píxel válido que
         # cayera en -32.768 se confundiría con el centinela \`NODATA_ENTERO\` y
         # desaparecería del mapa. Acotar a ±32.767 hace imposibles las dos cosas.
-        .clamp(-_TOPE_INT16, _TOPE_INT16)
+        .clamp(-TOPE_INT16, TOPE_INT16)
         .toInt16()
         .clip(roi)
     )
-
-
-# El mayor int16 en valor absoluto que no es el centinela de "sin dato" (-32.768).
-_TOPE_INT16: Final = 32_767

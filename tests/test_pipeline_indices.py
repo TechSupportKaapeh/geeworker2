@@ -42,19 +42,32 @@ def evi_huete(nir, red, blue, g=2.5, c1=6.0, c2=7.5, fondo=1.0):
     return g * (nir - red) / (nir + c1 * red - c2 * blue + fondo)
 
 
+def savi_huete(nir, red, suelo=0.5):
+    """Huete (1988): (1 + L)(NIR - RED) / (NIR + RED + L), con L = 0,5."""
+    return (1 + suelo) * (nir - red) / (nir + red + suelo)
+
+
+def lai_boegh(evi):
+    """Boegh et al. (2002): el LAI empirico desde el EVI, LAI = 3,618 EVI - 0,118."""
+    return 3.618 * evi - 0.118
+
+
 DEFINICIONES = {
     "ndvi": lambda b: diferencia_normalizada(b["NIR"], b["RED"]),  # Rouse et al. (1974)
     "evi": lambda b: evi_huete(b["NIR"], b["RED"], b["BLUE"]),
     "ndre": lambda b: diferencia_normalizada(b["NIR"], b["RE1"]),  # Barnes et al. (2000)
     "ndmi": lambda b: diferencia_normalizada(b["NIR"], b["SWIR1"]),  # Wilson y Sader (2002)
+    "savi": lambda b: savi_huete(b["NIR"], b["RED"]),
+    "lai": lambda b: lai_boegh(evi_huete(b["NIR"], b["RED"], b["BLUE"])),
 }
 
 
 # --- El registro ----------------------------------------------------------
 
 
-def test_la_receta_v1_trae_los_cuatro_indices():
-    assert list(INDICES) == ["ndvi", "evi", "ndre", "ndmi"]
+def test_el_registro_trae_los_seis_indices():
+    """Los cuatro de la receta v1 y, desde M.9.3 (2026-10-09), SAVI y LAI."""
+    assert list(INDICES) == ["ndvi", "evi", "ndre", "ndmi", "savi", "lai"]
     assert set(DEFINICIONES) == set(INDICES)
     for nombre, indice in INDICES.items():
         assert indice.nombre == nombre
@@ -116,11 +129,43 @@ def test_evi_depende_de_la_escala_y_ndvi_no():
 # --- Rangos coherentes ----------------------------------------------------
 
 
+# El LAI de Boegh es lineal en el EVI y da negativo donde no hay hojas (agua: -0,34).
+# Su rango [0, 3,5] es fisico, y acotar a 0 es la lectura correcta: no es un dato
+# roto, como si lo seria un NDVI de 1,4. Por eso queda afuera de este test, a la vista.
+FUERA_DEL_RANGO_A_PROPOSITO = {("lai", "agua")}
+
+
 @pytest.mark.parametrize("espectro", ESPECTROS)
 def test_los_espectros_tipicos_caen_dentro_del_rango(espectro):
     for indice in INDICES.values():
+        if (indice.nombre, espectro) in FUERA_DEL_RANGO_A_PROPOSITO:
+            continue
         minimo, maximo = indice.rango
         assert minimo <= evaluar(indice.formula, ESPECTROS[espectro]) <= maximo, indice.nombre
+
+
+def test_el_lai_del_agua_es_negativo_y_por_eso_se_acota():
+    """La excepcion de arriba, fijada: si el agua dejara de dar negativo, sobra."""
+    assert evaluar(INDICES["lai"].formula, ESPECTROS["agua"]) < 0
+
+
+def test_el_lai_satura_en_3_5():
+    """Acotar el LAI a 3,5 es lo mismo que calcularlo desde el EVI acotado a 1."""
+    assert INDICES["lai"].rango == (0.0, 3.5)
+    assert lai_boegh(1.0) == pytest.approx(3.5)
+
+
+def test_cada_indice_entra_en_un_int16_con_su_escala():
+    """El COG guarda el indice por su escala en int16: el LAI por 10.000 no entraba."""
+    for indice in INDICES.values():
+        assert max(map(abs, indice.rango)) * indice.escala_cog <= 32_767, indice.nombre
+    assert INDICES["lai"].escala_cog == 1_000
+    assert {i.escala_cog for n, i in INDICES.items() if n != "lai"} == {10_000}
+
+
+def test_una_escala_que_no_entra_se_rechaza_al_armar_el_registro():
+    with pytest.raises(ValueError, match="int16"):
+        Indice("lai2", "NIR", rango=(0.0, 3.5), tema="x", escala_cog=10_000)
 
 
 @pytest.mark.parametrize("nombre", ["ndvi", "ndre", "ndmi"])

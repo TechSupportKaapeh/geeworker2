@@ -414,7 +414,8 @@ const SPRINTS = [
       { id: "M.9.7h", t: "Los ranchos grandes: la descarga en teselas, la cobertura en lotes y el mes en más de un step (decisión del usuario)", repo: "worker", T: "M", ok: "Zapotlan (27.349 ha) procesa un mes; hoy falla con v2 y con v3 (#78)" },
       { id: "M.9.1", t: "Cultivo en la parcela, y la métrica del rancho por cultivo", repo: "Geocore · panel", T: "—", ok: "—" },
       { id: "M.9.2", t: "Anomalía contra la mediana histórica del mes, tendencia y alerta de caída", repo: "worker · Geocore", T: "—", ok: "—" },
-      { id: "M.9.3", t: "Más índices, una entrada cada uno: SAVI, GNDVI o CIre, MSI, NDWI", repo: "worker", T: "—", ok: "—" },
+      { id: "M.9.3a", t: "SAVI y LAI: la receta v4 vigente y una escala del COG por índice", repo: "worker · Geocore · panel", T: "M", ok: "geeworker2#108, Geocore#109, Terra-admin#36. LAI empírico desde el EVI (satura en 3,5, por 1.000 en el COG); 9 bandas, techo de la caja ~17.000 ha. DECISIONS #81" },
+      { id: "M.9.3b", t: "Los demás índices: GNDVI o CIre, MSI, NDWI", repo: "worker", T: "—", ok: "—" },
       { id: "M.9.4", t: "Sentinel-1 (radar) para los meses de lluvia", repo: "worker", T: "—", ok: "—" },
       { id: "M.9.5", t: "El mes en curso como provisorio", repo: "worker · panel", T: "—", ok: "—" },
       { id: "M.9.6", t: "En diseño · A demanda por ventana: el mapa a demanda recibe un mes, un día (una pasada) o un rango (el compuesto)", repo: "worker", T: "M", ok: "Claves que no chocan, y el mismo pedido reusa su COG" },
@@ -426,6 +427,9 @@ const SPRINTS = [
     ] }
 ];
 
+// Sesión 23 (2026-10-09): M.9.3a, SAVI y LAI. La receta v4 vigente, el LAI empírico desde el
+// EVI y una escala del COG por índice (worker DECISIONS #81). Sigue M.9.7h.
+//
 // Sesión 22 (2026-10-04): el sprint K entero, salvo 👥 K.8. K.4, importar el plan confirmado
 // (Geocore#102, DECISIONS #70), y el NaN de GeoPolygon (#103, #71); K.6, corregir y confirmar en el
 // panel (Terra-admin#34), y K.7, la doc (Geocore#105, #72). Sigue M.9.7h.
@@ -525,7 +529,7 @@ const ESTADO = {
   "M.9.7e1": "hecho", "M.9.7e2": "hecho", "M.9.7f": "hecho",
   "C.0": "hecho", "C.1": "hecho", "C.2": "hecho", "C.3": "hecho", "C.4": "hecho",
   "C.5": "hecho", "C.6": "hecho", "C.7": "hecho",
-  "M.9.7g": "hecho",
+  "M.9.7g": "hecho", "M.9.3a": "hecho",
   "K.0": "hecho", "K.1": "hecho", "K.2": "hecho", "K.3": "hecho", "K.4": "hecho", "K.5": "hecho", "K.6": "hecho", "K.7": "hecho"
 };
 
@@ -594,7 +598,8 @@ const DECISIONES = [
   ["Un multiparte es un polígono por parte; los huecos se descartan pero se cuentan (d-K7, d-K8, #67 de Geocore)", "K.1", "hecho", "decidida"],
   ["Tres niveles: el que contiene ranchos se propone desactivado (d-K9, #68 de Geocore)", "K.2", "hecho", "decidida"],
   ["Importar: un solo SaveChanges, auditado, bloquean nombre repetido y solape > 1 % entre hermanos, otro tenant sólo a TerraStaff, 200 altas (d-K10 a d-K14, #70 de Geocore)", "K.4", "hecho", "decidida"],
-  ["El panel: «Revisar» con botón, «Crear» sólo con lo revisado; un rancho desactivado no arrastra a sus parcelas; /api/kml/* se borra con la app del cliente (d-K15 a d-K18, #72 de Geocore)", "K.6", "hecho", "decidida"]
+  ["El panel: «Revisar» con botón, «Crear» sólo con lo revisado; un rancho desactivado no arrastra a sus parcelas; /api/kml/* se borra con la app del cliente (d-K15 a d-K18, #72 de Geocore)", "K.6", "hecho", "decidida"],
+  ["LAI empírico desde el EVI; v4 vigente; los mapas con 9 bandas aunque un rancho de 2.600 ha pase los 60 s (#81)", "M.9.3a", "hecho", "decidida"]
 ];
 
 const ETIQUETA = { pendiente: "pendiente", curso: "en curso", hecho: "hecho", bloqueado: "bloqueado" };

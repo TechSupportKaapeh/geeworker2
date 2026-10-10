@@ -148,7 +148,7 @@ def test_un_indice_con_las_siete():
 
 
 def test_los_cuatro_indices_con_las_siete():
-    claves = claves_de_salida(list(INDICES), SIETE)
+    claves = claves_de_salida(["ndvi", "evi", "ndre", "ndmi"], SIETE)
     assert len(claves) == 28
     assert len(set(claves.values())) == 28  # ninguna choca
     assert claves[("ndmi", "desvio")] == "ndmi_stdDev"
@@ -177,7 +177,7 @@ def test_respeta_el_orden_pedido():
     (["ndvi"], [], "al menos un"),
     (["ndvi", "ndvi"], SIETE, "repetid"),
     (["ndvi"], ["mediana", "mediana"], "repetid"),
-    (["savi"], SIETE, "fuera del registro"),
+    (["gndvi"], SIETE, "fuera del registro"),
     (["ndvi"], ["p25"], "fuera del registro"),
 ])
 def test_rechaza_listas_invalidas(indices, estadisticas, mensaje):

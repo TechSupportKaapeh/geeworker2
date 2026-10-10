@@ -24,6 +24,7 @@ from pipeline.receta import (
     _OPCIONALES,
     RECETA_MENSUAL_V1,
     RECETA_PASADA_V3,
+    RECETA_PASADA_V4,
     RECETA_POR_PASADA,
     RECETA_VIGENTE,
 )
@@ -89,6 +90,9 @@ HUELLAS = {
     "s2-mensual-v1": "4a4f24dab9075e4f7d9868e6368b19e972bc6b15dd1fefca66c5e70dc8efa161",
     "s2-pasada-v2": "ca953783ff1b487cf38e0175cbf10aed93f5ba5b10f1a77425fd5771a0d482fd",
     "s2-pasada-v3": "b4fd6990a0266eafcd2eef5ec1e8d0c3e910a52e2523e8f6d29ad915522e2fa4",
+    # M.9.3 (2026-10-09, `DECISIONS #81`): v3 + SAVI + LAI. Las tres de arriba no se
+    # movieron al sumar `escala_cog`: la escala de siempre no entra en la huella.
+    "s2-pasada-v4": "b9012a18facbbfd4ba1e6a454e8092add9e15a9de0fdb88b49c173a6b7f475bc",
 }
 
 # Un cambio por campo de Receta, salvo la version. Si se suma un campo, tiene
@@ -125,7 +129,7 @@ CAMBIOS = {
 
 
 @pytest.mark.parametrize(
-    "receta", [RECETA_MENSUAL_V1, RECETA_POR_PASADA, RECETA_PASADA_V3]
+    "receta", [RECETA_MENSUAL_V1, RECETA_POR_PASADA, RECETA_PASADA_V3, RECETA_PASADA_V4]
 )
 def test_la_huella_de_cada_receta_esta_fijada(receta):
     assert receta.version in HUELLAS, "version nueva sin huella en HUELLAS"
@@ -197,15 +201,20 @@ def test_v2_deja_el_raster_mensual():
     assert RECETA_POR_PASADA.agrupamiento_raster == RECETA_MENSUAL_V1.agrupamiento_raster
 
 
-def test_la_vigente_es_v3():
-    """Desde el 2026-10-02 (M.9.7g, `DECISIONS #78`).
+def test_la_vigente_es_v4():
+    """Desde el 2026-10-09 (M.9.3, `DECISIONS #81`): v3 + SAVI + LAI."""
+    assert RECETA_VIGENTE is RECETA_PASADA_V4
+    assert RECETA_VIGENTE.version == "s2-pasada-v4"
 
-    El orden de despliegue se respeto: el panel ya distingue la pasada del
-    compuesto por `source` (M.9.7f), asi que el mapa mensual no mezcla la pasada
-    del dia 1. Es la regla de M.8.1 con el que LEE en el lugar del que exige.
+
+def test_v4_es_v3_con_savi_y_lai_detras():
+    """Lo unico que cambia: dos indices mas, detras de los cuatro de siempre.
+
+    Detras y no delante: la banda de cada indice viejo en el COG es la misma.
     """
-    assert RECETA_VIGENTE is RECETA_PASADA_V3
-    assert RECETA_VIGENTE.version == "s2-pasada-v3"
+    assert RECETA_PASADA_V4.indices == (*RECETA_PASADA_V3.indices, "savi", "lai")
+    v3_sin_indices = dataclasses.replace(RECETA_PASADA_V3, indices=RECETA_PASADA_V4.indices, version="x")
+    assert v3_sin_indices.contenido() == RECETA_PASADA_V4.contenido()
     assert RECETA_VIGENTE.umbral_al_escribir is False, "el umbral se aplica al leer"
     assert RECETA_VIGENTE.agrupamiento_raster == POR_PASADA, "el raster es por pasada"
 
@@ -313,7 +322,7 @@ def test_cambiar_solo_la_version_no_cambia_la_huella():
 
 
 def test_reordenar_los_indices_no_cambia_la_huella():
-    otra = dataclasses.replace(RECETA_VIGENTE, indices=("ndmi", "ndre", "evi", "ndvi"))
+    otra = dataclasses.replace(RECETA_VIGENTE, indices=tuple(reversed(RECETA_VIGENTE.indices)))
     assert otra.huella() == RECETA_VIGENTE.huella()
 
 
@@ -374,7 +383,7 @@ def test_los_remuestreos_de_gee_se_aceptan(remuestreo):
     ("cloud_score_minimo", 0.0, "cloud_score_minimo"),
     ("cloud_score_minimo", 1.5, "cloud_score_minimo"),
     ("indices", (), "al menos un"),
-    ("indices", ("ndvi", "savi"), "fuera del registro"),
+    ("indices", ("ndvi", "gndvi"), "fuera del registro"),
     ("estadisticas", ("mediana", "mediana"), "repetid"),
 ])
 def test_valores_invalidos_se_rechazan(campo, valor, mensaje):
